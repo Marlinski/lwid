@@ -1,0 +1,15 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: lookwhatidid-ovh-tls
+  namespace: lwid
+  labels:
+    app.kubernetes.io/name: lwid
+    app.kubernetes.io/component: tls
+spec:
+  secretName: lookwhatidid-ovh-tls
+  issuerRef:
+    name: letsencrypt-prod-lwid
+    kind: ClusterIssuer
+  dnsNames:
+    - lookwhatidid.ovh

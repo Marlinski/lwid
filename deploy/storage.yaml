@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: lwid-storage-pv
+  labels:
+    app.kubernetes.io/name: lwid
+    app.kubernetes.io/component: storage
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  csi:
+    driver: csi.juicefs.com
+    fsType: juicefs
+    volumeHandle: lwid-storage-pv
+    nodePublishSecretRef:
+      name: juicefs-secret
+      namespace: lwid
+    volumeAttributes:
+      juicefs/mount-options: "cache-size=512"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lwid-storage
+  namespace: lwid
+  labels:
+    app.kubernetes.io/name: lwid
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  volumeName: lwid-storage-pv
+  storageClassName: ""

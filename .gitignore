@@ -3,3 +3,4 @@
 .lwid.json
 .DS_Store
 .todo/
+.env

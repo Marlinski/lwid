@@ -21,18 +21,17 @@ RUN apt-get update \
 RUN groupadd --system lwid \
     && useradd --system --gid lwid --create-home lwid
 
-# Persistent data directory
-RUN mkdir -p /data && chown lwid:lwid /data
-VOLUME /data
+# Data directory (mount JuiceFS or host volume at /storage)
+RUN mkdir -p /storage && chown lwid:lwid /storage
 
-# Copy shell assets
-COPY shell/ /shell/
+# Copy shell assets (readable by lwid user)
+COPY --chown=lwid:lwid shell/ /shell/
 
 # Copy the compiled binary
 COPY --from=builder /build/target/release/lwid-server /usr/local/bin/lwid-server
 
 # Environment
-ENV LWID_STORAGE__DATA_DIR=/data
+ENV LWID_STORAGE__DATA_DIR=/storage
 ENV LWID_SERVER__SHELL_DIR=/shell
 
 EXPOSE 8080
