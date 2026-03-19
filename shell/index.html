@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>lookwhatidid</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <!-- ===================================================================
+       A. Landing page (create new project)
+       =================================================================== -->
+  <section id="landing" class="landing hidden">
+    <h1 class="landing__title">lookwhatidid</h1>
+    <p class="landing__subtitle">Share your creation with the world</p>
+
+    <div id="dropzone" class="dropzone">
+      <span class="dropzone__icon" aria-hidden="true">&#128193;</span>
+      <p class="dropzone__label">Drop your files here or click to browse</p>
+      <input
+        id="file-input"
+        type="file"
+        multiple
+        webkitdirectory
+        aria-label="Select files to upload"
+      >
+    </div>
+
+    <ul id="file-list" class="file-list hidden"></ul>
+
+    <button id="btn-create" class="btn-primary hidden" disabled>
+      Create &amp; Share
+    </button>
+
+    <p id="landing-status" class="landing__status" aria-live="polite"></p>
+  </section>
+
+  <!-- ===================================================================
+       B. Project view (viewer / editor)
+       =================================================================== -->
+  <section id="project-view" class="project-view hidden">
+
+    <!-- Toolbar -->
+    <header class="toolbar">
+      <a href="/" class="toolbar__title" id="toolbar-title">lookwhatidid</a>
+
+      <button id="btn-share-view" class="toolbar__btn" title="Copy view-only link">
+        Share (view)
+      </button>
+      <button id="btn-share-edit" class="toolbar__btn hidden" title="Copy editable link">
+        Share (edit)
+      </button>
+
+      <div class="download-dropdown" id="download-dropdown">
+        <button id="btn-download" class="toolbar__btn">Download</button>
+        <ul id="download-menu" class="download-dropdown__menu hidden"></ul>
+      </div>
+
+      <button id="btn-history" class="toolbar__btn">History</button>
+      <button id="btn-add-files" class="toolbar__btn toolbar__btn--accent hidden">
+        Add files
+      </button>
+    </header>
+
+    <!-- Main: sandboxed iframe -->
+    <main class="project-view__main">
+      <div id="loading-overlay" class="project-view__loading">
+        <span class="spinner"></span> Loading project&hellip;
+      </div>
+      <iframe
+        id="sandbox-frame"
+        class="project-view__iframe"
+        sandbox="allow-scripts allow-same-origin"
+        title="Project preview"
+      ></iframe>
+    </main>
+
+    <!-- History panel -->
+    <aside id="history-panel" class="history-panel">
+      <div class="history-panel__header">
+        <h3>Version history</h3>
+        <button id="btn-close-history" class="history-panel__close" aria-label="Close history">&times;</button>
+      </div>
+      <ul id="history-list" class="history-panel__list"></ul>
+    </aside>
+  </section>
+
+  <!-- ===================================================================
+       C. Error state
+       =================================================================== -->
+  <section id="error-view" class="error-view hidden">
+    <div class="error-view__icon" aria-hidden="true">&#128274;</div>
+    <h2 class="error-view__title" id="error-title">Invalid link or key</h2>
+    <p class="error-view__message" id="error-message">
+      The link may be broken or the decryption key is missing.
+    </p>
+    <a href="/" class="error-view__home">Back to home</a>
+  </section>
+
+  <!-- Upload overlay (add files in project view) -->
+  <div id="upload-overlay" class="upload-overlay hidden">
+    <div class="upload-overlay__box">
+      <h3>Add or update files</h3>
+      <div id="upload-dropzone" class="upload-overlay__dropzone">
+        <p>Drop files here or click to browse</p>
+        <input id="upload-file-input" type="file" multiple webkitdirectory>
+      </div>
+      <ul id="upload-file-list" class="file-list"></ul>
+      <div class="upload-overlay__actions">
+        <button id="btn-upload-cancel" class="upload-overlay__cancel">Cancel</button>
+        <button id="btn-upload-push" class="btn-primary" disabled>Push update</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <!-- ===================================================================
+       Main script
+       =================================================================== -->
+  <script type="module">
+    import { ApiClient } from '/js/api.js';
+    import { decodeKeys, encodeKeys } from '/js/crypto.js';
+    import {
+      createNewProject,
+      pushVersion,
+      pullLatest,
+      pullVersion,
+      getVersionHistory,
+      buildProjectUrl,
+    } from '/js/project.js';
+
+    // -----------------------------------------------------------------------
+    // DOM references
+    // -----------------------------------------------------------------------
+
+    const $landing       = document.getElementById('landing');
+    const $dropzone      = document.getElementById('dropzone');
+    const $fileInput     = document.getElementById('file-input');
+    const $fileList      = document.getElementById('file-list');
+    const $btnCreate     = document.getElementById('btn-create');
+    const $landingStatus = document.getElementById('landing-status');
+
+    const $projectView   = document.getElementById('project-view');
+    const $toolbarTitle  = document.getElementById('toolbar-title');
+    const $btnShareView  = document.getElementById('btn-share-view');
+    const $btnShareEdit  = document.getElementById('btn-share-edit');
+    const $btnDownload   = document.getElementById('btn-download');
+    const $downloadMenu  = document.getElementById('download-menu');
+    const $downloadDD    = document.getElementById('download-dropdown');
+    const $btnHistory    = document.getElementById('btn-history');
+    const $btnAddFiles   = document.getElementById('btn-add-files');
+    const $loadingOverlay = document.getElementById('loading-overlay');
+    const $sandboxFrame  = document.getElementById('sandbox-frame');
+
+    const $historyPanel  = document.getElementById('history-panel');
+    const $btnCloseHist  = document.getElementById('btn-close-history');
+    const $historyList   = document.getElementById('history-list');
+
+    const $errorView     = document.getElementById('error-view');
+    const $errorTitle    = document.getElementById('error-title');
+    const $errorMessage  = document.getElementById('error-message');
+
+    const $uploadOverlay   = document.getElementById('upload-overlay');
+    const $uploadDropzone  = document.getElementById('upload-dropzone');
+    const $uploadFileInput = document.getElementById('upload-file-input');
+    const $uploadFileList  = document.getElementById('upload-file-list');
+    const $btnUploadCancel = document.getElementById('btn-upload-cancel');
+    const $btnUploadPush   = document.getElementById('btn-upload-push');
+
+    const $toast = document.getElementById('toast');
+
+    // -----------------------------------------------------------------------
+    // State
+    // -----------------------------------------------------------------------
+
+    const api = new ApiClient('');
+    let currentProjectId = null;
+    let currentReadKey   = null;
+    let currentWriteKey  = null;
+    let currentManifest  = null;
+    /** @type {Map<string, Uint8Array>|null} */
+    let currentFiles     = null;
+    /** @type {File[]} */
+    let stagedFiles      = [];
+    /** @type {File[]} */
+    let uploadStagedFiles = [];
+
+    // -----------------------------------------------------------------------
+    // Service Worker registration
+    // -----------------------------------------------------------------------
+
+    async function registerSW() {
+      if (!('serviceWorker' in navigator)) {
+        console.warn('Service Workers not supported');
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+
+      // If the SW is already controlling the page, we're done.
+      if (navigator.serviceWorker.controller) return;
+
+      // Wait briefly for clients.claim() to propagate after activation.
+      await new Promise((resolve) => {
+        navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+        // Safety timeout: if claim doesn't propagate within 2s, force a
+        // one-time reload so the SW controls the page on next load.
+        setTimeout(() => {
+          if (!navigator.serviceWorker.controller) {
+            // Guard against infinite reload loops with a sessionStorage flag
+            if (!sessionStorage.getItem('sw_reload')) {
+              sessionStorage.setItem('sw_reload', '1');
+              window.location.reload();
+            } else {
+              sessionStorage.removeItem('sw_reload');
+              console.error('Service Worker failed to take control after reload');
+              resolve(); // proceed without SW — will show error in sendFilesToSW
+            }
+          }
+        }, 2000);
+      });
+
+      // Clear the reload flag on successful SW control
+      sessionStorage.removeItem('sw_reload');
+    }
+
+    // -----------------------------------------------------------------------
+    // Utility
+    // -----------------------------------------------------------------------
+
+    function show(el) { el.classList.remove('hidden'); }
+    function hide(el) { el.classList.add('hidden'); }
+
+    function formatBytes(bytes) {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    function truncateId(id, len = 12) {
+      return id.length > len ? id.slice(0, len) + '...' : id;
+    }
+
+    function showToast(msg, duration = 2500) {
+      $toast.textContent = msg;
+      $toast.classList.add('toast--visible');
+      setTimeout(() => $toast.classList.remove('toast--visible'), duration);
+    }
+
+    function setStatus(msg) {
+      $landingStatus.textContent = msg;
+    }
+
+    /**
+     * Guess MIME type from file path extension.
+     */
+    function guessMimeType(path) {
+      const ext = (path.match(/\.[^.]+$/) || [''])[0].toLowerCase();
+      const map = {
+        '.html': 'text/html',
+        '.css': 'text/css',
+        '.js': 'application/javascript',
+        '.json': 'application/json',
+        '.svg': 'image/svg+xml',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.wasm': 'application/wasm',
+        '.ico': 'image/x-icon',
+        '.txt': 'text/plain',
+        '.md': 'text/markdown',
+        '.xml': 'application/xml',
+        '.csv': 'text/csv',
+      };
+      return map[ext] || 'application/octet-stream';
+    }
+
+    /**
+     * Read a File object into { path, content: Uint8Array }.
+     */
+    function readFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          // Use webkitRelativePath if available (folder upload), otherwise name
+          const path = file.webkitRelativePath
+            ? file.webkitRelativePath.split('/').slice(1).join('/')
+            : file.name;
+          resolve({ path, content: new Uint8Array(reader.result) });
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    /**
+     * Render a list of File objects into a <ul>.
+     */
+    function renderFileList(files, $list) {
+      $list.innerHTML = '';
+      for (const f of files) {
+        const li = document.createElement('li');
+        const name = f.webkitRelativePath || f.name;
+        li.innerHTML = `
+          <span>${name}</span>
+          <span class="file-list__size">${formatBytes(f.size)}</span>
+        `;
+        $list.appendChild(li);
+      }
+      if (files.length > 0) show($list);
+      else hide($list);
+    }
+
+    /**
+     * Send decrypted files to the Service Worker and load the sandbox iframe.
+     *
+     * Uses MessageChannel so the SW can acknowledge that files are cached
+     * before we point the iframe at /sandbox/. This eliminates the race
+     * condition where the iframe fires fetch before the SW has the files.
+     */
+    async function sendFilesToSW(files) {
+      const sw = navigator.serviceWorker.controller;
+      if (!sw) {
+        throw new Error('Service Worker not controlling page — try refreshing.');
+      }
+
+      // Build the payload for the SW
+      const payload = [];
+      for (const [path, content] of files) {
+        payload.push({
+          path,
+          content: content.buffer,
+          mimeType: guessMimeType(path),
+        });
+      }
+
+      // Send files via MessageChannel and wait for acknowledgment
+      await new Promise((resolve, reject) => {
+        const channel = new MessageChannel();
+        channel.port1.onmessage = (event) => {
+          if (event.data?.type === 'FILES_READY') {
+            resolve();
+          } else {
+            reject(new Error('Unexpected SW response'));
+          }
+        };
+        sw.postMessage({ type: 'SET_FILES', files: payload }, [channel.port2]);
+
+        // Timeout after 5 seconds
+        setTimeout(() => reject(new Error('SW file cache timeout')), 5000);
+      });
+
+      // Point the iframe at the sandbox path — SW will intercept and serve
+      $sandboxFrame.src = '/sandbox/index.html';
+    }
+
+    // -----------------------------------------------------------------------
+    // Router
+    // -----------------------------------------------------------------------
+
+    function getRoute() {
+      const path = window.location.pathname;
+      const match = path.match(/^\/p\/([^/]+)/);
+      if (match) {
+        return { mode: 'project', projectId: decodeURIComponent(match[1]) };
+      }
+      return { mode: 'landing' };
+    }
+
+    // -----------------------------------------------------------------------
+    // Landing page logic
+    // -----------------------------------------------------------------------
+
+    function initLanding() {
+      show($landing);
+      hide($projectView);
+      hide($errorView);
+
+      // Drag-and-drop handling
+      $dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        $dropzone.classList.add('dropzone--active');
+      });
+
+      $dropzone.addEventListener('dragleave', () => {
+        $dropzone.classList.remove('dropzone--active');
+      });
+
+      $dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        $dropzone.classList.remove('dropzone--active');
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length > 0) {
+          stagedFiles = files;
+          renderFileList(stagedFiles, $fileList);
+          show($btnCreate);
+          $btnCreate.disabled = false;
+        }
+      });
+
+      $fileInput.addEventListener('change', () => {
+        const files = Array.from($fileInput.files);
+        if (files.length > 0) {
+          stagedFiles = files;
+          renderFileList(stagedFiles, $fileList);
+          show($btnCreate);
+          $btnCreate.disabled = false;
+        }
+      });
+
+      $btnCreate.addEventListener('click', handleCreate);
+    }
+
+    async function handleCreate() {
+      if (stagedFiles.length === 0) return;
+
+      $btnCreate.disabled = true;
+      setStatus('Creating project...');
+
+      try {
+        // 1. Read all files
+        const fileData = await Promise.all(stagedFiles.map(readFile));
+
+        setStatus('Generating keys and registering project...');
+
+        // 2. Create project (generates keys, registers with server)
+        const { projectId, readKey, writeKey } = await createNewProject(api);
+
+        setStatus('Encrypting and uploading files...');
+
+        // 3. Push files as version 1
+        await pushVersion(api, projectId, readKey, writeKey, fileData);
+
+        setStatus('Done! Redirecting...');
+
+        // 4. Redirect to project view with keys in fragment
+        const url = buildProjectUrl(window.location.origin, projectId, readKey, writeKey);
+        window.location.href = url;
+
+      } catch (err) {
+        console.error('Create failed:', err);
+        setStatus(`Error: ${err.message}`);
+        $btnCreate.disabled = false;
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Project view logic
+    // -----------------------------------------------------------------------
+
+    async function initProjectView(projectId) {
+      hide($landing);
+      show($projectView);
+      hide($errorView);
+
+      // Parse keys from hash fragment
+      const fragment = window.location.hash.replace(/^#/, '');
+      if (!fragment) {
+        showError('Invalid link or key', 'The link is missing the decryption key fragment.');
+        return;
+      }
+
+      let readKey, writeKey;
+      try {
+        ({ readKey, writeKey } = decodeKeys(fragment));
+      } catch {
+        showError('Invalid link or key', 'Could not parse the key from the URL.');
+        return;
+      }
+
+      if (!readKey) {
+        showError('Invalid link or key', 'Read key is missing from the URL.');
+        return;
+      }
+
+      currentProjectId = projectId;
+      currentReadKey = readKey;
+      currentWriteKey = writeKey;
+
+      // Configure toolbar
+      $toolbarTitle.textContent = truncateId(projectId);
+      $toolbarTitle.href = '/';
+
+      if (writeKey) {
+        show($btnShareEdit);
+        show($btnAddFiles);
+      }
+
+      // Wire up toolbar buttons
+      $btnShareView.addEventListener('click', () => {
+        const url = buildProjectUrl(window.location.origin, currentProjectId, currentReadKey);
+        navigator.clipboard.writeText(url).then(
+          () => showToast('View-only link copied!'),
+          () => showToast('Failed to copy link'),
+        );
+      });
+
+      $btnShareEdit.addEventListener('click', () => {
+        const url = buildProjectUrl(
+          window.location.origin, currentProjectId, currentReadKey, currentWriteKey,
+        );
+        navigator.clipboard.writeText(url).then(
+          () => showToast('Editable link copied!'),
+          () => showToast('Failed to copy link'),
+        );
+      });
+
+      // Download dropdown
+      $btnDownload.addEventListener('click', (e) => {
+        e.stopPropagation();
+        $downloadMenu.classList.toggle('hidden');
+      });
+      document.addEventListener('click', () => hide($downloadMenu));
+
+      // History
+      $btnHistory.addEventListener('click', () => {
+        $historyPanel.classList.toggle('history-panel--open');
+        if ($historyPanel.classList.contains('history-panel--open')) {
+          loadHistory();
+        }
+      });
+      $btnCloseHist.addEventListener('click', () => {
+        $historyPanel.classList.remove('history-panel--open');
+      });
+
+      // Add files
+      $btnAddFiles.addEventListener('click', () => {
+        uploadStagedFiles = [];
+        $uploadFileList.innerHTML = '';
+        $btnUploadPush.disabled = true;
+        show($uploadOverlay);
+      });
+      $btnUploadCancel.addEventListener('click', () => hide($uploadOverlay));
+
+      initUploadOverlay();
+
+      // Load the project
+      await loadProject();
+    }
+
+    async function loadProject(manifestCid) {
+      show($loadingOverlay);
+
+      try {
+        let result;
+        if (manifestCid) {
+          result = await pullVersion(api, currentReadKey, manifestCid);
+        } else {
+          result = await pullLatest(api, currentProjectId, currentReadKey);
+        }
+
+        if (!result) {
+          hide($loadingOverlay);
+          showToast('This project has no published versions yet.');
+          return;
+        }
+
+        currentManifest = result.manifest;
+        currentFiles = result.files;
+
+        // Build download menu
+        buildDownloadMenu(result.files);
+
+        // Send files to Service Worker and load sandbox iframe
+        await sendFilesToSW(result.files);
+
+        hide($loadingOverlay);
+
+      } catch (err) {
+        console.error('Load failed:', err);
+        hide($projectView);
+        showError('Failed to load project', err.message);
+      }
+    }
+
+    function buildDownloadMenu(files) {
+      $downloadMenu.innerHTML = '';
+      for (const [path, content] of files) {
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.textContent = path;
+        a.href = '#';
+        a.addEventListener('click', (e) => {
+          e.preventDefault();
+          downloadFile(path, content);
+          hide($downloadMenu);
+        });
+        li.appendChild(a);
+        $downloadMenu.appendChild(li);
+      }
+    }
+
+    function downloadFile(filename, content) {
+      const blob = new Blob([content], { type: guessMimeType(filename) });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename.split('/').pop();
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    // -----------------------------------------------------------------------
+    // History
+    // -----------------------------------------------------------------------
+
+    async function loadHistory() {
+      $historyList.innerHTML = '<li style="padding:1rem;color:var(--text-muted)">Loading...</li>';
+
+      try {
+        const versions = await getVersionHistory(api, currentProjectId, currentReadKey);
+
+        $historyList.innerHTML = '';
+        for (const v of versions) {
+          const li = document.createElement('li');
+          li.className = 'history-panel__item';
+          if (currentManifest && currentManifest.version === v.version) {
+            li.classList.add('history-panel__item--active');
+          }
+
+          const date = new Date(v.timestamp);
+          const timeStr = date.toLocaleString();
+
+          li.innerHTML = `
+            <div>
+              <span class="history-panel__version">v${v.version}</span>
+              <span class="history-panel__time">${timeStr}</span>
+            </div>
+            ${currentWriteKey && currentManifest && currentManifest.version !== v.version
+              ? '<button class="history-panel__restore">Restore</button>'
+              : ''}
+          `;
+
+          // Click to load this version
+          li.addEventListener('click', async (e) => {
+            if (e.target.classList.contains('history-panel__restore')) {
+              // Restore: load old version's files, then push as new version
+              await restoreVersion(v.cid);
+              return;
+            }
+            await loadProject(v.cid);
+            $historyPanel.classList.remove('history-panel--open');
+          });
+
+          $historyList.appendChild(li);
+        }
+
+        if (versions.length === 0) {
+          $historyList.innerHTML = '<li style="padding:1rem;color:var(--text-muted)">No versions yet</li>';
+        }
+
+      } catch (err) {
+        console.error('History load failed:', err);
+        $historyList.innerHTML = `<li style="padding:1rem;color:var(--text-muted)">Error: ${err.message}</li>`;
+      }
+    }
+
+    async function restoreVersion(manifestCid) {
+      if (!currentWriteKey) return;
+
+      try {
+        showToast('Restoring version...');
+        const { files } = await pullVersion(api, currentReadKey, manifestCid);
+
+        // Convert Map to array of { path, content }
+        const fileData = [];
+        for (const [path, content] of files) {
+          fileData.push({ path, content });
+        }
+
+        await pushVersion(api, currentProjectId, currentReadKey, currentWriteKey, fileData);
+        showToast('Version restored!');
+
+        // Reload latest
+        await loadProject();
+        loadHistory();
+
+      } catch (err) {
+        console.error('Restore failed:', err);
+        showToast(`Restore failed: ${err.message}`);
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Upload overlay (add files in project view)
+    // -----------------------------------------------------------------------
+
+    function initUploadOverlay() {
+      $uploadDropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        $uploadDropzone.classList.add('dropzone--active');
+      });
+
+      $uploadDropzone.addEventListener('dragleave', () => {
+        $uploadDropzone.classList.remove('dropzone--active');
+      });
+
+      $uploadDropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        $uploadDropzone.classList.remove('dropzone--active');
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length > 0) {
+          uploadStagedFiles = files;
+          renderFileList(uploadStagedFiles, $uploadFileList);
+          $btnUploadPush.disabled = false;
+        }
+      });
+
+      $uploadFileInput.addEventListener('change', () => {
+        const files = Array.from($uploadFileInput.files);
+        if (files.length > 0) {
+          uploadStagedFiles = files;
+          renderFileList(uploadStagedFiles, $uploadFileList);
+          $btnUploadPush.disabled = false;
+        }
+      });
+
+      $btnUploadPush.addEventListener('click', handlePushUpdate);
+    }
+
+    async function handlePushUpdate() {
+      if (uploadStagedFiles.length === 0 || !currentWriteKey) return;
+
+      $btnUploadPush.disabled = true;
+      $btnUploadPush.textContent = 'Uploading...';
+
+      try {
+        // Merge: start with current files, override with new uploads
+        const fileData = [];
+
+        // Keep existing files
+        if (currentFiles) {
+          for (const [path, content] of currentFiles) {
+            fileData.push({ path, content });
+          }
+        }
+
+        // Read and add/override with uploaded files
+        const newFiles = await Promise.all(uploadStagedFiles.map(readFile));
+        for (const nf of newFiles) {
+          const idx = fileData.findIndex(f => f.path === nf.path);
+          if (idx >= 0) {
+            fileData[idx] = nf;
+          } else {
+            fileData.push(nf);
+          }
+        }
+
+        await pushVersion(api, currentProjectId, currentReadKey, currentWriteKey, fileData);
+
+        hide($uploadOverlay);
+        $btnUploadPush.textContent = 'Push update';
+        showToast('Files updated!');
+
+        // Reload
+        await loadProject();
+
+      } catch (err) {
+        console.error('Push failed:', err);
+        showToast(`Upload failed: ${err.message}`);
+        $btnUploadPush.disabled = false;
+        $btnUploadPush.textContent = 'Push update';
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Error view
+    // -----------------------------------------------------------------------
+
+    function showError(title, message) {
+      hide($landing);
+      hide($projectView);
+      show($errorView);
+      $errorTitle.textContent = title;
+      $errorMessage.textContent = message;
+    }
+
+    // -----------------------------------------------------------------------
+    // Init
+    // -----------------------------------------------------------------------
+
+    async function init() {
+      // Register SW early so it controls the page before any project load.
+      await registerSW();
+
+      const route = getRoute();
+
+      if (route.mode === 'project') {
+        await initProjectView(route.projectId);
+      } else {
+        initLanding();
+      }
+    }
+
+    init().catch((err) => {
+      console.error('Init error:', err);
+      showError('Initialization failed', err.message);
+    });
+  </script>
+</body>
+</html>

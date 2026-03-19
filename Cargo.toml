@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/lwid-common", "crates/lwid-server", "crates/lwid-cli"]
+resolver = "2"

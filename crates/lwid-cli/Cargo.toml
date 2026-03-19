@@ -1,0 +1,32 @@
+[package]
+name = "lwid-cli"
+version = "0.1.0"
+edition = "2024"
+description = "CLI for lookwhatidid — push and pull encrypted projects"
+
+[[bin]]
+name = "lwid"
+path = "src/main.rs"
+
+[dependencies]
+lwid-common = { path = "../lwid-common" }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+tokio = { version = "1", features = ["full"] }
+
+# Crypto
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+base64 = "0.22"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Utilities
+thiserror = "2"
+chrono = { version = "0.4", features = ["serde"] }

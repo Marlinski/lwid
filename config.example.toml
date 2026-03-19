@@ -1,0 +1,21 @@
+# LookWhatIDid configuration
+# All values can be overridden by environment variables (prefixed with LWID_)
+# or CLI flags. Priority: CLI > env > config file > defaults.
+
+[storage]
+# Directory where blobs and project metadata are stored.
+# Env: LWID_STORAGE__DATA_DIR
+data_dir = "/data"
+
+[server]
+# Address to listen on.
+# Env: LWID_SERVER__LISTEN
+listen = "0.0.0.0:8080"
+
+# Maximum size of a single blob upload (bytes). Default: 10MB.
+# Env: LWID_SERVER__MAX_BLOB_SIZE
+max_blob_size = 10_485_760
+
+# Allowed CORS origins (comma-separated).
+# Env: LWID_SERVER__CORS_ORIGINS
+cors_origins = ["*"]

@@ -1,0 +1,29 @@
+[package]
+name = "lwid-common"
+version = "0.1.0"
+edition = "2024"
+description = "Shared domain types for lookwhatidid"
+
+[dependencies]
+# CID (IPFS-compatible)
+cid = "0.11"
+multihash-codetable = { version = "0.1", features = ["sha2"] }
+
+# Crypto
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+aes-gcm = "0.10"
+rand = "0.8"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+nanoid = "0.4"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
+rand_core = { version = "0.6", features = ["getrandom"] }
