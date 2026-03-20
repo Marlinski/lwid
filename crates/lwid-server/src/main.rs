@@ -21,6 +21,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
+    info!("lwid version: {}", env!("LWID_VERSION"));
+
     let cli = CliArgs::parse();
     let config = Config::load(&cli)?;
 

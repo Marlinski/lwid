@@ -82,6 +82,10 @@ pub struct Project {
     /// Clients derive this from the read key to prove store access without revealing the key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub store_token: Option<String>,
+
+    /// lwid version that created this project (client_version from the create request).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_with: Option<String>,
 }
 
 impl Project {
@@ -100,12 +104,13 @@ impl Project {
 /// Implementations must be safe to share across threads.
 pub trait ProjectStore: Send + Sync {
     /// Create a new project with the given Ed25519 public key, optional
-    /// expiry time, and optional store authentication token.
+    /// expiry time, optional store authentication token, and optional client version.
     fn create(
         &self,
         write_pubkey: &[u8],
         expires_at: Option<DateTime<Utc>>,
         store_token: Option<String>,
+        created_with: Option<String>,
     ) -> Result<Project, ProjectError>;
 
     /// Retrieve a project by its identifier.
@@ -173,6 +178,7 @@ impl ProjectStore for FsProjectStore {
         write_pubkey: &[u8],
         expires_at: Option<DateTime<Utc>>,
         store_token: Option<String>,
+        created_with: Option<String>,
     ) -> Result<Project, ProjectError> {
         let id = nanoid::nanoid!(12);
         let now = Utc::now();
@@ -186,6 +192,7 @@ impl ProjectStore for FsProjectStore {
             expires_at,
             blob_cids: BTreeSet::new(),
             store_token,
+            created_with,
         };
 
         let json = serde_json::to_string_pretty(&project)?;
@@ -293,7 +300,7 @@ mod tests {
         let pubkey = test_pubkey();
 
         let created = store
-            .create(&pubkey, None, None)
+            .create(&pubkey, None, None, None)
             .expect("create should succeed");
 
         assert_eq!(created.id.len(), 12, "project ID should be 12 characters");
@@ -321,7 +328,7 @@ mod tests {
         let expires = Utc::now() + chrono::Duration::hours(1);
 
         let created = store
-            .create(&pubkey, Some(expires), None)
+            .create(&pubkey, Some(expires), None, None)
             .expect("create should succeed");
 
         assert_eq!(created.expires_at, Some(expires));
@@ -354,7 +361,7 @@ mod tests {
         let pubkey = test_pubkey();
 
         let created = store
-            .create(&pubkey, None, None)
+            .create(&pubkey, None, None, None)
             .expect("create should succeed");
         assert!(created.root_cid.is_none());
 
@@ -388,7 +395,7 @@ mod tests {
         let pubkey = test_pubkey();
 
         let created = store
-            .create(&pubkey, None, None)
+            .create(&pubkey, None, None, None)
             .expect("create should succeed");
         let deleted = store.delete(&created.id).expect("delete should succeed");
         assert_eq!(deleted.id, created.id);
@@ -404,9 +411,9 @@ mod tests {
         let (store, _dir) = tmp_store();
         let pubkey = test_pubkey();
 
-        let p1 = store.create(&pubkey, None, None).expect("create p1");
-        let p2 = store.create(&pubkey, None, None).expect("create p2");
-        let p3 = store.create(&pubkey, None, None).expect("create p3");
+        let p1 = store.create(&pubkey, None, None, None).expect("create p1");
+        let p2 = store.create(&pubkey, None, None, None).expect("create p2");
+        let p3 = store.create(&pubkey, None, None, None).expect("create p3");
 
         let mut ids = store.list().expect("list should succeed");
         ids.sort();

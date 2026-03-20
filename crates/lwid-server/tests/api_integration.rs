@@ -29,6 +29,7 @@ fn test_server() -> (TestServer, TempDir) {
 
     let blob_dir = tmp.path().join("blobs");
     let project_dir = tmp.path().join("projects");
+    let kv_dir = tmp.path().join("store");
     let shell_dir = tmp.path().join("shell");
 
     // Create a minimal shell dir with an index.html for static serving tests
@@ -37,6 +38,7 @@ fn test_server() -> (TestServer, TempDir) {
 
     let blob_store = FsBlobStore::new(blob_dir).expect("create blob store");
     let project_store = FsProjectStore::new(project_dir).expect("create project store");
+    let kv_store = FsKvStore::new(kv_dir).expect("create kv store");
 
     let mut config = Config::default();
     config.server.shell_dir = shell_dir;
@@ -44,6 +46,7 @@ fn test_server() -> (TestServer, TempDir) {
     let state = AppState {
         blobs: Arc::new(blob_store),
         projects: Arc::new(project_store),
+        kv: Arc::new(kv_store),
         config,
     };
 

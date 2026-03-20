@@ -146,12 +146,14 @@ pub async fn create_project(
     let expires_at =
         parse_ttl(ttl_str, Utc::now()).map_err(|e| AppError::BadRequest(e.to_string()))?;
 
-    let project = state.projects.create(&pubkey, expires_at, req.store_token)?;
+    let created_with = req.client_version.unwrap_or_else(|| env!("LWID_VERSION").to_string());
+    let project = state.projects.create(&pubkey, expires_at, req.store_token, Some(created_with.clone()))?;
 
     info!(
         project_id = %project.id,
         ttl = ttl_str,
         expires_at = ?project.expires_at,
+        created_with = %created_with,
         "created project",
     );
 

@@ -10,13 +10,14 @@ pub mod store;
 use std::sync::Arc;
 
 use axum::routing::{get, post, put};
-use axum::Router;
+use axum::{Json, Router};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config::Config;
 use lwid_common::kv::KvStore;
 use lwid_common::project::ProjectStore;
 use lwid_common::store::BlobStore;
+use lwid_common::wire::VersionResponse;
 
 // ---------------------------------------------------------------------------
 // Shared application state
@@ -48,6 +49,7 @@ pub fn router(state: AppState) -> Router {
 
     Router::new()
         // ── API routes (highest priority) ──────────────────────────────
+        .route("/api/version", get(get_version))
         .route("/api/blobs", post(blobs::upload_blob))
         .route(
             "/api/blobs/{cid}",
@@ -69,4 +71,14 @@ pub fn router(state: AppState) -> Router {
         .nest_service("/p", spa_fallback)
         // ── Static files: /js/*, /css/*, /sw.js, etc. ─────────────────
         .fallback_service(static_files)
+}
+
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
+
+async fn get_version() -> Json<VersionResponse> {
+    Json(VersionResponse {
+        version: env!("LWID_VERSION").to_string(),
+    })
 }

@@ -7,6 +7,10 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 
+# Accept git hash for version embedding
+ARG GIT_HASH=unknown
+ENV GIT_HASH=${GIT_HASH}
+
 # Build the server binary in release mode
 RUN cargo build --release --package lwid-server
 

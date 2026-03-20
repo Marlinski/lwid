@@ -42,6 +42,7 @@ impl Client {
                 write_pubkey: write_pubkey_b64.to_string(),
                 ttl: ttl.map(|s| s.to_string()),
                 store_token: store_token.map(|s| s.to_string()),
+                client_version: Some(env!("LWID_VERSION").to_string()),
             })
             .send()
             .await?;

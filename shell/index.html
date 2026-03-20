@@ -16,6 +16,15 @@
        =================================================================== -->
   <section id="landing" class="landing hidden">
     <nav class="landing__nav">
+      <div class="projects-dropdown" id="landing-projects-dropdown">
+        <button class="landing__nav-link projects-dropdown__trigger" id="btn-landing-projects" title="My Projects">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 2h4l2 2h6v9H2V2z"/><path d="M2 7h12"/>
+          </svg>
+          My Projects
+        </button>
+        <div id="landing-projects-menu" class="projects-dropdown__menu hidden"></div>
+      </div>
       <a href="/docs.html" class="landing__nav-link">Docs</a>
       <a href="/SKILL.md" class="landing__nav-link">Skill</a>
       <a href="/SKILL-store.md" class="landing__nav-link">Store Skill</a>
@@ -100,6 +109,18 @@
       <a href="/" class="toolbar__brand" id="toolbar-title">
         <span class="toolbar__logo">lwid</span>
       </a>
+
+      <div class="projects-dropdown" id="toolbar-projects-dropdown">
+        <button class="toolbar__btn projects-dropdown__trigger" id="btn-toolbar-projects" title="My Projects">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 2h4l2 2h6v9H2V2z"/><path d="M2 7h12"/>
+          </svg>
+          <svg class="projects-dropdown__chevron" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 5l3 3 3-3"/>
+          </svg>
+        </button>
+        <div id="toolbar-projects-menu" class="projects-dropdown__menu hidden"></div>
+      </div>
 
       <span class="toolbar__project-id" id="toolbar-project-id"></span>
 
@@ -301,6 +322,14 @@
     const $landingStatus = document.getElementById('landing-status');
     const $ttlSelector   = document.getElementById('ttl-selector');
 
+    // My Projects dropdowns
+    const $landingProjectsDropdown = document.getElementById('landing-projects-dropdown');
+    const $btnLandingProjects      = document.getElementById('btn-landing-projects');
+    const $landingProjectsMenu     = document.getElementById('landing-projects-menu');
+    const $toolbarProjectsDropdown = document.getElementById('toolbar-projects-dropdown');
+    const $btnToolbarProjects      = document.getElementById('btn-toolbar-projects');
+    const $toolbarProjectsMenu     = document.getElementById('toolbar-projects-menu');
+
     const $projectView    = document.getElementById('project-view');
     const $toolbarTitle   = document.getElementById('toolbar-title');
     const $projectIdLabel = document.getElementById('toolbar-project-id');
@@ -379,6 +408,91 @@
     let uploadStagedFiles = [];
     let selectedTtl      = '7d';
     let currentStoreToken = null;
+
+    // -----------------------------------------------------------------------
+    // My Projects — localStorage persistence
+    // -----------------------------------------------------------------------
+
+    const PROJECTS_KEY = 'lwid_projects';
+
+    /** @returns {{ id: string, readKey: string, writeKey: string|null, lastVisited: number }[]} */
+    function getSavedProjects() {
+      try {
+        return JSON.parse(localStorage.getItem(PROJECTS_KEY) || '[]');
+      } catch { return []; }
+    }
+
+    function saveProject(id, readKey, writeKey) {
+      const projects = getSavedProjects().filter(p => p.id !== id);
+      projects.unshift({ id, readKey, writeKey: writeKey || null, lastVisited: Date.now() });
+      // Keep at most 50 projects
+      if (projects.length > 50) projects.length = 50;
+      localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+    }
+
+    function removeSavedProject(id) {
+      const projects = getSavedProjects().filter(p => p.id !== id);
+      localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+    }
+
+    /** Render project list into a dropdown menu element. */
+    function renderProjectsMenu($menu) {
+      const projects = getSavedProjects();
+      if (projects.length === 0) {
+        $menu.innerHTML = '<div class="projects-dropdown__empty">No saved projects</div>';
+        return;
+      }
+      $menu.innerHTML = projects.map(p => {
+        const access = p.writeKey ? 'edit' : 'read';
+        const accessClass = p.writeKey ? 'projects-dropdown__badge--edit' : 'projects-dropdown__badge--read';
+        const fragment = p.writeKey ? encodeKeys(p.readKey, p.writeKey) : p.readKey;
+        const href = `/p/${p.id}#${fragment}`;
+        const isCurrent = p.id === currentProjectId;
+        return `<a href="${href}" class="projects-dropdown__item${isCurrent ? ' projects-dropdown__item--active' : ''}" data-project-id="${p.id}">
+          <span class="projects-dropdown__id">${truncateId(p.id)}</span>
+          <span class="projects-dropdown__badge ${accessClass}">${access}</span>
+          <button class="projects-dropdown__remove" data-remove-id="${p.id}" title="Remove from list">&times;</button>
+        </a>`;
+      }).join('');
+
+      // Handle remove buttons
+      $menu.querySelectorAll('.projects-dropdown__remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          removeSavedProject(btn.dataset.removeId);
+          renderProjectsMenu($menu);
+        });
+      });
+    }
+
+    function setupProjectsDropdown($dropdown, $btn, $menu) {
+      $btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const wasOpen = !$menu.classList.contains('hidden');
+        closeAllProjectsMenus();
+        if (!wasOpen) {
+          renderProjectsMenu($menu);
+          $menu.classList.remove('hidden');
+        }
+      });
+    }
+
+    function closeAllProjectsMenus() {
+      $landingProjectsMenu.classList.add('hidden');
+      $toolbarProjectsMenu.classList.add('hidden');
+    }
+
+    // Close projects menus on outside click
+    document.addEventListener('click', (e) => {
+      if (!$landingProjectsDropdown.contains(e.target) && !$toolbarProjectsDropdown.contains(e.target)) {
+        closeAllProjectsMenus();
+      }
+    });
+
+    // Set up both dropdowns
+    setupProjectsDropdown($landingProjectsDropdown, $btnLandingProjects, $landingProjectsMenu);
+    setupProjectsDropdown($toolbarProjectsDropdown, $btnToolbarProjects, $toolbarProjectsMenu);
 
     // -----------------------------------------------------------------------
     // Service Worker registration
@@ -876,7 +990,10 @@
 
         setStatus('Done! Redirecting...');
 
-        // 4. Redirect to project view with keys in fragment
+        // 4. Save to My Projects
+        saveProject(projectId, readKey, writeKey);
+
+        // 5. Redirect to project view with keys in fragment
         const url = buildProjectUrl(window.location.origin, projectId, readKey, writeKey);
         window.location.href = url;
 
@@ -921,6 +1038,9 @@
       currentWriteKey = writeKey;
       currentStoreToken = await deriveStoreToken(readKey);
       _hmacKey = null; // reset HMAC key cache for new project
+
+      // Save to My Projects
+      saveProject(projectId, readKey, writeKey);
 
       // Configure toolbar
       $projectIdLabel.textContent = truncateId(projectId);

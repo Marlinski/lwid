@@ -15,6 +15,9 @@ pub struct CreateProjectRequest {
     /// SHA-256 hash of the read key, base64-encoded. Used to authenticate store operations.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub store_token: Option<String>,
+    /// lwid version of the client that created this project (e.g. git short hash).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_version: Option<String>,
 }
 
 /// Response body for `POST /api/projects`.
@@ -61,4 +64,10 @@ pub struct UploadBlobResponse {
 pub struct StoreListResponse {
     pub keys: Vec<String>,
     pub total_size: u64,
+}
+
+/// Response body for `GET /api/version`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VersionResponse {
+    pub version: String,
 }
