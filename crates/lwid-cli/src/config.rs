@@ -68,6 +68,8 @@ pub fn load(dir: &str) -> Result<ProjectConfig, ConfigError> {
 /// Save `.lwid.json` to the given directory.
 ///
 /// The `server` field is intentionally omitted — the default is always used.
+/// After writing, this also ensures `.lwid.json` is listed in the nearest
+/// `.gitignore` so that keys are not accidentally committed to version control.
 pub fn save(dir: &str, cfg: &ProjectConfig) -> Result<(), ConfigError> {
     use base64::prelude::*;
     let raw = RawConfig {
@@ -79,5 +81,49 @@ pub fn save(dir: &str, cfg: &ProjectConfig) -> Result<(), ConfigError> {
     let json = serde_json::to_string_pretty(&raw)?;
     let path = Path::new(dir).join(".lwid.json");
     std::fs::write(&path, json)?;
+
+    ensure_gitignore(dir);
+
     Ok(())
+}
+
+/// Make sure `.lwid.json` is listed in the `.gitignore` of the project
+/// directory. If a `.gitignore` already exists, we append the entry only when
+/// it is not already present. If no `.gitignore` exists but the directory
+/// appears to be inside a git repository, we create one.
+fn ensure_gitignore(dir: &str) {
+    let dir_path = Path::new(dir);
+    let gitignore = dir_path.join(".gitignore");
+
+    // Check if .lwid.json is already covered.
+    if gitignore.exists() {
+        if let Ok(content) = std::fs::read_to_string(&gitignore) {
+            if content.lines().any(|l| l.trim() == ".lwid.json") {
+                return; // already ignored
+            }
+            // Append to existing .gitignore
+            let sep = if content.ends_with('\n') { "" } else { "\n" };
+            let _ = std::fs::write(&gitignore, format!("{content}{sep}.lwid.json\n"));
+            eprintln!("Added .lwid.json to existing .gitignore");
+        }
+        return;
+    }
+
+    // No .gitignore yet — only create one if we're inside a git repo.
+    if is_inside_git_repo(dir_path) {
+        let _ = std::fs::write(&gitignore, ".lwid.json\n");
+        eprintln!("Created .gitignore with .lwid.json");
+    }
+}
+
+/// Walk up the directory tree looking for a `.git` directory.
+fn is_inside_git_repo(dir: &Path) -> bool {
+    let mut current = Some(dir);
+    while let Some(d) = current {
+        if d.join(".git").is_dir() {
+            return true;
+        }
+        current = d.parent();
+    }
+    false
 }
