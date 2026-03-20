@@ -2,6 +2,8 @@
 
 Encrypted, zero-knowledge app-sharing platform. Pastebin for small web apps, with client-side encryption.
 
+![lookwhatidid](screenshot.png?raw=true)
+
 **Repo**: https://github.com/Marlinski/lwid
 
 ## How it works
