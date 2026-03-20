@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guestbook</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, sans-serif;
+    background: #0a0a0a;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 3rem 1rem;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 480px;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: .25rem;
+  }
+
+  .subtitle {
+    color: #888;
+    font-size: .85rem;
+    margin-bottom: 2rem;
+  }
+
+  /* ── Form ─────────────────────────────────────────────── */
+
+  #form {
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+    margin-bottom: 2rem;
+  }
+
+  input, textarea {
+    background: #161616;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    padding: .65rem .85rem;
+    color: #e0e0e0;
+    font-size: .9rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color .15s;
+  }
+
+  input:focus, textarea:focus {
+    border-color: #555;
+  }
+
+  textarea {
+    resize: vertical;
+    min-height: 80px;
+  }
+
+  button {
+    background: #fff;
+    color: #0a0a0a;
+    border: none;
+    border-radius: 8px;
+    padding: .65rem 1.25rem;
+    font-size: .9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s;
+    align-self: flex-end;
+  }
+
+  button:hover { opacity: .85; }
+  button:disabled { opacity: .4; cursor: default; }
+
+  /* ── Entries ───────────────────────────────────────────── */
+
+  .entries {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .entry {
+    background: #161616;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    padding: 1rem;
+  }
+
+  .entry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: .4rem;
+  }
+
+  .entry-name {
+    font-weight: 600;
+    font-size: .95rem;
+  }
+
+  .entry-time {
+    color: #666;
+    font-size: .75rem;
+  }
+
+  .entry-msg {
+    color: #bbb;
+    font-size: .88rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+  }
+
+  .empty {
+    color: #555;
+    font-size: .85rem;
+    text-align: center;
+    padding: 2rem 0;
+  }
+
+  .count {
+    color: #666;
+    font-size: .8rem;
+    margin-bottom: .75rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <h1>Guestbook</h1>
+  <p class="subtitle">Leave a message. Stored encrypted on lookwhatidid.ovh</p>
+
+  <div id="form">
+    <input id="name" type="text" placeholder="Your name" maxlength="60">
+    <textarea id="message" placeholder="Say something..." maxlength="500"></textarea>
+    <button id="submit">Sign</button>
+  </div>
+
+  <div class="count" id="count"></div>
+  <div class="entries" id="entries">
+    <p class="empty">Loading...</p>
+  </div>
+</div>
+
+<script type="module">
+  const STORE_KEY = 'entries';
+
+  // ── Helpers ────────────────────────────────────────────
+
+  async function loadEntries() {
+    return (await lwid.store.get(STORE_KEY)) || [];
+  }
+
+  async function saveEntries(entries) {
+    await lwid.store.set(STORE_KEY, entries);
+  }
+
+  function timeAgo(ts) {
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+    return `${Math.floor(s / 86400)}d ago`;
+  }
+
+  // ── Render ─────────────────────────────────────────────
+
+  function render(entries) {
+    const el = document.getElementById('entries');
+    const countEl = document.getElementById('count');
+
+    if (!entries.length) {
+      el.innerHTML = '<p class="empty">No entries yet. Be the first!</p>';
+      countEl.textContent = '';
+      return;
+    }
+
+    countEl.textContent = `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`;
+
+    el.innerHTML = entries
+      .slice()
+      .reverse()
+      .map(e => `
+        <div class="entry">
+          <div class="entry-header">
+            <span class="entry-name">${esc(e.name)}</span>
+            <span class="entry-time">${timeAgo(e.ts)}</span>
+          </div>
+          <div class="entry-msg">${esc(e.msg)}</div>
+        </div>
+      `).join('');
+  }
+
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  // ── Init ───────────────────────────────────────────────
+
+  const entries = await loadEntries();
+  render(entries);
+
+  document.getElementById('submit').addEventListener('click', async () => {
+    const btn = document.getElementById('submit');
+    const nameEl = document.getElementById('name');
+    const msgEl  = document.getElementById('message');
+
+    const name = nameEl.value.trim();
+    const msg  = msgEl.value.trim();
+    if (!name || !msg) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    try {
+      entries.push({ name, msg, ts: Date.now() });
+      await saveEntries(entries);
+      render(entries);
+      msgEl.value = '';
+    } catch (err) {
+      entries.pop();
+      alert('Error: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Sign';
+    }
+  });
+</script>
+
+</body>
+</html>

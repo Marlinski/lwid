@@ -168,15 +168,15 @@ pub async fn run(
     paths: &[String],
     ttl: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let dir_path = Path::new(dir);
+    let dir_path = std::fs::canonicalize(dir)?;
 
     // 1. Load or create project config
     let is_new_project = config::load(dir).is_err();
 
     let files = if paths.is_empty() {
-        collect_all_files(dir_path)?
+        collect_all_files(&dir_path)?
     } else {
-        collect_paths(dir_path, paths)?
+        collect_paths(&dir_path, paths)?
     };
 
     if files.is_empty() {

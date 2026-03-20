@@ -74,3 +74,9 @@ When a user asks to publish or share their app:
 - All files in the directory are uploaded except hidden files, `node_modules`, and `.lwid.json`.
 - The `.lwid.json` file is the only record of the keys — losing it means losing write access.
 - The server never sees plaintext content.
+
+## Persistent Storage
+
+lwid apps can persist data (game scores, user preferences, uploaded files, etc.) using an encrypted key-value store. Both keys and values are encrypted client-side — the server never sees plaintext.
+
+For full documentation on the store API, see [SKILL-store.md](https://lookwhatidid.ovh/SKILL-store.md).
