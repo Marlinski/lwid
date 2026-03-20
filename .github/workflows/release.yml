@@ -12,64 +12,34 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    name: Build ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
+  build-linux:
+    name: Build ${{ matrix.binary }}-linux-${{ matrix.arch }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          # lwid CLI — linux x86_64
           - binary: lwid
             package: lwid-cli
             target: x86_64-unknown-linux-gnu
-            runner: ubuntu-latest
-            os: linux
             arch: x86_64
             use_cross: false
 
-          # lwid CLI — linux aarch64 (cross-compiled)
           - binary: lwid
             package: lwid-cli
             target: aarch64-unknown-linux-gnu
-            runner: ubuntu-latest
-            os: linux
             arch: aarch64
             use_cross: true
 
-          # lwid CLI — darwin x86_64
-          - binary: lwid
-            package: lwid-cli
-            target: x86_64-apple-darwin
-            runner: macos-13
-            os: darwin
-            arch: x86_64
-            use_cross: false
-
-          # lwid CLI — darwin aarch64
-          - binary: lwid
-            package: lwid-cli
-            target: aarch64-apple-darwin
-            runner: macos-14
-            os: darwin
-            arch: aarch64
-            use_cross: false
-
-          # lwid-server — linux x86_64
           - binary: lwid-server
             package: lwid-server
             target: x86_64-unknown-linux-gnu
-            runner: ubuntu-latest
-            os: linux
             arch: x86_64
             use_cross: false
 
-          # lwid-server — linux aarch64 (cross-compiled)
           - binary: lwid-server
             package: lwid-server
             target: aarch64-unknown-linux-gnu
-            runner: ubuntu-latest
-            os: linux
             arch: aarch64
             use_cross: true
 
@@ -97,21 +67,62 @@ jobs:
       - name: Rename binary
         run: |
           src="target/${{ matrix.target }}/release/${{ matrix.binary }}"
-          dst="${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}"
+          dst="${{ matrix.binary }}-linux-${{ matrix.arch }}"
           cp "$src" "$dst"
           chmod +x "$dst"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}
-          path: ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}
+          name: ${{ matrix.binary }}-linux-${{ matrix.arch }}
+          path: ${{ matrix.binary }}-linux-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 1
+
+  build-macos:
+    name: Build ${{ matrix.binary }}-darwin-universal
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - binary: lwid
+            package: lwid-cli
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Build aarch64
+        run: cargo build --release --target aarch64-apple-darwin --package ${{ matrix.package }}
+
+      - name: Build x86_64
+        run: cargo build --release --target x86_64-apple-darwin --package ${{ matrix.package }}
+
+      - name: Create universal binary
+        run: |
+          lipo -create \
+            target/aarch64-apple-darwin/release/${{ matrix.binary }} \
+            target/x86_64-apple-darwin/release/${{ matrix.binary }} \
+            -output ${{ matrix.binary }}-darwin-universal
+          chmod +x ${{ matrix.binary }}-darwin-universal
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary }}-darwin-universal
+          path: ${{ matrix.binary }}-darwin-universal
           if-no-files-found: error
           retention-days: 1
 
   release:
     name: Create Release
-    needs: build
+    needs: [build-linux, build-macos]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

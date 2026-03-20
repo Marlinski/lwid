@@ -22,7 +22,11 @@ case "${ARCH}" in
 esac
 
 # Build download URL
-ASSET="${BINARY_NAME}-${OS}-${ARCH}"
+if [ "${OS}" = "darwin" ]; then
+  ASSET="${BINARY_NAME}-darwin-universal"
+else
+  ASSET="${BINARY_NAME}-${OS}-${ARCH}"
+fi
 if [ "${LWID_VERSION}" = "latest" ]; then
   URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
 else
