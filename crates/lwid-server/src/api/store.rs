@@ -172,8 +172,12 @@ pub async fn list_keys(
     let project = state.projects.get(&id)?;
     verify_store_token(&headers, &project.store_token)?;
 
-    let keys = state.kv.list_keys(&id)?;
-    let total_size = state.kv.total_size(&id)?;
+    let entries = state.kv.list_keys_with_sizes(&id)?;
+    let total_size: u64 = entries.iter().map(|(_, s)| *s).sum();
+    let keys = entries
+        .into_iter()
+        .map(|(key, size)| wire::StoreKeyEntry { key, size })
+        .collect();
 
     Ok(Json(wire::StoreListResponse { keys, total_size }))
 }

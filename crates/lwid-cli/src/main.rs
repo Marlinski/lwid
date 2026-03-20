@@ -43,20 +43,20 @@ enum Commands {
         #[arg(long, default_value = ".")]
         dir: String,
     },
-    /// Get or set a key-value pair
+    /// Get or set a key-value pair (omit key to list all)
     Kv {
-        /// Store key
-        key: String,
+        /// Store key (omit to list all keys)
+        key: Option<String>,
         /// Value to set (omit to get)
         value: Option<String>,
         /// Project directory
         #[arg(long, default_value = ".")]
         dir: String,
     },
-    /// Get or set a binary blob
+    /// Get or set a binary blob (omit key to list all)
     Blob {
-        /// Store key
-        key: String,
+        /// Store key (omit to list all keys)
+        key: Option<String>,
         /// File to upload (use "-" for stdin; omit to download)
         file: Option<String>,
         /// Project directory
@@ -85,10 +85,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             pull::run(&dir).await?;
         }
         Some(Commands::Kv { key, value, dir }) => {
-            store::run_kv(&dir, &key, value.as_deref()).await?;
+            match key {
+                Some(k) => store::run_kv(&dir, &k, value.as_deref()).await?,
+                None => store::run_list_kv(&dir).await?,
+            }
         }
         Some(Commands::Blob { key, file, dir }) => {
-            store::run_blob(&dir, &key, file.as_deref()).await?;
+            match key {
+                Some(k) => store::run_blob(&dir, &k, file.as_deref()).await?,
+                None => store::run_list_blob(&dir).await?,
+            }
         }
         Some(Commands::Info) => {
             let cfg = config::load(".")?;

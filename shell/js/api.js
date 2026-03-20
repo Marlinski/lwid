@@ -250,7 +250,7 @@ export class ApiClient {
    *
    * @param {string} id - Project identifier.
    * @param {string} storeToken - Token sent as `X-Store-Token` header.
-   * @returns {Promise<{ keys: string[], total_size: number }>}
+   * @returns {Promise<{ keys: Array<{key: string, size: number}>, total_size: number }>}
    * @throws {ApiError}
    */
   async listStoreKeys(id, storeToken) {

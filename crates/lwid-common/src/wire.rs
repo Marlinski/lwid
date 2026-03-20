@@ -62,8 +62,15 @@ pub struct UploadBlobResponse {
 /// Response body for `GET /api/projects/{id}/store` (list keys).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StoreListResponse {
-    pub keys: Vec<String>,
+    pub keys: Vec<StoreKeyEntry>,
     pub total_size: u64,
+}
+
+/// A single entry in the store key listing.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StoreKeyEntry {
+    pub key: String,
+    pub size: u64,
 }
 
 /// Response body for `GET /api/version`.

@@ -128,6 +128,9 @@ pub trait KvStore: Send + Sync {
     /// List all keys for a project.
     fn list_keys(&self, project_id: &str) -> Result<Vec<String>, KvError>;
 
+    /// List all keys with their value sizes (in bytes) for a project.
+    fn list_keys_with_sizes(&self, project_id: &str) -> Result<Vec<(String, u64)>, KvError>;
+
     /// Delete all keys for a project (used by the reaper on project expiry).
     fn delete_all(&self, project_id: &str) -> Result<(), KvError>;
 
@@ -182,6 +185,33 @@ impl FsKvStore {
             } else if let Ok(relative) = path.strip_prefix(root) {
                 if let Some(key) = relative.to_str() {
                     out.push(key.to_owned());
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Recursively walk a directory and collect all file paths with sizes relative to `root`.
+    fn walk_keys_with_sizes(
+        dir: &Path,
+        root: &Path,
+        out: &mut Vec<(String, u64)>,
+    ) -> Result<(), KvError> {
+        if !dir.exists() {
+            return Ok(());
+        }
+
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                Self::walk_keys_with_sizes(&path, root, out)?;
+            } else if let Ok(relative) = path.strip_prefix(root) {
+                if let Some(key) = relative.to_str() {
+                    let size = entry.metadata()?.len();
+                    out.push((key.to_owned(), size));
                 }
             }
         }
@@ -301,6 +331,14 @@ impl KvStore for FsKvStore {
         Self::walk_keys(&project_dir, &project_dir, &mut keys)?;
         keys.sort();
         Ok(keys)
+    }
+
+    fn list_keys_with_sizes(&self, project_id: &str) -> Result<Vec<(String, u64)>, KvError> {
+        let project_dir = self.project_dir(project_id);
+        let mut entries = Vec::new();
+        Self::walk_keys_with_sizes(&project_dir, &project_dir, &mut entries)?;
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(entries)
     }
 
     fn delete_all(&self, project_id: &str) -> Result<(), KvError> {

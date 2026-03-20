@@ -11,6 +11,7 @@ pub enum ApiError {
     #[error("server error ({status}): {body}")]
     Server { status: u16, body: String },
 
+    #[allow(dead_code)]
     #[error("unexpected response: {0}")]
     Unexpected(String),
 }
@@ -204,6 +205,7 @@ impl Client {
     }
 
     /// DELETE a value from the project store.
+    #[allow(dead_code)]
     pub async fn delete_store_value(
         &self,
         project_id: &str,

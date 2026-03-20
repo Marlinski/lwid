@@ -7,6 +7,9 @@ use sha2::{Digest, Sha256};
 
 use lwid_common::limits::DEFAULT_SERVER;
 
+/// AES-256-GCM overhead: 12-byte nonce + 16-byte tag.
+const ENCRYPTION_OVERHEAD: u64 = 28;
+
 /// Derive the store authentication token from the read key bytes.
 /// Computes SHA-256("lwid-store-auth:" + base64url_no_pad(read_key)) and returns standard base64.
 /// Must match the JavaScript: `deriveStoreToken(readKeyB64url)`.
@@ -187,6 +190,119 @@ pub async fn run_blob(dir: &str, key: &str, file: Option<&str>) -> Result<(), Bo
             }
             eprintln!("Stored blob: {}", key);
         }
+    }
+
+    Ok(())
+}
+
+/// Helper: load config and derive common store params.
+async fn store_context(dir: &str) -> Result<(crate::config::ProjectConfig, crate::client::Client, [u8; 32], String), Box<dyn std::error::Error>> {
+    let cfg = crate::config::load(dir)
+        .map_err(|e| format!("No .lwid.json found -- run `lwid push` first to create a project: {e}"))?;
+    let client = crate::client::Client::new(DEFAULT_SERVER);
+    let read_key: [u8; 32] = cfg
+        .read_key
+        .clone()
+        .try_into()
+        .map_err(|_| "read_key must be 32 bytes")?;
+    let store_token = derive_store_token(&read_key);
+    Ok((cfg, client, read_key, store_token))
+}
+
+/// Format a byte size in human-readable form.
+fn format_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{bytes} B")
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    }
+}
+
+/// Truncate a string to `max` chars, appending "..." if it was longer.
+fn truncate(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max])
+    }
+}
+
+/// List all kv entries: fetch each value and print `key = value` (truncated).
+pub async fn run_list_kv(dir: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let (cfg, client, read_key, store_token) = store_context(dir).await?;
+    let idx = load_key_index(&client, &cfg.project_id, &read_key, &store_token).await?;
+
+    if idx.is_empty() {
+        eprintln!("No keys stored.");
+        return Ok(());
+    }
+
+    // Also fetch server listing to get sizes
+    let listing = client.list_store_keys(&cfg.project_id, &store_token).await?;
+    let size_map: std::collections::HashMap<String, u64> = listing
+        .keys
+        .into_iter()
+        .map(|e| (e.key, e.size))
+        .collect();
+
+    for key in &idx {
+        let server_key = obfuscate_key(&read_key, key);
+        let encrypted = client
+            .get_store_value(&cfg.project_id, &server_key, &store_token)
+            .await?;
+        match encrypted {
+            Some(data) => {
+                match lwid_common::crypto::decrypt(&read_key, &data) {
+                    Ok(plain) => {
+                        let text = String::from_utf8_lossy(&plain);
+                        // Replace newlines so it stays on one line
+                        let oneline = text.replace('\n', "\\n").replace('\r', "");
+                        println!("{} = {}", key, truncate(&oneline, 80));
+                    }
+                    Err(_) => {
+                        // Binary data — show size instead
+                        let size = size_map
+                            .get(&server_key)
+                            .map(|s| s.saturating_sub(ENCRYPTION_OVERHEAD))
+                            .unwrap_or(0);
+                        println!("{} = <binary {}>", key, format_size(size));
+                    }
+                }
+            }
+            None => {
+                println!("{} = <missing>", key);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// List all blob entries: show key and decrypted size.
+pub async fn run_list_blob(dir: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let (cfg, client, read_key, store_token) = store_context(dir).await?;
+    let idx = load_key_index(&client, &cfg.project_id, &read_key, &store_token).await?;
+
+    if idx.is_empty() {
+        eprintln!("No keys stored.");
+        return Ok(());
+    }
+
+    // Fetch server listing to get per-key sizes
+    let listing = client.list_store_keys(&cfg.project_id, &store_token).await?;
+    let size_map: std::collections::HashMap<String, u64> = listing
+        .keys
+        .into_iter()
+        .map(|e| (e.key, e.size))
+        .collect();
+
+    for key in &idx {
+        let server_key = obfuscate_key(&read_key, key);
+        let encrypted_size = size_map.get(&server_key).copied().unwrap_or(0);
+        let plain_size = encrypted_size.saturating_sub(ENCRYPTION_OVERHEAD);
+        println!("{}  ({})", key, format_size(plain_size));
     }
 
     Ok(())
