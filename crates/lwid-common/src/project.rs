@@ -170,6 +170,12 @@ impl FsProjectStore {
     fn project_path(&self, id: &str) -> PathBuf {
         self.base_dir.join(format!("{id}.json"))
     }
+
+    /// Ensure the base directory exists (re-create if deleted at runtime).
+    fn ensure_dir(&self) -> Result<(), ProjectError> {
+        fs::create_dir_all(&self.base_dir)?;
+        Ok(())
+    }
 }
 
 impl ProjectStore for FsProjectStore {
@@ -196,6 +202,7 @@ impl ProjectStore for FsProjectStore {
         };
 
         let json = serde_json::to_string_pretty(&project)?;
+        self.ensure_dir()?;
         fs::write(self.project_path(&project.id), json)?;
 
         Ok(project)
@@ -226,6 +233,7 @@ impl ProjectStore for FsProjectStore {
         project.updated_at = Utc::now();
 
         let json = serde_json::to_string_pretty(&project)?;
+        self.ensure_dir()?;
         fs::write(self.project_path(id), json)?;
 
         Ok(project)
@@ -249,12 +257,14 @@ impl ProjectStore for FsProjectStore {
         project.updated_at = Utc::now();
 
         let json = serde_json::to_string_pretty(&project)?;
+        self.ensure_dir()?;
         fs::write(self.project_path(id), json)?;
 
         Ok(project)
     }
 
     fn list(&self) -> Result<Vec<String>, ProjectError> {
+        self.ensure_dir()?;
         let mut ids = Vec::new();
 
         for entry in fs::read_dir(&self.base_dir)? {

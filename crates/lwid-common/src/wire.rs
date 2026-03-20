@@ -73,6 +73,13 @@ pub struct StoreKeyEntry {
     pub size: u64,
 }
 
+/// Request body for `DELETE /api/projects/{id}`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeleteProjectRequest {
+    /// Base64-encoded Ed25519 signature over the project ID string bytes.
+    pub signature: String,
+}
+
 /// Response body for `GET /api/version`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VersionResponse {

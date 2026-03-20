@@ -141,25 +141,43 @@ export async function generateWriteKeyPair() {
   ]);
 
   const publicKeyRaw = await crypto.subtle.exportKey("raw", keyPair.publicKey);
-  const privateKeyPkcs8 = await crypto.subtle.exportKey(
-    "pkcs8",
-    keyPair.privateKey,
-  );
+
+  // Export as JWK to extract the raw 32-byte seed ("d" parameter).
+  // We store only the seed, not PKCS#8, to keep URLs short and match the CLI.
+  const jwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
 
   return {
     publicKeyBytes: new Uint8Array(publicKeyRaw),
-    privateKeyB64url: toBase64Url(new Uint8Array(privateKeyPkcs8)),
+    privateKeyB64url: jwk.d, // already base64url, 32-byte raw Ed25519 seed
   };
 }
 
 /**
- * Import a PKCS8-encoded Ed25519 private key from a base64url string.
+ * PKCS#8 v1 prefix for Ed25519 private keys (RFC 8410).
+ * The full PKCS8 encoding is: this 16-byte header + 32-byte raw seed = 48 bytes.
+ */
+const ED25519_PKCS8_PREFIX = new Uint8Array([
+  0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06,
+  0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
+]);
+
+/**
+ * Import an Ed25519 private key from a base64url string.
+ * The canonical format is a 32-byte raw seed (used by both the browser and CLI).
+ * Also accepts 48-byte PKCS#8 for backwards compatibility with older browser-created links.
  * @param {string} privateKeyB64url
  * @returns {Promise<CryptoKey>}
  */
 async function importEd25519PrivateKey(privateKeyB64url) {
-  const pkcs8 = fromBase64Url(privateKeyB64url);
-  return crypto.subtle.importKey("pkcs8", pkcs8, "Ed25519", true, ["sign"]);
+  let keyData = fromBase64Url(privateKeyB64url);
+  if (keyData.byteLength === 32) {
+    // Raw 32-byte Ed25519 seed — wrap in PKCS#8 for Web Crypto import
+    const pkcs8 = new Uint8Array(48);
+    pkcs8.set(ED25519_PKCS8_PREFIX, 0);
+    pkcs8.set(keyData, 16);
+    keyData = pkcs8;
+  }
+  return crypto.subtle.importKey("pkcs8", keyData, "Ed25519", true, ["sign"]);
 }
 
 /**

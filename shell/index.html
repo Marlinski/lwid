@@ -124,19 +124,41 @@
 
       <span class="toolbar__project-id" id="toolbar-project-id"></span>
 
-      <div class="toolbar__spacer"></div>
-
-      <span id="toolbar-expiry" class="toolbar__expiry hidden" title="Time until project expires"></span>
-      <div class="toolbar__extend-wrap" id="extend-wrap">
-        <button id="btn-extend" class="toolbar__btn toolbar__btn--extend hidden" title="Extend project lifetime">Extend</button>
-        <div id="extend-menu" class="extend-menu hidden">
-          <button type="button" class="extend-menu__btn" data-ttl="1h">1 hour</button>
-          <button type="button" class="extend-menu__btn" data-ttl="1d">1 day</button>
-          <button type="button" class="extend-menu__btn" data-ttl="7d">7 days</button>
-          <button type="button" class="extend-menu__btn" data-ttl="30d">30 days</button>
-          <button type="button" class="extend-menu__btn" data-ttl="never">Never</button>
+      <!-- Encryption badge -->
+      <div class="toolbar__encryption" id="toolbar-encryption">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5 7V5a3 3 0 016 0v2"/>
+        </svg>
+        <svg class="toolbar__encryption-info" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="8" cy="8" r="7"/><path d="M8 11V7.5"/><circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/>
+        </svg>
+        <div class="toolbar__encryption-tooltip">
+          <strong>End-to-end encrypted</strong><br>
+          Files are encrypted with AES-256-GCM in your browser.
+          The server only stores ciphertext &mdash; it cannot read your content.
+          The decryption key lives solely in the URL fragment, which is never sent to the server.
+          <a href="/docs.html" class="toolbar__encryption-link">Learn more</a>
         </div>
       </div>
+
+      <div class="toolbar__spacer"></div>
+
+      <!-- Expiry & extend (centered) -->
+      <div class="toolbar__center" id="toolbar-center">
+        <span id="toolbar-expiry" class="toolbar__expiry hidden" title="Time until project expires"></span>
+        <div class="toolbar__extend-wrap" id="extend-wrap">
+          <button id="btn-extend" class="toolbar__btn toolbar__btn--extend hidden" title="Extend project lifetime">Extend</button>
+          <div id="extend-menu" class="extend-menu hidden">
+            <button type="button" class="extend-menu__btn" data-ttl="1h">1 hour</button>
+            <button type="button" class="extend-menu__btn" data-ttl="1d">1 day</button>
+            <button type="button" class="extend-menu__btn" data-ttl="7d">7 days</button>
+            <button type="button" class="extend-menu__btn" data-ttl="30d">30 days</button>
+            <button type="button" class="extend-menu__btn" data-ttl="never">Never</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar__spacer"></div>
 
       <!-- Source tree toggle -->
       <button id="btn-source" class="toolbar__btn" title="Browse source files">
@@ -226,6 +248,14 @@
         <div id="store-section" class="source-panel__store-section hidden">
           <div class="source-panel__store-header">
             <h3>Store</h3>
+            <button id="btn-refresh-store" class="source-panel__refresh" title="Refresh store">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1.5 8a6.5 6.5 0 0111.48-4.17"/>
+                <path d="M14.5 8a6.5 6.5 0 01-11.48 4.17"/>
+                <polyline points="13 1 13 4.5 9.5 4.5"/>
+                <polyline points="3 15 3 11.5 6.5 11.5"/>
+              </svg>
+            </button>
           </div>
           <ul id="store-tree" class="source-panel__tree"></ul>
           <div id="store-empty" class="source-panel__store-empty hidden">No store entries</div>
@@ -364,6 +394,7 @@
     const $storeSection     = document.getElementById('store-section');
     const $storeTree        = document.getElementById('store-tree');
     const $storeEmpty       = document.getElementById('store-empty');
+    const $btnRefreshStore  = document.getElementById('btn-refresh-store');
 
     // Source viewer
     const $sourceViewer     = document.getElementById('source-viewer');
@@ -1108,10 +1139,24 @@
         closeAllMenus();
       });
 
-      $menuDelete.addEventListener('click', () => {
-        // TODO: implement delete API
-        showToast('Delete not yet implemented');
+      $menuDelete.addEventListener('click', async () => {
         closeAllMenus();
+        if (!currentWriteKey || !currentProjectId) return;
+        if (!confirm('Delete this project permanently? This cannot be undone.')) return;
+        try {
+          const idBytes = new TextEncoder().encode(currentProjectId);
+          const sigBytes = await sign(currentWriteKey, idBytes);
+          const sigB64 = toStandardBase64(sigBytes);
+          await api.deleteProject(currentProjectId, sigB64);
+          // Remove from My Projects
+          removeSavedProject(currentProjectId);
+          showToast('Project deleted');
+          // Redirect to home after a short delay
+          setTimeout(() => { window.location.href = '/'; }, 600);
+        } catch (err) {
+          console.error('Delete failed:', err);
+          showToast(`Delete failed: ${err.message}`);
+        }
       });
 
       // Close dropdown on outside click
@@ -1153,8 +1198,10 @@
       // --- Source panel ---
       $btnSource.addEventListener('click', () => {
         $sourcePanel.classList.toggle('source-panel--open');
-        // Close source viewer when closing panel
-        if (!$sourcePanel.classList.contains('source-panel--open')) {
+        if ($sourcePanel.classList.contains('source-panel--open')) {
+          // Refresh store entries when opening (they may have changed)
+          loadStoreEntries();
+        } else {
           closeSourceViewer();
         }
       });
@@ -1162,6 +1209,7 @@
         $sourcePanel.classList.remove('source-panel--open');
         closeSourceViewer();
       });
+      $btnRefreshStore.addEventListener('click', () => loadStoreEntries());
 
       // --- Source viewer ---
       $btnCloseViewer.addEventListener('click', closeSourceViewer);

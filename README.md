@@ -13,7 +13,7 @@ Content is encrypted client-side with AES-256-GCM before upload. The server only
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Marlinski/lwid/main/install.sh | sh
 cd my-project/
-lwid push --server https://lookwhatidid.ovh
+lwid push
 # Returns: https://lookwhatidid.ovh/p/abc123#readkey:writekey
 ```
 

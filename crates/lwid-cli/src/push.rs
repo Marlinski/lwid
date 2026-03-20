@@ -364,7 +364,9 @@ async fn create_new_project(
     let resp = client.create_project(&pubkey_b64, ttl, Some(&store_token)).await?;
     eprintln!("Created project: {}", resp.project_id);
 
-    // write_key = seed bytes (32 bytes of the signing key)
+    // write_key = raw 32-byte Ed25519 seed.
+    // The browser's importEd25519PrivateKey() handles both this format and
+    // the 48-byte PKCS#8 format (which the Web Crypto API natively exports).
     let write_key = signing_key.to_bytes().to_vec();
 
     let cfg = ProjectConfig {

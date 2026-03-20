@@ -606,6 +606,22 @@ button:disabled {
   background: var(--bg-hover);
 }
 
+.source-panel__refresh {
+  background: none;
+  color: var(--text-muted);
+  padding: 0.2rem;
+  line-height: 1;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.source-panel__refresh:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
 .source-panel__tree {
   flex: 1;
   overflow-y: auto;
@@ -661,6 +677,7 @@ button:disabled {
 .source-panel__store-header {
   display: flex;
   align-items: center;
+  gap: 0.35rem;
   padding: 0.65rem 0.75rem;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -1042,8 +1059,77 @@ button:disabled {
 }
 
 /* ---------------------------------------------------------------------------
- * Toolbar expiry badge & extend
+ * Toolbar encryption badge & tooltip
  * --------------------------------------------------------------------------- */
+
+.toolbar__encryption {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: var(--green);
+  flex-shrink: 0;
+  cursor: default;
+}
+
+.toolbar__encryption-info {
+  color: var(--text-subtle);
+  cursor: help;
+  transition: color 0.15s;
+}
+
+.toolbar__encryption:hover .toolbar__encryption-info {
+  color: var(--text-muted);
+}
+
+.toolbar__encryption-tooltip {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 280px;
+  padding: 0.75rem;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  z-index: 130;
+  animation: dropdown-in 0.12s ease-out;
+}
+
+.toolbar__encryption:hover .toolbar__encryption-tooltip {
+  display: block;
+}
+
+.toolbar__encryption-tooltip strong {
+  color: var(--green);
+}
+
+.toolbar__encryption-link {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.toolbar__encryption-link:hover {
+  color: var(--accent-hover);
+}
+
+/* ---------------------------------------------------------------------------
+ * Toolbar expiry badge & extend (centered)
+ * --------------------------------------------------------------------------- */
+
+.toolbar__center {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
 
 .toolbar__expiry {
   font-size: 0.75rem;
@@ -1137,6 +1223,11 @@ button:disabled {
   /* Hide label text, keep icons */
   .toolbar__btn span,
   .share-split__main span {
+    display: none;
+  }
+
+  /* Hide info icon on mobile; lock alone suffices */
+  .toolbar__encryption-info {
     display: none;
   }
 

@@ -56,7 +56,7 @@ pub fn router(state: AppState) -> Router {
             get(blobs::get_blob).head(blobs::head_blob),
         )
         .route("/api/projects", post(projects::create_project))
-        .route("/api/projects/{id}", get(projects::get_project))
+        .route("/api/projects/{id}", get(projects::get_project).delete(projects::delete_project))
         .route("/api/projects/{id}/root", put(projects::update_root))
         .route("/api/projects/{id}/ttl", put(projects::extend_ttl))
         .route("/api/projects/{id}/store", get(store::list_keys))

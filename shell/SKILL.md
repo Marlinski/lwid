@@ -18,7 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/Marlinski/lwid/main/install.sh | sh
 ### First push (new project)
 
 ```sh
-lwid push --server https://lookwhatidid.ovh --dir .
+lwid push --dir .
 ```
 
 This generates an AES-256-GCM read key and an Ed25519 write key, creates a project on the server, encrypts and uploads all files, creates a signed manifest, saves `.lwid.json` to the project directory, and prints the shareable URL.
@@ -63,7 +63,7 @@ Created automatically by `lwid push`. Contains server URL, project ID, read key,
 When a user asks to publish or share their app:
 
 1. Verify the project directory contains an `index.html` (the entry point).
-2. Run `lwid push --server https://lookwhatidid.ovh --dir .` from the project directory (first time) or `lwid push` (if `.lwid.json` exists).
+2. Run `lwid push --dir .` from the project directory (first time) or `lwid push` (if `.lwid.json` exists).
 3. Parse the shareable URL from stdout.
 4. Give the user the **edit URL** (includes write key) so they can push updates later.
 5. If they want a view-only link for sharing, run `lwid info` and provide the view URL.

@@ -8,12 +8,28 @@ pub enum ApiError {
     #[error("HTTP request failed: {0}")]
     Http(#[from] reqwest::Error),
 
-    #[error("server error ({status}): {body}")]
+    #[error("{}", extract_server_message(*.status, body))]
     Server { status: u16, body: String },
 
     #[allow(dead_code)]
     #[error("unexpected response: {0}")]
     Unexpected(String),
+}
+
+/// Extract a clean error message from server JSON responses.
+/// Tries to parse `{"error": "..."}` and return just the message,
+/// falling back to the raw body if parsing fails.
+fn extract_server_message(status: u16, body: &str) -> String {
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
+        if let Some(msg) = json.get("error").and_then(|v| v.as_str()) {
+            return format!("Error: {msg}");
+        }
+    }
+    if body.is_empty() {
+        format!("Server returned {status}")
+    } else {
+        format!("Error ({status}): {body}")
+    }
 }
 
 pub struct Client {

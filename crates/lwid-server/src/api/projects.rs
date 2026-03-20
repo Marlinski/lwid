@@ -312,3 +312,47 @@ pub async fn extend_ttl(
 
     Ok(Json(project_to_response(&updated)))
 }
+
+/// Delete a project.
+///
+/// The caller must provide a valid Ed25519 signature (base64-encoded) over the
+/// UTF-8 bytes of the project ID, signed with the project's write key.
+///
+/// # Errors
+///
+/// - `404 Not Found` if the project does not exist.
+/// - `400 Bad Request` if the signature is not valid base64.
+/// - `401 Unauthorized` if signature verification fails.
+/// - `500 Internal Server Error` on store failure.
+pub async fn delete_project(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<wire::DeleteProjectRequest>,
+) -> Result<StatusCode, AppError> {
+    // Fetch the project to obtain the write pubkey.
+    let project = state.projects.get(&id)?;
+
+    // Decode the signature from base64.
+    let signature_bytes = BASE64_STANDARD
+        .decode(&body.signature)
+        .map_err(|e| AppError::BadRequest(format!("invalid base64 for signature: {e}")))?;
+
+    // Verify the signature over the project ID string bytes.
+    auth::verify_signature(
+        &project.write_pubkey,
+        id.as_bytes(),
+        &signature_bytes,
+    )?;
+
+    // Delete the project.
+    state.projects.delete(&id)?;
+
+    // Clean up store KV entries for this project.
+    if let Err(e) = state.kv.delete_all(&id) {
+        tracing::warn!(project_id = %id, error = %e, "failed to clean up store entries");
+    }
+
+    info!(project_id = %id, "deleted project");
+
+    Ok(StatusCode::NO_CONTENT)
+}

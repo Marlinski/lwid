@@ -260,4 +260,22 @@ export class ApiClient {
     if (!res.ok) throw await errorFromResponse(res);
     return res.json();
   }
+
+  /**
+   * Delete a project. Requires a signature over the project ID.
+   *
+   * @param {string} id - Project identifier.
+   * @param {string} signatureBase64 - Base-64-encoded signature over the
+   *   project ID string, produced with the project's write key.
+   * @returns {Promise<void>}
+   * @throws {ApiError}
+   */
+  async deleteProject(id, signatureBase64) {
+    const res = await fetch(`${this.baseUrl}/api/projects/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signature: signatureBase64 }),
+    });
+    if (!res.ok) throw await errorFromResponse(res);
+  }
 }

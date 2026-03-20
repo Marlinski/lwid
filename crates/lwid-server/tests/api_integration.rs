@@ -411,3 +411,66 @@ async fn idempotent_blob_upload() {
     // Same content = same CID (content-addressed, dedup)
     assert_eq!(cid1, cid2);
 }
+
+#[tokio::test]
+async fn delete_project_with_valid_signature() {
+    let (server, _tmp) = test_server();
+    let (signing_key, pubkey_b64) = generate_keypair();
+
+    // 1. Create a project
+    let create_resp = server
+        .post("/api/projects")
+        .json(&json!({ "write_pubkey": pubkey_b64 }))
+        .await;
+    create_resp.assert_status(StatusCode::CREATED);
+    let body: Value = create_resp.json();
+    let project_id = body["project_id"].as_str().unwrap().to_string();
+
+    // 2. Verify project exists
+    let resp = server.get(&format!("/api/projects/{project_id}")).await;
+    resp.assert_status_ok();
+
+    // 3. Sign the project ID and delete
+    let signature = signing_key.sign(project_id.as_bytes());
+    let sig_b64 = BASE64_STANDARD.encode(signature.to_bytes());
+
+    let resp = server
+        .delete(&format!("/api/projects/{project_id}"))
+        .json(&json!({ "signature": sig_b64 }))
+        .await;
+    resp.assert_status(StatusCode::NO_CONTENT);
+
+    // 4. Verify project is gone
+    let resp = server.get(&format!("/api/projects/{project_id}")).await;
+    resp.assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn delete_project_with_wrong_key_is_rejected() {
+    let (server, _tmp) = test_server();
+    let (_signing_key, pubkey_b64) = generate_keypair();
+
+    // Create with one key
+    let create_resp = server
+        .post("/api/projects")
+        .json(&json!({ "write_pubkey": pubkey_b64 }))
+        .await;
+    create_resp.assert_status(StatusCode::CREATED);
+    let body: Value = create_resp.json();
+    let project_id = body["project_id"].as_str().unwrap().to_string();
+
+    // Try to delete with a different key
+    let (wrong_key, _) = generate_keypair();
+    let signature = wrong_key.sign(project_id.as_bytes());
+    let sig_b64 = BASE64_STANDARD.encode(signature.to_bytes());
+
+    let resp = server
+        .delete(&format!("/api/projects/{project_id}"))
+        .json(&json!({ "signature": sig_b64 }))
+        .await;
+    resp.assert_status(StatusCode::UNAUTHORIZED);
+
+    // Project should still exist
+    let resp = server.get(&format!("/api/projects/{project_id}")).await;
+    resp.assert_status_ok();
+}
