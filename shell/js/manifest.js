@@ -2,12 +2,11 @@
  * manifest.js — Browser-side manifest management for "lookwhatidid"
  *
  * A manifest describes one version (snapshot) of a project's file tree.
- * Manifests are encrypted at rest and linked into a chain via parent_cid.
+ * Manifests are stored as **plaintext** JSON blobs (not encrypted), so the
+ * server can inspect metadata. File contents remain encrypted.
  *
  * Pure ES module, no external dependencies.
  */
-
-import { decrypt } from './crypto.js';
 
 // ---------------------------------------------------------------------------
 // Creation
@@ -78,24 +77,22 @@ export function deserializeManifest(uint8Array) {
  * Walk the manifest version chain from newest to oldest.
  *
  * Starting from the given manifest CID, fetches each manifest blob from the
- * API, decrypts it with the read key, deserializes it, and follows the
- * parent_cid link until reaching a manifest with no parent.
+ * API, deserializes it as plaintext JSON, and follows the parent_cid link
+ * until reaching a manifest with no parent.
  *
  * @param {string} manifestCid — CID of the root (latest) manifest
  * @param {import('./api.js').ApiClient} api — API client instance
- * @param {string} readKey — base64url-encoded AES-256 key
  * @returns {Promise<Array<{ version: number, timestamp: string, cid: string }>>}
  *   Array ordered from newest to oldest.
  */
-export async function walkVersionChain(manifestCid, api, readKey) {
+export async function walkVersionChain(manifestCid, api) {
   /** @type {Array<{ version: number, timestamp: string, cid: string }>} */
   const chain = [];
   let currentCid = manifestCid;
 
   while (currentCid) {
-    const encryptedBlob = await api.getBlob(currentCid);
-    const plaintext = await decrypt(readKey, new Uint8Array(encryptedBlob));
-    const manifest = deserializeManifest(plaintext);
+    const blob = await api.getBlob(currentCid);
+    const manifest = deserializeManifest(new Uint8Array(blob));
 
     chain.push({
       version: manifest.version,

@@ -21,9 +21,13 @@ pub enum ConfigError {
 }
 
 /// On-disk format uses base64url strings for keys.
+///
+/// The `server` field is optional — old configs may have it, new ones don't.
+/// When absent, [`lwid_common::limits::DEFAULT_SERVER`] is used.
 #[derive(Debug, Serialize, Deserialize)]
 struct RawConfig {
-    server: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    server: Option<String>,
     project_id: String,
     read_key: String,
     write_key: String,
@@ -32,7 +36,6 @@ struct RawConfig {
 /// Parsed project configuration with raw key bytes.
 #[derive(Debug, Clone)]
 pub struct ProjectConfig {
-    pub server: String,
     pub project_id: String,
     pub read_key: Vec<u8>,
     pub write_key: Vec<u8>,
@@ -56,7 +59,6 @@ pub fn load(dir: &str) -> Result<ProjectConfig, ConfigError> {
         .map_err(|e| ConfigError::InvalidKey(format!("write_key: {e}")))?;
 
     Ok(ProjectConfig {
-        server: raw.server,
         project_id: raw.project_id,
         read_key,
         write_key,
@@ -64,10 +66,12 @@ pub fn load(dir: &str) -> Result<ProjectConfig, ConfigError> {
 }
 
 /// Save `.lwid.json` to the given directory.
+///
+/// The `server` field is intentionally omitted — the default is always used.
 pub fn save(dir: &str, cfg: &ProjectConfig) -> Result<(), ConfigError> {
     use base64::prelude::*;
     let raw = RawConfig {
-        server: cfg.server.clone(),
+        server: None,
         project_id: cfg.project_id.clone(),
         read_key: BASE64_URL_SAFE_NO_PAD.encode(&cfg.read_key),
         write_key: BASE64_URL_SAFE_NO_PAD.encode(&cfg.write_key),

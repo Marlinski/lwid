@@ -32,12 +32,14 @@ impl Client {
     pub async fn create_project(
         &self,
         write_pubkey_b64: &str,
+        ttl: Option<&str>,
     ) -> Result<CreateProjectResponse, ApiError> {
         let resp = self
             .http
             .post(format!("{}/api/projects", self.base_url))
             .json(&CreateProjectRequest {
                 write_pubkey: write_pubkey_b64.to_string(),
+                ttl: ttl.map(|s| s.to_string()),
             })
             .send()
             .await?;

@@ -65,11 +65,11 @@ export class ApiClient {
    * @returns {Promise<{ project_id: string }>}
    * @throws {ApiError}
    */
-  async createProject(writePublicKeyBase64) {
+  async createProject(writePublicKeyBase64, ttl = '7d') {
     const res = await fetch(`${this.baseUrl}/api/projects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ write_pubkey: writePublicKeyBase64 }),
+      body: JSON.stringify({ write_pubkey: writePublicKeyBase64, ttl }),
     });
     if (!res.ok) throw await errorFromResponse(res);
     return res.json();
@@ -141,6 +141,26 @@ export class ApiClient {
     if (!res.ok) throw await errorFromResponse(res);
     const buf = await res.arrayBuffer();
     return new Uint8Array(buf);
+  }
+
+  /**
+   * Extend (or set) the TTL of a project.
+   *
+   * @param {string} id - Project identifier.
+   * @param {string} ttl - TTL string (e.g. "1h", "1d", "7d", "30d", "never").
+   * @param {string} signatureBase64 - Base-64-encoded signature over the TTL
+   *   string, produced with the project's write key.
+   * @returns {Promise<{ id: string, expires_at: string|null }>}
+   * @throws {ApiError}
+   */
+  async extendTtl(id, ttl, signatureBase64) {
+    const res = await fetch(`${this.baseUrl}/api/projects/${encodeURIComponent(id)}/ttl`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ttl, signature: signatureBase64 }),
+    });
+    if (!res.ok) throw await errorFromResponse(res);
+    return res.json();
   }
 
   /**

@@ -59,6 +59,52 @@ fn generate_keypair() -> (SigningKey, String) {
     (signing_key, pubkey_b64)
 }
 
+/// Build a minimal valid manifest JSON.
+fn build_manifest(version: u64, parent_cid: Option<&str>, files: &[(&str, &str, usize)]) -> Value {
+    let files: Vec<Value> = files
+        .iter()
+        .map(|(path, cid, size)| {
+            json!({ "path": path, "cid": cid, "size": size })
+        })
+        .collect();
+
+    json!({
+        "version": version,
+        "parent_cid": parent_cid,
+        "timestamp": "2026-03-20T12:00:00Z",
+        "files": files,
+    })
+}
+
+/// Upload a manifest blob and return its CID string.
+async fn upload_manifest(server: &TestServer, manifest: &Value) -> String {
+    let bytes = serde_json::to_vec(manifest).unwrap();
+    let resp = server.post("/api/blobs").bytes(bytes.into()).await;
+    resp.assert_status_ok();
+    resp.json::<Value>()["cid"].as_str().unwrap().to_string()
+}
+
+/// Sign a CID string and update the project root, asserting success.
+async fn sign_and_update_root(
+    server: &TestServer,
+    project_id: &str,
+    root_cid: &str,
+    signing_key: &SigningKey,
+) -> Value {
+    let signature = signing_key.sign(root_cid.as_bytes());
+    let sig_b64 = BASE64_STANDARD.encode(signature.to_bytes());
+
+    let resp = server
+        .put(&format!("/api/projects/{project_id}/root"))
+        .json(&json!({
+            "root_cid": root_cid,
+            "signature": sig_b64,
+        }))
+        .await;
+    resp.assert_status_ok();
+    resp.json()
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -88,50 +134,28 @@ async fn full_lifecycle_create_push_fetch() {
         .bytes(blob1_data.to_vec().into())
         .await;
     resp1.assert_status_ok();
-    let cid1: Value = resp1.json();
-    let cid1_str = cid1["cid"].as_str().unwrap().to_string();
+    let cid1_str = resp1.json::<Value>()["cid"].as_str().unwrap().to_string();
 
     let resp2 = server
         .post("/api/blobs")
         .bytes(blob2_data.to_vec().into())
         .await;
     resp2.assert_status_ok();
-    let cid2: Value = resp2.json();
-    let cid2_str = cid2["cid"].as_str().unwrap().to_string();
+    let cid2_str = resp2.json::<Value>()["cid"].as_str().unwrap().to_string();
 
-    // 3. Upload a manifest blob (a JSON document referencing the file blobs)
-    let manifest = json!({
-        "version": 1,
-        "parent_cid": null,
-        "timestamp": "2026-03-19T12:00:00Z",
-        "files": [
-            { "path": "index.html", "cid": cid1_str, "size": blob1_data.len() },
-            { "path": "style.css", "cid": cid2_str, "size": blob2_data.len() },
-        ]
-    });
-    let manifest_bytes = serde_json::to_vec(&manifest).unwrap();
-
-    let manifest_resp = server
-        .post("/api/blobs")
-        .bytes(manifest_bytes.clone().into())
-        .await;
-    manifest_resp.assert_status_ok();
-    let manifest_cid: Value = manifest_resp.json();
-    let root_cid = manifest_cid["cid"].as_str().unwrap().to_string();
+    // 3. Upload a manifest blob (plaintext JSON referencing the file blobs)
+    let manifest = build_manifest(
+        1,
+        None,
+        &[
+            ("index.html", &cid1_str, blob1_data.len()),
+            ("style.css", &cid2_str, blob2_data.len()),
+        ],
+    );
+    let root_cid = upload_manifest(&server, &manifest).await;
 
     // 4. Update the project root with a signed request
-    let signature = signing_key.sign(root_cid.as_bytes());
-    let sig_b64 = BASE64_STANDARD.encode(signature.to_bytes());
-
-    let update_resp = server
-        .put(&format!("/api/projects/{project_id}/root"))
-        .json(&json!({
-            "root_cid": root_cid,
-            "signature": sig_b64,
-        }))
-        .await;
-    update_resp.assert_status_ok();
-    let updated: Value = update_resp.json();
+    let updated = sign_and_update_root(&server, &project_id, &root_cid, &signing_key).await;
     assert_eq!(updated["root_cid"].as_str().unwrap(), root_cid);
 
     // 5. Fetch the project metadata and verify the root CID is set
@@ -161,6 +185,57 @@ async fn full_lifecycle_create_push_fetch() {
 }
 
 #[tokio::test]
+async fn create_project_with_ttl() {
+    let (server, _tmp) = test_server();
+    let (_, pubkey_b64) = generate_keypair();
+
+    // Default TTL (7d)
+    let resp = server
+        .post("/api/projects")
+        .json(&json!({ "write_pubkey": pubkey_b64 }))
+        .await;
+    resp.assert_status(StatusCode::CREATED);
+    let body: Value = resp.json();
+    let project_id = body["project_id"].as_str().unwrap();
+
+    let get_resp = server
+        .get(&format!("/api/projects/{project_id}"))
+        .await;
+    let project: Value = get_resp.json();
+    assert!(
+        project["expires_at"].as_str().is_some(),
+        "default TTL should set expires_at",
+    );
+
+    // Explicit TTL = "never"
+    let (_, pubkey_b64_2) = generate_keypair();
+    let resp2 = server
+        .post("/api/projects")
+        .json(&json!({ "write_pubkey": pubkey_b64_2, "ttl": "never" }))
+        .await;
+    resp2.assert_status(StatusCode::CREATED);
+    let body2: Value = resp2.json();
+    let project_id2 = body2["project_id"].as_str().unwrap();
+
+    let get_resp2 = server
+        .get(&format!("/api/projects/{project_id2}"))
+        .await;
+    let project2: Value = get_resp2.json();
+    assert!(
+        project2["expires_at"].is_null(),
+        "TTL 'never' should not set expires_at",
+    );
+
+    // Invalid TTL
+    let (_, pubkey_b64_3) = generate_keypair();
+    let resp3 = server
+        .post("/api/projects")
+        .json(&json!({ "write_pubkey": pubkey_b64_3, "ttl": "99y" }))
+        .await;
+    resp3.assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn update_root_wrong_key_is_rejected() {
     let (server, _tmp) = test_server();
     let (_, pubkey_b64) = generate_keypair();
@@ -175,13 +250,9 @@ async fn update_root_wrong_key_is_rejected() {
     let body: Value = create_resp.json();
     let project_id = body["project_id"].as_str().unwrap();
 
-    // Upload a blob to use as root
-    let resp = server
-        .post("/api/blobs")
-        .bytes(b"fake manifest".to_vec().into())
-        .await;
-    let cid: Value = resp.json();
-    let root_cid = cid["cid"].as_str().unwrap();
+    // Upload a valid manifest blob
+    let manifest = build_manifest(1, None, &[]);
+    let root_cid = upload_manifest(&server, &manifest).await;
 
     // Sign with the wrong key
     let bad_sig = wrong_key.sign(root_cid.as_bytes());
@@ -199,6 +270,42 @@ async fn update_root_wrong_key_is_rejected() {
 }
 
 #[tokio::test]
+async fn update_root_rejects_invalid_manifest() {
+    let (server, _tmp) = test_server();
+    let (signing_key, pubkey_b64) = generate_keypair();
+
+    // Create a project
+    let create_resp = server
+        .post("/api/projects")
+        .json(&json!({ "write_pubkey": pubkey_b64 }))
+        .await;
+    let body: Value = create_resp.json();
+    let project_id = body["project_id"].as_str().unwrap();
+
+    // Upload a non-JSON blob
+    let resp = server
+        .post("/api/blobs")
+        .bytes(b"this is not json".to_vec().into())
+        .await;
+    let root_cid = resp.json::<Value>()["cid"].as_str().unwrap().to_string();
+
+    // Sign and try to update root — should fail because the blob is not valid
+    // manifest JSON
+    let signature = signing_key.sign(root_cid.as_bytes());
+    let sig_b64 = BASE64_STANDARD.encode(signature.to_bytes());
+
+    let update_resp = server
+        .put(&format!("/api/projects/{project_id}/root"))
+        .json(&json!({
+            "root_cid": root_cid,
+            "signature": sig_b64,
+        }))
+        .await;
+
+    update_resp.assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn version_chain_two_pushes() {
     let (server, _tmp) = test_server();
     let (signing_key, pubkey_b64) = generate_keypair();
@@ -212,58 +319,14 @@ async fn version_chain_two_pushes() {
     let project_id = body["project_id"].as_str().unwrap().to_string();
 
     // Push version 1
-    let v1_manifest = json!({
-        "version": 1,
-        "parent_cid": null,
-        "timestamp": "2026-03-19T12:00:00Z",
-        "files": []
-    });
-    let v1_bytes = serde_json::to_vec(&v1_manifest).unwrap();
-    let v1_resp = server
-        .post("/api/blobs")
-        .bytes(v1_bytes.into())
-        .await;
-    let v1_cid = v1_resp.json::<Value>()["cid"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
-    let sig1 = signing_key.sign(v1_cid.as_bytes());
-    server
-        .put(&format!("/api/projects/{project_id}/root"))
-        .json(&json!({
-            "root_cid": v1_cid,
-            "signature": BASE64_STANDARD.encode(sig1.to_bytes()),
-        }))
-        .await
-        .assert_status_ok();
+    let v1_manifest = build_manifest(1, None, &[]);
+    let v1_cid = upload_manifest(&server, &v1_manifest).await;
+    sign_and_update_root(&server, &project_id, &v1_cid, &signing_key).await;
 
     // Push version 2 (with parent pointing to v1)
-    let v2_manifest = json!({
-        "version": 2,
-        "parent_cid": v1_cid,
-        "timestamp": "2026-03-19T12:05:00Z",
-        "files": []
-    });
-    let v2_bytes = serde_json::to_vec(&v2_manifest).unwrap();
-    let v2_resp = server
-        .post("/api/blobs")
-        .bytes(v2_bytes.into())
-        .await;
-    let v2_cid = v2_resp.json::<Value>()["cid"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
-    let sig2 = signing_key.sign(v2_cid.as_bytes());
-    server
-        .put(&format!("/api/projects/{project_id}/root"))
-        .json(&json!({
-            "root_cid": v2_cid,
-            "signature": BASE64_STANDARD.encode(sig2.to_bytes()),
-        }))
-        .await
-        .assert_status_ok();
+    let v2_manifest = build_manifest(2, Some(&v1_cid), &[]);
+    let v2_cid = upload_manifest(&server, &v2_manifest).await;
+    sign_and_update_root(&server, &project_id, &v2_cid, &signing_key).await;
 
     // Verify root points to v2
     let project: Value = server

@@ -14,7 +14,7 @@ lwid-common = { path = "../lwid-common" }
 # Web framework
 axum = { version = "0.8", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.6", features = ["cors", "fs"] }
+tower-http = { version = "0.6", features = ["cors", "fs", "limit"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -28,6 +28,7 @@ clap = { version = "4", features = ["derive"] }
 base64 = "0.22"
 
 # Utilities
+chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "2"

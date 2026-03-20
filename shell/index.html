@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>lookwhatidid</title>
   <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/rust.min.js"></script>
 </head>
 <body>
 
@@ -13,7 +16,42 @@
        =================================================================== -->
   <section id="landing" class="landing hidden">
     <h1 class="landing__title">lookwhatidid</h1>
-    <p class="landing__subtitle">Share your creation with the world</p>
+    <p class="landing__subtitle">
+      Share your creation with the world<br>
+      <span class="landing__agent-hint">
+        or just ask your agent to do it for you
+        <span class="landing__skill-link" id="skill-link" title="Click to copy skill URL">
+          https://lookwhatidid.ovh/SKILL.md
+        </span>
+      </span>
+    </p>
+
+    <!-- Trust signals -->
+    <div class="landing__trust">
+      <div class="landing__trust-item">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5 7V5a3 3 0 016 0v2"/>
+        </svg>
+        <span>End-to-end encrypted</span>
+      </div>
+      <div class="landing__trust-item">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2.5"/><path d="M2 14L14 2" stroke-width="2"/>
+        </svg>
+        <span>Zero-knowledge server</span>
+      </div>
+      <div class="landing__trust-item">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 1l2 4.5H15l-3.8 3 1.5 4.5L8 10.5 3.3 13l1.5-4.5L1 5.5h5z"/>
+        </svg>
+        <span>Keys stay in your URL</span>
+      </div>
+    </div>
+    <p class="landing__trust-detail">
+      Files are encrypted with AES-256-GCM in your browser before upload.
+      The decryption key lives only in the URL fragment &mdash; it's never sent to the server.
+      <a href="/docs.html" class="landing__docs-link">Learn how it works</a>
+    </p>
 
     <div id="dropzone" class="dropzone">
       <span class="dropzone__icon" aria-hidden="true">&#128193;</span>
@@ -29,6 +67,17 @@
 
     <ul id="file-list" class="file-list hidden"></ul>
 
+    <div id="ttl-selector" class="ttl-selector hidden">
+      <span class="ttl-selector__label">Expires in</span>
+      <div class="ttl-selector__options">
+        <button type="button" class="ttl-selector__btn" data-ttl="1h">1 hour</button>
+        <button type="button" class="ttl-selector__btn" data-ttl="1d">1 day</button>
+        <button type="button" class="ttl-selector__btn ttl-selector__btn--active" data-ttl="7d">7 days</button>
+        <button type="button" class="ttl-selector__btn" data-ttl="30d">30 days</button>
+        <button type="button" class="ttl-selector__btn" data-ttl="never">Never</button>
+      </div>
+    </div>
+
     <button id="btn-create" class="btn-primary hidden" disabled>
       Create &amp; Share
     </button>
@@ -43,37 +92,134 @@
 
     <!-- Toolbar -->
     <header class="toolbar">
-      <a href="/" class="toolbar__title" id="toolbar-title">lookwhatidid</a>
+      <a href="/" class="toolbar__brand" id="toolbar-title">
+        <span class="toolbar__logo">lwid</span>
+      </a>
 
-      <button id="btn-share-view" class="toolbar__btn" title="Copy view-only link">
-        Share (view)
-      </button>
-      <button id="btn-share-edit" class="toolbar__btn hidden" title="Copy editable link">
-        Share (edit)
-      </button>
+      <span class="toolbar__project-id" id="toolbar-project-id"></span>
 
-      <div class="download-dropdown" id="download-dropdown">
-        <button id="btn-download" class="toolbar__btn">Download</button>
-        <ul id="download-menu" class="download-dropdown__menu hidden"></ul>
+      <div class="toolbar__spacer"></div>
+
+      <span id="toolbar-expiry" class="toolbar__expiry hidden" title="Time until project expires"></span>
+      <div class="toolbar__extend-wrap" id="extend-wrap">
+        <button id="btn-extend" class="toolbar__btn toolbar__btn--extend hidden" title="Extend project lifetime">Extend</button>
+        <div id="extend-menu" class="extend-menu hidden">
+          <button type="button" class="extend-menu__btn" data-ttl="1h">1 hour</button>
+          <button type="button" class="extend-menu__btn" data-ttl="1d">1 day</button>
+          <button type="button" class="extend-menu__btn" data-ttl="7d">7 days</button>
+          <button type="button" class="extend-menu__btn" data-ttl="30d">30 days</button>
+          <button type="button" class="extend-menu__btn" data-ttl="never">Never</button>
+        </div>
       </div>
 
-      <button id="btn-history" class="toolbar__btn">History</button>
-      <button id="btn-add-files" class="toolbar__btn toolbar__btn--accent hidden">
+      <!-- Source tree toggle -->
+      <button id="btn-source" class="toolbar__btn" title="Browse source files">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 2h4l2 2h6v9H2V2z"/>
+          <path d="M2 7h12"/>
+        </svg>
+        Source
+      </button>
+
+      <button id="btn-history" class="toolbar__btn" title="Version history">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="8" cy="8" r="6"/>
+          <path d="M8 4.5V8l2.5 1.5"/>
+        </svg>
+        History
+      </button>
+
+      <button id="btn-add-files" class="toolbar__btn toolbar__btn--accent hidden" title="Upload new files">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 3v10M3 8h10"/>
+        </svg>
         Add files
       </button>
+
+      <!-- Share split-button -->
+      <div class="share-split" id="share-split">
+        <button id="btn-share" class="share-split__main" title="Copy view-only link">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="12" cy="13" r="2"/>
+            <path d="M5.7 9.1l4.6 2.8M10.3 4.1l-4.6 2.8"/>
+          </svg>
+          Share
+        </button>
+        <button id="btn-share-chevron" class="share-split__chevron" title="More actions" aria-haspopup="true" aria-expanded="false">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 5l3 3 3-3"/>
+          </svg>
+        </button>
+        <ul id="share-menu" class="share-split__menu hidden">
+          <li>
+            <button id="menu-share-read" class="share-split__item">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 8s3-5.5 7-5.5S15 8 15 8s-3 5.5-7 5.5S1 8 1 8z"/><circle cx="8" cy="8" r="2.5"/>
+              </svg>
+              Share (read-only)
+            </button>
+          </li>
+          <li id="menu-share-edit-li" class="hidden">
+            <button id="menu-share-edit" class="share-split__item">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z"/>
+              </svg>
+              Share (edit)
+            </button>
+          </li>
+          <li class="share-split__divider"></li>
+          <li>
+            <button id="menu-download" class="share-split__item">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 2v9M4 8l4 4 4-4"/><path d="M2 13h12"/>
+              </svg>
+              Download all
+            </button>
+          </li>
+          <li id="menu-delete-li" class="hidden">
+            <button id="menu-delete" class="share-split__item share-split__item--danger">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 4h12M5.33 4V2.67a1.33 1.33 0 011.34-1.34h2.66a1.33 1.33 0 011.34 1.34V4M12.67 4v9.33a1.33 1.33 0 01-1.34 1.34H4.67a1.33 1.33 0 01-1.34-1.34V4"/>
+              </svg>
+              Delete project
+            </button>
+          </li>
+        </ul>
+      </div>
     </header>
 
-    <!-- Main: sandboxed iframe -->
+    <!-- Main area: source panel + iframe -->
     <main class="project-view__main">
-      <div id="loading-overlay" class="project-view__loading">
-        <span class="spinner"></span> Loading project&hellip;
+      <!-- Source tree panel (left) -->
+      <aside id="source-panel" class="source-panel">
+        <div class="source-panel__header">
+          <h3>Files</h3>
+          <button id="btn-close-source" class="source-panel__close" aria-label="Close source panel">&times;</button>
+        </div>
+        <ul id="source-tree" class="source-panel__tree"></ul>
+      </aside>
+
+      <!-- Preview area -->
+      <div class="project-view__preview">
+        <div id="loading-overlay" class="project-view__loading">
+          <span class="spinner"></span> Loading project&hellip;
+        </div>
+        <iframe
+          id="sandbox-frame"
+          class="project-view__iframe"
+          sandbox="allow-scripts allow-same-origin"
+          title="Project preview"
+        ></iframe>
+        <!-- Source file viewer (replaces iframe when viewing a file) -->
+        <div id="source-viewer" class="source-viewer hidden">
+          <div class="source-viewer__header">
+            <span id="source-viewer-path" class="source-viewer__path"></span>
+            <button id="btn-close-viewer" class="source-viewer__close" title="Back to preview">&times;</button>
+          </div>
+          <pre id="source-viewer-code" class="source-viewer__code"></pre>
+          <img id="source-viewer-img" class="source-viewer__img hidden" alt="Image preview">
+        </div>
       </div>
-      <iframe
-        id="sandbox-frame"
-        class="project-view__iframe"
-        sandbox="allow-scripts allow-same-origin"
-        title="Project preview"
-      ></iframe>
     </main>
 
     <!-- History panel -->
@@ -122,9 +268,8 @@
        =================================================================== -->
   <script type="module">
     import { ApiClient } from '/js/api.js';
-    import { decodeKeys, encodeKeys } from '/js/crypto.js';
+    import { decodeKeys, encodeKeys, generateReadKey, generateWriteKeyPair, sign, toBase64Url } from '/js/crypto.js';
     import {
-      createNewProject,
       pushVersion,
       pullLatest,
       pullVersion,
@@ -142,19 +287,48 @@
     const $fileList      = document.getElementById('file-list');
     const $btnCreate     = document.getElementById('btn-create');
     const $landingStatus = document.getElementById('landing-status');
+    const $ttlSelector   = document.getElementById('ttl-selector');
 
-    const $projectView   = document.getElementById('project-view');
-    const $toolbarTitle  = document.getElementById('toolbar-title');
-    const $btnShareView  = document.getElementById('btn-share-view');
-    const $btnShareEdit  = document.getElementById('btn-share-edit');
-    const $btnDownload   = document.getElementById('btn-download');
-    const $downloadMenu  = document.getElementById('download-menu');
-    const $downloadDD    = document.getElementById('download-dropdown');
-    const $btnHistory    = document.getElementById('btn-history');
-    const $btnAddFiles   = document.getElementById('btn-add-files');
+    const $projectView    = document.getElementById('project-view');
+    const $toolbarTitle   = document.getElementById('toolbar-title');
+    const $projectIdLabel = document.getElementById('toolbar-project-id');
+    const $btnSource      = document.getElementById('btn-source');
+    const $btnHistory     = document.getElementById('btn-history');
+    const $btnAddFiles    = document.getElementById('btn-add-files');
     const $loadingOverlay = document.getElementById('loading-overlay');
-    const $sandboxFrame  = document.getElementById('sandbox-frame');
+    const $sandboxFrame   = document.getElementById('sandbox-frame');
 
+    // Expiry / extend
+    const $toolbarExpiry  = document.getElementById('toolbar-expiry');
+    const $btnExtend      = document.getElementById('btn-extend');
+    const $extendMenu     = document.getElementById('extend-menu');
+    const $extendWrap     = document.getElementById('extend-wrap');
+
+    // Share split-button
+    const $shareSplit        = document.getElementById('share-split');
+    const $btnShare          = document.getElementById('btn-share');
+    const $btnShareChevron   = document.getElementById('btn-share-chevron');
+    const $shareMenu         = document.getElementById('share-menu');
+    const $menuShareRead     = document.getElementById('menu-share-read');
+    const $menuShareEdit     = document.getElementById('menu-share-edit');
+    const $menuShareEditLi   = document.getElementById('menu-share-edit-li');
+    const $menuDownload      = document.getElementById('menu-download');
+    const $menuDelete        = document.getElementById('menu-delete');
+    const $menuDeleteLi      = document.getElementById('menu-delete-li');
+
+    // Source panel
+    const $sourcePanel      = document.getElementById('source-panel');
+    const $btnCloseSource   = document.getElementById('btn-close-source');
+    const $sourceTree       = document.getElementById('source-tree');
+
+    // Source viewer
+    const $sourceViewer     = document.getElementById('source-viewer');
+    const $sourceViewerPath = document.getElementById('source-viewer-path');
+    const $sourceViewerCode = document.getElementById('source-viewer-code');
+    const $sourceViewerImg  = document.getElementById('source-viewer-img');
+    const $btnCloseViewer   = document.getElementById('btn-close-viewer');
+
+    // History
     const $historyPanel  = document.getElementById('history-panel');
     const $btnCloseHist  = document.getElementById('btn-close-history');
     const $historyList   = document.getElementById('history-list');
@@ -181,12 +355,14 @@
     let currentReadKey   = null;
     let currentWriteKey  = null;
     let currentManifest  = null;
+    let currentExpiresAt = null;
     /** @type {Map<string, Uint8Array>|null} */
     let currentFiles     = null;
     /** @type {File[]} */
     let stagedFiles      = [];
     /** @type {File[]} */
     let uploadStagedFiles = [];
+    let selectedTtl      = '7d';
 
     // -----------------------------------------------------------------------
     // Service Worker registration
@@ -255,6 +431,29 @@
       $landingStatus.textContent = msg;
     }
 
+    function formatTimeRemaining(expiresAtStr) {
+      if (!expiresAtStr) return 'No expiry';
+      const now = Date.now();
+      const exp = new Date(expiresAtStr).getTime();
+      const diff = exp - now;
+      if (diff <= 0) return 'Expired';
+      const days = Math.floor(diff / 86400000);
+      const hours = Math.floor((diff % 86400000) / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
+      if (days > 0) return `${days}d ${hours}h`;
+      if (hours > 0) return `${hours}h ${mins}m`;
+      return `${mins}m`;
+    }
+
+    /**
+     * Convert a Uint8Array to standard base64 (RFC 4648, with +/= characters).
+     * @param {Uint8Array} bytes
+     * @returns {string}
+     */
+    function toStandardBase64(bytes) {
+      return btoa(String.fromCharCode(...bytes));
+    }
+
     /**
      * Guess MIME type from file path extension.
      */
@@ -278,6 +477,53 @@
         '.csv': 'text/csv',
       };
       return map[ext] || 'application/octet-stream';
+    }
+
+    /** Map file extension to highlight.js language name. */
+    function extToHljsLang(path) {
+      const ext = (path.match(/\.[^.]+$/) || [''])[0].toLowerCase();
+      const map = {
+        '.js': 'javascript',
+        '.mjs': 'javascript',
+        '.ts': 'typescript',
+        '.tsx': 'typescript',
+        '.jsx': 'javascript',
+        '.html': 'xml',
+        '.htm': 'xml',
+        '.xml': 'xml',
+        '.svg': 'xml',
+        '.css': 'css',
+        '.scss': 'scss',
+        '.json': 'json',
+        '.md': 'markdown',
+        '.py': 'python',
+        '.rs': 'rust',
+        '.toml': 'ini',
+        '.yaml': 'yaml',
+        '.yml': 'yaml',
+        '.sh': 'bash',
+        '.bash': 'bash',
+        '.zsh': 'bash',
+        '.sql': 'sql',
+        '.rb': 'ruby',
+        '.go': 'go',
+        '.java': 'java',
+        '.c': 'c',
+        '.h': 'c',
+        '.cpp': 'cpp',
+        '.hpp': 'cpp',
+        '.cs': 'csharp',
+        '.php': 'php',
+        '.swift': 'swift',
+        '.kt': 'kotlin',
+        '.lua': 'lua',
+        '.r': 'r',
+        '.R': 'r',
+        '.dockerfile': 'dockerfile',
+        '.makefile': 'makefile',
+        '.mk': 'makefile',
+      };
+      return map[ext] || null;
     }
 
     /**
@@ -381,6 +627,15 @@
       hide($projectView);
       hide($errorView);
 
+      // Skill link click-to-copy
+      const $skillLink = document.getElementById('skill-link');
+      $skillLink.addEventListener('click', () => {
+        navigator.clipboard.writeText($skillLink.textContent.trim()).then(
+          () => showToast('Skill URL copied!'),
+          () => showToast('Failed to copy'),
+        );
+      });
+
       // Drag-and-drop handling
       $dropzone.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -399,6 +654,7 @@
           stagedFiles = files;
           renderFileList(stagedFiles, $fileList);
           show($btnCreate);
+          show($ttlSelector);
           $btnCreate.disabled = false;
         }
       });
@@ -409,9 +665,21 @@
           stagedFiles = files;
           renderFileList(stagedFiles, $fileList);
           show($btnCreate);
+          show($ttlSelector);
           $btnCreate.disabled = false;
         }
       });
+
+      // TTL selector pill buttons
+      for (const btn of $ttlSelector.querySelectorAll('.ttl-selector__btn')) {
+        btn.addEventListener('click', () => {
+          for (const b of $ttlSelector.querySelectorAll('.ttl-selector__btn')) {
+            b.classList.remove('ttl-selector__btn--active');
+          }
+          btn.classList.add('ttl-selector__btn--active');
+          selectedTtl = btn.dataset.ttl;
+        });
+      }
 
       $btnCreate.addEventListener('click', handleCreate);
     }
@@ -428,8 +696,11 @@
 
         setStatus('Generating keys and registering project...');
 
-        // 2. Create project (generates keys, registers with server)
-        const { projectId, readKey, writeKey } = await createNewProject(api);
+        // 2. Generate keys and register project with selected TTL
+        const readKey = generateReadKey();
+        const { publicKeyBytes, privateKeyB64url: writeKey } = await generateWriteKeyPair();
+        const pubkeyBase64 = toStandardBase64(publicKeyBytes);
+        const { project_id: projectId } = await api.createProject(pubkeyBase64, selectedTtl);
 
         setStatus('Encrypting and uploading files...');
 
@@ -483,16 +754,27 @@
       currentWriteKey = writeKey;
 
       // Configure toolbar
-      $toolbarTitle.textContent = truncateId(projectId);
-      $toolbarTitle.href = '/';
+      $projectIdLabel.textContent = truncateId(projectId);
 
-      if (writeKey) {
-        show($btnShareEdit);
-        show($btnAddFiles);
+      // Fetch project metadata to get expiry info
+      try {
+        const projectMeta = await api.getProject(projectId);
+        currentExpiresAt = projectMeta.expires_at || null;
+        updateExpiryBadge();
+      } catch {
+        // Non-critical — continue loading
       }
 
-      // Wire up toolbar buttons
-      $btnShareView.addEventListener('click', () => {
+      if (writeKey) {
+        show($menuShareEditLi);
+        show($menuDeleteLi);
+        show($btnAddFiles);
+        show($btnExtend);
+      }
+
+      // --- Share split-button ---
+      // Main button: copy view-only link
+      $btnShare.addEventListener('click', () => {
         const url = buildProjectUrl(window.location.origin, currentProjectId, currentReadKey);
         navigator.clipboard.writeText(url).then(
           () => showToast('View-only link copied!'),
@@ -500,7 +782,28 @@
         );
       });
 
-      $btnShareEdit.addEventListener('click', () => {
+      // Chevron: toggle dropdown
+      $btnShareChevron.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = !$shareMenu.classList.contains('hidden');
+        closeAllMenus();
+        if (!isOpen) {
+          show($shareMenu);
+          $btnShareChevron.setAttribute('aria-expanded', 'true');
+        }
+      });
+
+      // Dropdown items
+      $menuShareRead.addEventListener('click', () => {
+        const url = buildProjectUrl(window.location.origin, currentProjectId, currentReadKey);
+        navigator.clipboard.writeText(url).then(
+          () => showToast('View-only link copied!'),
+          () => showToast('Failed to copy link'),
+        );
+        closeAllMenus();
+      });
+
+      $menuShareEdit.addEventListener('click', () => {
         const url = buildProjectUrl(
           window.location.origin, currentProjectId, currentReadKey, currentWriteKey,
         );
@@ -508,16 +811,73 @@
           () => showToast('Editable link copied!'),
           () => showToast('Failed to copy link'),
         );
+        closeAllMenus();
       });
 
-      // Download dropdown
-      $btnDownload.addEventListener('click', (e) => {
+      $menuDownload.addEventListener('click', () => {
+        downloadAllFiles();
+        closeAllMenus();
+      });
+
+      $menuDelete.addEventListener('click', () => {
+        // TODO: implement delete API
+        showToast('Delete not yet implemented');
+        closeAllMenus();
+      });
+
+      // Close dropdown on outside click
+      document.addEventListener('click', (e) => {
+        if (!$shareSplit.contains(e.target)) {
+          closeAllMenus();
+        }
+        if (!$extendWrap.contains(e.target)) {
+          hide($extendMenu);
+        }
+      });
+
+      // --- Extend TTL ---
+      $btnExtend.addEventListener('click', (e) => {
         e.stopPropagation();
-        $downloadMenu.classList.toggle('hidden');
+        $extendMenu.classList.toggle('hidden');
       });
-      document.addEventListener('click', () => hide($downloadMenu));
 
-      // History
+      for (const btn of $extendMenu.querySelectorAll('.extend-menu__btn')) {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const ttl = btn.dataset.ttl;
+          try {
+            const ttlBytes = new TextEncoder().encode(ttl);
+            const sigBytes = await sign(currentWriteKey, ttlBytes);
+            const sigB64 = toStandardBase64(sigBytes);
+            const result = await api.extendTtl(currentProjectId, ttl, sigB64);
+            currentExpiresAt = result.expires_at || null;
+            updateExpiryBadge();
+            hide($extendMenu);
+            showToast('Lifetime extended');
+          } catch (err) {
+            console.error('Extend TTL failed:', err);
+            showToast(`Failed to extend: ${err.message}`);
+          }
+        });
+      }
+
+      // --- Source panel ---
+      $btnSource.addEventListener('click', () => {
+        $sourcePanel.classList.toggle('source-panel--open');
+        // Close source viewer when closing panel
+        if (!$sourcePanel.classList.contains('source-panel--open')) {
+          closeSourceViewer();
+        }
+      });
+      $btnCloseSource.addEventListener('click', () => {
+        $sourcePanel.classList.remove('source-panel--open');
+        closeSourceViewer();
+      });
+
+      // --- Source viewer ---
+      $btnCloseViewer.addEventListener('click', closeSourceViewer);
+
+      // --- History ---
       $btnHistory.addEventListener('click', () => {
         $historyPanel.classList.toggle('history-panel--open');
         if ($historyPanel.classList.contains('history-panel--open')) {
@@ -528,7 +888,7 @@
         $historyPanel.classList.remove('history-panel--open');
       });
 
-      // Add files
+      // --- Add files ---
       $btnAddFiles.addEventListener('click', () => {
         uploadStagedFiles = [];
         $uploadFileList.innerHTML = '';
@@ -543,8 +903,139 @@
       await loadProject();
     }
 
+    /** Close all open dropdown menus. */
+    function closeAllMenus() {
+      hide($shareMenu);
+      $btnShareChevron.setAttribute('aria-expanded', 'false');
+      hide($extendMenu);
+    }
+
+    /** Update the expiry badge in the toolbar. */
+    function updateExpiryBadge() {
+      const label = formatTimeRemaining(currentExpiresAt);
+      if (!currentExpiresAt) {
+        $toolbarExpiry.textContent = label; // "No expiry"
+      } else if (new Date(currentExpiresAt).getTime() <= Date.now()) {
+        $toolbarExpiry.textContent = label; // "Expired"
+      } else {
+        $toolbarExpiry.textContent = `Expires in ${label}`;
+      }
+      show($toolbarExpiry);
+    }
+
+    // -----------------------------------------------------------------------
+    // Source tree & viewer
+    // -----------------------------------------------------------------------
+
+    /** Guess a file icon SVG string from extension. */
+    function fileIconSvg(path) {
+      const ext = (path.match(/\.[^.]+$/) || [''])[0].toLowerCase();
+      const colors = {
+        '.html': '#e44d26', '.css': '#264de4', '.js': '#f7df1e',
+        '.json': '#a8b1c2', '.svg': '#ffb13b', '.md': '#519aba',
+      };
+      const color = colors[ext] || 'var(--text-muted)';
+      return `<svg class="source-panel__file-icon" viewBox="0 0 16 16" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1H3.5A1.5 1.5 0 002 2.5v11A1.5 1.5 0 003.5 15h9a1.5 1.5 0 001.5-1.5V5L9 1z"/><path d="M9 1v4.5h4.5"/></svg>`;
+    }
+
+    /** Populate the source tree from currentFiles. */
+    function buildSourceTree(files) {
+      $sourceTree.innerHTML = '';
+      if (!files) return;
+
+      const paths = Array.from(files.keys()).sort();
+      for (const path of paths) {
+        const li = document.createElement('li');
+        li.className = 'source-panel__file';
+        const size = files.get(path).byteLength;
+        li.innerHTML = `
+          ${fileIconSvg(path)}
+          <span class="source-panel__file-name" title="${path}">${path}</span>
+          <span class="source-panel__file-size">${formatBytes(size)}</span>
+        `;
+        li.addEventListener('click', () => openSourceViewer(path));
+        $sourceTree.appendChild(li);
+      }
+    }
+
+    /** Open the source viewer for a given file path. */
+    function openSourceViewer(path) {
+      if (!currentFiles || !currentFiles.has(path)) return;
+
+      const content = currentFiles.get(path);
+      $sourceViewerPath.textContent = path;
+
+      // Mark active file in tree
+      for (const item of $sourceTree.children) {
+        item.classList.toggle(
+          'source-panel__file--active',
+          item.querySelector('.source-panel__file-name')?.textContent === path,
+        );
+      }
+
+      const mime = guessMimeType(path);
+      const isText = mime.startsWith('text/') || mime === 'application/javascript' ||
+                     mime === 'application/json' || mime === 'application/xml' ||
+                     mime === 'image/svg+xml';
+      const isImage = !isText && mime.startsWith('image/');
+
+      if (isText) {
+        const decoder = new TextDecoder('utf-8', { fatal: false });
+        const code = decoder.decode(content);
+        // Use highlight.js if available
+        const lang = extToHljsLang(path);
+        if (typeof hljs !== 'undefined' && lang) {
+          $sourceViewerCode.innerHTML = hljs.highlight(code, { language: lang }).value;
+          $sourceViewerCode.classList.add('hljs');
+        } else if (typeof hljs !== 'undefined') {
+          $sourceViewerCode.innerHTML = hljs.highlightAuto(code).value;
+          $sourceViewerCode.classList.add('hljs');
+        } else {
+          $sourceViewerCode.textContent = code;
+          $sourceViewerCode.classList.remove('hljs');
+        }
+        show($sourceViewerCode);
+        hide($sourceViewerImg);
+      } else if (isImage) {
+        const blob = new Blob([content], { type: mime });
+        const url = URL.createObjectURL(blob);
+        // Revoke previous object URL if any
+        if ($sourceViewerImg.dataset.objectUrl) {
+          URL.revokeObjectURL($sourceViewerImg.dataset.objectUrl);
+        }
+        $sourceViewerImg.src = url;
+        $sourceViewerImg.dataset.objectUrl = url;
+        hide($sourceViewerCode);
+        show($sourceViewerImg);
+      } else {
+        $sourceViewerCode.textContent = `[Binary file: ${formatBytes(content.byteLength)}]`;
+        show($sourceViewerCode);
+        hide($sourceViewerImg);
+      }
+
+      show($sourceViewer);
+      hide($sandboxFrame);
+    }
+
+    /** Close the source viewer and return to iframe preview. */
+    function closeSourceViewer() {
+      hide($sourceViewer);
+      show($sandboxFrame);
+      // Clean up object URL
+      if ($sourceViewerImg.dataset.objectUrl) {
+        URL.revokeObjectURL($sourceViewerImg.dataset.objectUrl);
+        delete $sourceViewerImg.dataset.objectUrl;
+      }
+      hide($sourceViewerImg);
+      $sourceViewerImg.src = '';
+      for (const item of $sourceTree.children) {
+        item.classList.remove('source-panel__file--active');
+      }
+    }
+
     async function loadProject(manifestCid) {
       show($loadingOverlay);
+      closeSourceViewer();
 
       try {
         let result;
@@ -563,11 +1054,28 @@
         currentManifest = result.manifest;
         currentFiles = result.files;
 
-        // Build download menu
-        buildDownloadMenu(result.files);
+        // Build source tree
+        buildSourceTree(result.files);
 
         // Send files to Service Worker and load sandbox iframe
         await sendFilesToSW(result.files);
+
+        // If no index.html, open source panel and show first text file
+        const hasIndex = result.files.has('index.html');
+        if (!hasIndex) {
+          $sourcePanel.classList.add('source-panel--open');
+          // Find first viewable (non-binary) file
+          const paths = Array.from(result.files.keys()).sort();
+          const firstViewable = paths.find(p => {
+            const mime = guessMimeType(p);
+            return mime.startsWith('text/') || mime.startsWith('image/') ||
+                   mime === 'application/javascript' || mime === 'application/json' ||
+                   mime === 'application/xml';
+          });
+          if (firstViewable) {
+            openSourceViewer(firstViewable);
+          }
+        }
 
         hide($loadingOverlay);
 
@@ -578,20 +1086,11 @@
       }
     }
 
-    function buildDownloadMenu(files) {
-      $downloadMenu.innerHTML = '';
-      for (const [path, content] of files) {
-        const li = document.createElement('li');
-        const a = document.createElement('a');
-        a.textContent = path;
-        a.href = '#';
-        a.addEventListener('click', (e) => {
-          e.preventDefault();
-          downloadFile(path, content);
-          hide($downloadMenu);
-        });
-        li.appendChild(a);
-        $downloadMenu.appendChild(li);
+    /** Download all project files individually. */
+    function downloadAllFiles() {
+      if (!currentFiles) return;
+      for (const [path, content] of currentFiles) {
+        downloadFile(path, content);
       }
     }
 
@@ -615,7 +1114,7 @@
       $historyList.innerHTML = '<li style="padding:1rem;color:var(--text-muted)">Loading...</li>';
 
       try {
-        const versions = await getVersionHistory(api, currentProjectId, currentReadKey);
+        const versions = await getVersionHistory(api, currentProjectId);
 
         $historyList.innerHTML = '';
         for (const v of versions) {

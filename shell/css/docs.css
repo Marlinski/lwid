@@ -1,0 +1,389 @@
+/* ---------------------------------------------------------------------------
+ * lwid — Documentation page styles
+ *
+ * Supplements style.css. Uses the same custom properties.
+ * --------------------------------------------------------------------------- */
+
+/* ---------------------------------------------------------------------------
+ * Nav bar
+ * --------------------------------------------------------------------------- */
+
+.docs-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 52px;
+  padding: 0 1.25rem;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.docs-nav__brand {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--accent);
+  text-decoration: none;
+  letter-spacing: -0.04em;
+}
+
+.docs-nav__sep {
+  color: var(--text-subtle);
+  font-size: 0.9rem;
+}
+
+.docs-nav__page {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.docs-nav__spacer {
+  flex: 1;
+}
+
+.docs-nav__link {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius);
+}
+.docs-nav__link:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+/* ---------------------------------------------------------------------------
+ * Page layout
+ * --------------------------------------------------------------------------- */
+
+.docs {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+/* ---------------------------------------------------------------------------
+ * Hero
+ * --------------------------------------------------------------------------- */
+
+.docs__hero {
+  padding: 2.5rem 0 2rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2rem;
+}
+
+.docs__hero h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.docs__hero p {
+  margin-top: 0.5rem;
+  font-size: 1.05rem;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------------
+ * Sections
+ * --------------------------------------------------------------------------- */
+
+.docs__section {
+  margin-bottom: 3rem;
+}
+
+.docs__section h2 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.docs__section h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.docs__section h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.35rem;
+  color: var(--text-muted);
+}
+
+.docs__section p {
+  margin-bottom: 0.65rem;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.docs__section ul,
+.docs__section ol {
+  margin-bottom: 0.75rem;
+  padding-left: 1.5rem;
+  line-height: 1.7;
+}
+
+.docs__section li {
+  margin-bottom: 0.25rem;
+}
+
+.docs__section code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 0.15rem 0.35rem;
+  background: var(--bg-raised);
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+.docs__section a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.docs__section a:hover {
+  color: var(--accent-hover);
+}
+
+/* ---------------------------------------------------------------------------
+ * Cards (security features)
+ * --------------------------------------------------------------------------- */
+
+.docs__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.docs__card {
+  padding: 1.25rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.docs__card h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-top: 0.75rem;
+  margin-bottom: 0.4rem;
+}
+
+.docs__card p {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 0;
+}
+
+.docs__card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+}
+
+.docs__card-icon--green {
+  background: rgba(63, 185, 80, 0.12);
+  color: var(--green);
+}
+
+.docs__card-icon--blue {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.docs__card-icon--purple {
+  background: rgba(163, 113, 247, 0.12);
+  color: #a371f7;
+}
+
+/* ---------------------------------------------------------------------------
+ * Architecture diagram
+ * --------------------------------------------------------------------------- */
+
+.docs__diagram {
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+.docs__ascii {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* ---------------------------------------------------------------------------
+ * Details / accordion
+ * --------------------------------------------------------------------------- */
+
+.docs__details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.docs__details details {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.docs__details summary {
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+}
+.docs__details summary:hover {
+  background: var(--bg-hover);
+}
+
+.docs__details details[open] summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.docs__details details > p,
+.docs__details details > ul {
+  padding: 0.75rem 1rem 0;
+  font-size: 0.88rem;
+}
+
+.docs__details details > p:last-child,
+.docs__details details > ul:last-child {
+  padding-bottom: 0.75rem;
+}
+
+/* ---------------------------------------------------------------------------
+ * Code blocks
+ * --------------------------------------------------------------------------- */
+
+.docs__code {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  margin-bottom: 0.75rem;
+}
+
+.docs__code code {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--text);
+  background: none;
+  padding: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Callout
+ * --------------------------------------------------------------------------- */
+
+.docs__callout {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  margin-bottom: 0.75rem;
+}
+
+.docs__callout--warn {
+  background: rgba(210, 153, 34, 0.1);
+  border: 1px solid rgba(210, 153, 34, 0.3);
+  color: #d2992a;
+}
+
+/* ---------------------------------------------------------------------------
+ * Tables
+ * --------------------------------------------------------------------------- */
+
+.docs__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.75rem;
+  font-size: 0.88rem;
+}
+
+.docs__table th,
+.docs__table td {
+  text-align: left;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.docs__table th {
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: var(--bg-surface);
+}
+
+.docs__table td code {
+  font-size: 0.82em;
+}
+
+/* ---------------------------------------------------------------------------
+ * Footer
+ * --------------------------------------------------------------------------- */
+
+.docs-footer {
+  border-top: 1px solid var(--border);
+  padding: 1.5rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-subtle);
+}
+
+.docs-footer a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.docs-footer a:hover {
+  color: var(--text);
+}
+
+/* ---------------------------------------------------------------------------
+ * Responsive
+ * --------------------------------------------------------------------------- */
+
+@media (max-width: 600px) {
+  .docs {
+    padding: 1.25rem 1rem 3rem;
+  }
+
+  .docs__hero h1 {
+    font-size: 1.5rem;
+  }
+
+  .docs__cards {
+    grid-template-columns: 1fr;
+  }
+
+  .docs__ascii {
+    font-size: 0.65rem;
+  }
+}

@@ -50,6 +50,11 @@ pub trait BlobStore: Send + Sync {
 
     /// Check whether a blob with the given `cid` is present in the store.
     fn exists(&self, cid: &Cid) -> Result<bool, StoreError>;
+
+    /// Delete a blob by its [`Cid`].
+    ///
+    /// Returns [`StoreError::NotFound`] if the blob does not exist.
+    fn delete(&self, cid: &Cid) -> Result<(), StoreError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,6 +119,19 @@ impl BlobStore for FsBlobStore {
     fn exists(&self, cid: &Cid) -> Result<bool, StoreError> {
         let path = self.blob_path(cid);
         Ok(path.exists())
+    }
+
+    fn delete(&self, cid: &Cid) -> Result<(), StoreError> {
+        let path = self.blob_path(cid);
+
+        if !path.exists() {
+            return Err(StoreError::NotFound {
+                cid: cid.to_string(),
+            });
+        }
+
+        fs::remove_file(&path)?;
+        Ok(())
     }
 }
 

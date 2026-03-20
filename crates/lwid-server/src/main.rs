@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
 use clap::Parser;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
 use lwid_server::api::{self, AppState};
 use lwid_server::config::{CliArgs, Config};
+use lwid_server::reaper;
 use lwid_common::project::FsProjectStore;
 use lwid_common::store::FsBlobStore;
 
@@ -32,7 +34,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cors = build_cors(&config.server.cors_origins);
 
-    let app = api::router(state).layer(cors);
+    // Body limit = max_blob_size + small margin for headers/framing.
+    // This prevents axum from buffering arbitrarily large bodies into memory
+    // before the application-level check in the blob upload handler.
+    let body_limit = config.server.max_blob_size + 4096;
+
+    let app = api::router(state.clone())
+        .layer(cors)
+        .layer(DefaultBodyLimit::max(body_limit));
+
+    // Start background reaper for expired projects.
+    reaper::spawn(state.projects.clone(), state.blobs.clone());
 
     let listener = tokio::net::TcpListener::bind(&config.server.listen).await?;
     info!("listening on {}", config.server.listen);

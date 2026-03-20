@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>lwid — Documentation</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+
+  <header class="docs-nav">
+    <a href="/" class="docs-nav__brand">lwid</a>
+    <span class="docs-nav__sep">/</span>
+    <span class="docs-nav__page">docs</span>
+    <div class="docs-nav__spacer"></div>
+    <a href="/" class="docs-nav__link">Home</a>
+    <a href="https://github.com/Marlinski/lwid" class="docs-nav__link" target="_blank" rel="noopener">GitHub</a>
+  </header>
+
+  <main class="docs">
+
+    <!-- ================================================================= -->
+    <section class="docs__hero">
+      <h1>How lwid works</h1>
+      <p>An encrypted, zero-knowledge platform for sharing small web apps.</p>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="docs__section" id="security">
+      <h2>Security model</h2>
+
+      <div class="docs__cards">
+        <div class="docs__card">
+          <div class="docs__card-icon docs__card-icon--green">
+            <svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5 7V5a3 3 0 016 0v2"/>
+            </svg>
+          </div>
+          <h3>End-to-end encryption</h3>
+          <p>
+            Every file is encrypted with <strong>AES-256-GCM</strong> in your
+            browser before it leaves your machine. The server only ever receives
+            and stores opaque ciphertext blobs.
+          </p>
+        </div>
+
+        <div class="docs__card">
+          <div class="docs__card-icon docs__card-icon--blue">
+            <svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2.5"/><path d="M2 14L14 2" stroke-width="2"/>
+            </svg>
+          </div>
+          <h3>Zero-knowledge server</h3>
+          <p>
+            The server never sees your content, your keys, or your filenames.
+            It stores content-addressed blobs identified by their
+            <strong>IPFS CIDv1</strong> hash &mdash; nothing more.
+          </p>
+        </div>
+
+        <div class="docs__card">
+          <div class="docs__card-icon docs__card-icon--purple">
+            <svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 1.5L6 14.5"/><path d="M3 5L0.5 8 3 11"/><path d="M13 5l2.5 3L13 11"/>
+            </svg>
+          </div>
+          <h3>Keys live in the URL fragment</h3>
+          <p>
+            The decryption key is encoded in the <code>#fragment</code> part of
+            the URL. Browsers <em>never</em> send the fragment to the server
+            &mdash; it stays entirely client-side.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="docs__section" id="architecture">
+      <h2>Architecture</h2>
+
+      <div class="docs__diagram">
+        <pre class="docs__ascii">
+  You (browser / CLI)                           Server
+  ┌──────────────────────┐                ┌──────────────────┐
+  │                      │                │                  │
+  │  1. Generate keys    │                │  Stores only:    │
+  │     - AES-256-GCM    │   encrypted    │  - CID → blob    │
+  │     - Ed25519 seed   │──── blobs ────▶│  - project → CID │
+  │                      │                │                  │
+  │  2. Encrypt files    │                │  Never sees:     │
+  │  3. Compute CID      │                │  - plaintext     │
+  │  4. Upload blobs     │                │  - keys          │
+  │  5. Build manifest   │                │  - filenames     │
+  │  6. Sign & upload    │                │                  │
+  │                      │                └──────────────────┘
+  └──────────────────────┘
+
+  URL: /p/{project-id}#{read-key}:{write-key}
+       └─── sent to server ──┘└── never sent ──┘</pre>
+      </div>
+
+      <div class="docs__details">
+        <details open>
+          <summary>Encryption &amp; keys</summary>
+          <p>
+            When you create a project, two keys are generated client-side:
+          </p>
+          <ul>
+            <li><strong>Read key</strong> (32 bytes) &mdash; AES-256-GCM symmetric key used to encrypt and decrypt all file content.</li>
+            <li><strong>Write key</strong> (32 bytes) &mdash; Ed25519 seed used to derive a signing keypair. The server stores only the public key and verifies signatures on manifest updates.</li>
+          </ul>
+          <p>
+            Both keys are encoded as <strong>base64url</strong> (no padding) and
+            placed in the URL fragment: <code>#readkey:writekey</code>. A view-only
+            URL omits the write key: <code>#readkey</code>.
+          </p>
+        </details>
+
+        <details open>
+          <summary>Content-addressed storage</summary>
+          <p>
+            Each encrypted blob is hashed with <strong>SHA2-256</strong> and
+            stored under its <strong>IPFS CIDv1</strong> (multicodec
+            <code>raw</code>, multibase <code>base32lower</code>). This means:
+          </p>
+          <ul>
+            <li>Identical content is stored once (deduplication).</li>
+            <li>Integrity is verifiable by recomputing the hash.</li>
+            <li>The server cannot tamper with content without detection.</li>
+          </ul>
+        </details>
+
+        <details open>
+          <summary>Manifests &amp; versioning</summary>
+          <p>
+            A <strong>manifest</strong> is a JSON document listing all files
+            in a version: path, CID, and size for each entry. The manifest
+            itself is encrypted, uploaded as a blob, and its CID becomes the
+            project's <em>root</em>.
+          </p>
+          <p>
+            Each manifest points to its predecessor via a <code>parent</code>
+            CID, forming a linked version chain. Updating the root requires
+            a valid Ed25519 signature from the write key.
+          </p>
+        </details>
+
+        <details open>
+          <summary>Service Worker sandbox</summary>
+          <p>
+            In the browser, files are decrypted in the main thread and passed to
+            a <strong>Service Worker</strong> via <code>postMessage</code>.
+            The SW intercepts <code>fetch</code> requests under <code>/sandbox/</code>
+            and serves the decrypted files from memory, so the project renders
+            in a sandboxed <code>&lt;iframe&gt;</code> without any plaintext
+            hitting the network.
+          </p>
+        </details>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="docs__section" id="usage">
+      <h2>Usage</h2>
+
+      <h3 id="web-ui">Web UI</h3>
+      <ol>
+        <li>Go to <a href="/">lookwhatidid.ovh</a>.</li>
+        <li>Drop your project folder (must contain an <code>index.html</code>).</li>
+        <li>Click <strong>Create &amp; Share</strong>.</li>
+        <li>You'll be redirected to your project's URL with both keys in the fragment.</li>
+        <li>Share the <strong>view-only link</strong> (read key only) or the <strong>edit link</strong> (both keys).</li>
+      </ol>
+
+      <h3 id="cli">CLI</h3>
+      <p>Install the <code>lwid</code> CLI:</p>
+      <pre class="docs__code"><code>curl -fsSL https://raw.githubusercontent.com/Marlinski/lwid/main/install.sh | sh</code></pre>
+
+      <h4>First push (new project)</h4>
+      <pre class="docs__code"><code>cd my-project/
+lwid push --server https://lookwhatidid.ovh --dir .</code></pre>
+      <p>This generates keys, creates the project, encrypts and uploads all files,
+         and prints the shareable URL. A <code>.lwid.json</code> config file is
+         saved in the directory.</p>
+      <div class="docs__callout docs__callout--warn">
+        <strong>Important:</strong> Add <code>.lwid.json</code> to your
+        <code>.gitignore</code> immediately &mdash; it contains your encryption
+        and signing keys.
+      </div>
+
+      <h4>Update an existing project</h4>
+      <pre class="docs__code"><code>lwid push</code></pre>
+      <p>Reads config from <code>.lwid.json</code> in the current directory.</p>
+
+      <h4>Pull a project</h4>
+      <pre class="docs__code"><code>lwid pull --dir .</code></pre>
+
+      <h4>Project info</h4>
+      <pre class="docs__code"><code>lwid info</code></pre>
+      <p>Prints project ID, server URL, edit URL, and view-only URL.</p>
+
+      <h3 id="agent">AI agent integration</h3>
+      <p>
+        Any coding agent that supports skill files can publish to lwid
+        automatically. Point your agent at the skill URL:
+      </p>
+      <pre class="docs__code"><code>https://lookwhatidid.ovh/SKILL.md</code></pre>
+      <p>
+        The skill instructs the agent to install the CLI, run <code>lwid push</code>,
+        and return the shareable URL. No manual steps required.
+      </p>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="docs__section" id="url-scheme">
+      <h2>URL scheme</h2>
+      <table class="docs__table">
+        <thead>
+          <tr><th>Type</th><th>Format</th><th>Who can&hellip;</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>View</strong></td>
+            <td><code>/p/{project-id}#{read-key}</code></td>
+            <td>Decrypt and view the project</td>
+          </tr>
+          <tr>
+            <td><strong>Edit</strong></td>
+            <td><code>/p/{project-id}#{read-key}:{write-key}</code></td>
+            <td>View + push new versions</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Keys are <strong>base64url</strong>-encoded (no padding). The fragment
+        (<code>#...</code>) is never sent to the server by the browser.
+      </p>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="docs__section" id="constraints">
+      <h2>Constraints</h2>
+      <ul>
+        <li>Maximum project size: <strong>10 MB</strong>.</li>
+        <li>All files in the directory are uploaded (except hidden files, <code>node_modules</code>, and <code>.lwid.json</code>).</li>
+        <li>The entry point must be <code>index.html</code>.</li>
+        <li>Losing <code>.lwid.json</code> means losing write access permanently &mdash; the server cannot recover your keys.</li>
+      </ul>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="docs__section" id="source">
+      <h2>Source code</h2>
+      <p>
+        lwid is open source. The Rust workspace has three crates:
+      </p>
+      <table class="docs__table">
+        <thead>
+          <tr><th>Crate</th><th>Purpose</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>lwid-common</code></td><td>Shared types, AES-256-GCM crypto, Ed25519 auth, CID utilities, blob/project stores</td></tr>
+          <tr><td><code>lwid-server</code></td><td>Axum HTTP server, API endpoints, static file serving</td></tr>
+          <tr><td><code>lwid-cli</code></td><td>CLI binary &mdash; push, pull, info commands</td></tr>
+        </tbody>
+      </table>
+      <p>
+        <a href="https://github.com/Marlinski/lwid" target="_blank" rel="noopener">View on GitHub</a>
+      </p>
+    </section>
+
+  </main>
+
+  <footer class="docs-footer">
+    <p>
+      <a href="/">lookwhatidid.ovh</a> &mdash;
+      <a href="https://github.com/Marlinski/lwid" target="_blank" rel="noopener">GitHub</a> &mdash;
+      MIT License
+    </p>
+  </footer>
+
+</body>
+</html>

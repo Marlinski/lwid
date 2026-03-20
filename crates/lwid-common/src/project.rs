@@ -5,6 +5,7 @@
 //! content (`root_cid` is `None`) and acquire a root CID when the first
 //! version is published via [`ProjectStore::update_root`].
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 
@@ -61,6 +62,28 @@ pub struct Project {
 
     /// Timestamp of the last metadata update (e.g. root CID change).
     pub updated_at: DateTime<Utc>,
+
+    /// When this project expires and becomes eligible for deletion.
+    ///
+    /// `None` means the project never expires. Backward-compatible: old
+    /// project files without this field deserialize as `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
+
+    /// All blob CIDs currently referenced by this project (file blobs +
+    /// manifest blobs from the version chain).
+    ///
+    /// Used by the reaper to garbage-collect orphaned blobs when the project
+    /// is deleted.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub blob_cids: BTreeSet<String>,
+}
+
+impl Project {
+    /// Returns `true` if this project has expired as of `now`.
+    pub fn is_expired(&self, now: DateTime<Utc>) -> bool {
+        self.expires_at.is_some_and(|exp| now >= exp)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -71,21 +94,41 @@ pub struct Project {
 ///
 /// Implementations must be safe to share across threads.
 pub trait ProjectStore: Send + Sync {
-    /// Create a new project with the given Ed25519 public key.
-    ///
-    /// A unique project ID is generated automatically and the project is
-    /// persisted with `root_cid` set to `None`.
-    fn create(&self, write_pubkey: &[u8]) -> Result<Project, ProjectError>;
+    /// Create a new project with the given Ed25519 public key and optional
+    /// expiry time.
+    fn create(
+        &self,
+        write_pubkey: &[u8],
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<Project, ProjectError>;
 
     /// Retrieve a project by its identifier.
     ///
     /// Returns [`ProjectError::NotFound`] if no project with `id` exists.
     fn get(&self, id: &str) -> Result<Project, ProjectError>;
 
-    /// Update the root CID of an existing project.
+    /// Update the root CID of an existing project, along with the set of
+    /// blob CIDs it references.
     ///
     /// The `updated_at` timestamp is refreshed automatically.
-    fn update_root(&self, id: &str, root_cid: Cid) -> Result<Project, ProjectError>;
+    fn update_root(
+        &self,
+        id: &str,
+        root_cid: Cid,
+        blob_cids: BTreeSet<String>,
+    ) -> Result<Project, ProjectError>;
+
+    /// Delete a project by its identifier. Returns the deleted project.
+    fn delete(&self, id: &str) -> Result<Project, ProjectError>;
+
+    /// Update the expiry timestamp of an existing project.
+    ///
+    /// The `updated_at` timestamp is refreshed automatically.
+    fn update_expiry(
+        &self,
+        id: &str,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<Project, ProjectError>;
 
     /// List the identifiers of all known projects.
     fn list(&self) -> Result<Vec<String>, ProjectError>;
@@ -119,7 +162,11 @@ impl FsProjectStore {
 }
 
 impl ProjectStore for FsProjectStore {
-    fn create(&self, write_pubkey: &[u8]) -> Result<Project, ProjectError> {
+    fn create(
+        &self,
+        write_pubkey: &[u8],
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<Project, ProjectError> {
         let id = nanoid::nanoid!(12);
         let now = Utc::now();
 
@@ -129,6 +176,8 @@ impl ProjectStore for FsProjectStore {
             write_pubkey: write_pubkey.to_vec(),
             created_at: now,
             updated_at: now,
+            expires_at,
+            blob_cids: BTreeSet::new(),
         };
 
         let json = serde_json::to_string_pretty(&project)?;
@@ -149,10 +198,39 @@ impl ProjectStore for FsProjectStore {
         Ok(project)
     }
 
-    fn update_root(&self, id: &str, root_cid: Cid) -> Result<Project, ProjectError> {
+    fn update_root(
+        &self,
+        id: &str,
+        root_cid: Cid,
+        blob_cids: BTreeSet<String>,
+    ) -> Result<Project, ProjectError> {
         let mut project = self.get(id)?;
 
         project.root_cid = Some(root_cid);
+        project.blob_cids = blob_cids;
+        project.updated_at = Utc::now();
+
+        let json = serde_json::to_string_pretty(&project)?;
+        fs::write(self.project_path(id), json)?;
+
+        Ok(project)
+    }
+
+    fn delete(&self, id: &str) -> Result<Project, ProjectError> {
+        let project = self.get(id)?;
+        let path = self.project_path(id);
+        fs::remove_file(&path)?;
+        Ok(project)
+    }
+
+    fn update_expiry(
+        &self,
+        id: &str,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<Project, ProjectError> {
+        let mut project = self.get(id)?;
+
+        project.expires_at = expires_at;
         project.updated_at = Utc::now();
 
         let json = serde_json::to_string_pretty(&project)?;
@@ -206,7 +284,7 @@ mod tests {
         let (store, _dir) = tmp_store();
         let pubkey = test_pubkey();
 
-        let created = store.create(&pubkey).expect("create should succeed");
+        let created = store.create(&pubkey, None).expect("create should succeed");
 
         assert_eq!(created.id.len(), 12, "project ID should be 12 characters");
         assert!(
@@ -214,6 +292,8 @@ mod tests {
             "new project should have no root CID"
         );
         assert_eq!(created.write_pubkey, pubkey);
+        assert!(created.expires_at.is_none());
+        assert!(created.blob_cids.is_empty());
 
         let fetched = store.get(&created.id).expect("get should succeed");
 
@@ -222,6 +302,24 @@ mod tests {
         assert_eq!(fetched.write_pubkey, created.write_pubkey);
         assert_eq!(fetched.created_at, created.created_at);
         assert_eq!(fetched.updated_at, created.updated_at);
+    }
+
+    #[test]
+    fn create_with_expiry() {
+        let (store, _dir) = tmp_store();
+        let pubkey = test_pubkey();
+        let expires = Utc::now() + chrono::Duration::hours(1);
+
+        let created = store
+            .create(&pubkey, Some(expires))
+            .expect("create should succeed");
+
+        assert_eq!(created.expires_at, Some(expires));
+        assert!(!created.is_expired(Utc::now()));
+
+        // Simulate time passing
+        let future = expires + chrono::Duration::seconds(1);
+        assert!(created.is_expired(future));
     }
 
     #[test]
@@ -245,15 +343,19 @@ mod tests {
         let (store, _dir) = tmp_store();
         let pubkey = test_pubkey();
 
-        let created = store.create(&pubkey).expect("create should succeed");
+        let created = store.create(&pubkey, None).expect("create should succeed");
         assert!(created.root_cid.is_none());
 
         let cid = Cid::from_bytes(b"project content v1");
+        let blobs: BTreeSet<String> = ["bafk1".to_string(), "bafk2".to_string()]
+            .into_iter()
+            .collect();
         let updated = store
-            .update_root(&created.id, cid.clone())
+            .update_root(&created.id, cid.clone(), blobs.clone())
             .expect("update_root should succeed");
 
         assert_eq!(updated.root_cid.as_ref(), Some(&cid));
+        assert_eq!(updated.blob_cids, blobs);
         assert_eq!(updated.id, created.id);
         assert_eq!(updated.write_pubkey, created.write_pubkey);
         assert_eq!(updated.created_at, created.created_at);
@@ -265,6 +367,22 @@ mod tests {
         // Verify persistence.
         let fetched = store.get(&created.id).expect("get after update");
         assert_eq!(fetched.root_cid.as_ref(), Some(&cid));
+        assert_eq!(fetched.blob_cids, blobs);
+    }
+
+    #[test]
+    fn delete_removes_project() {
+        let (store, _dir) = tmp_store();
+        let pubkey = test_pubkey();
+
+        let created = store.create(&pubkey, None).expect("create should succeed");
+        let deleted = store.delete(&created.id).expect("delete should succeed");
+        assert_eq!(deleted.id, created.id);
+
+        let err = store
+            .get(&created.id)
+            .expect_err("get after delete should fail");
+        assert!(matches!(err, ProjectError::NotFound { .. }));
     }
 
     #[test]
@@ -272,9 +390,9 @@ mod tests {
         let (store, _dir) = tmp_store();
         let pubkey = test_pubkey();
 
-        let p1 = store.create(&pubkey).expect("create p1");
-        let p2 = store.create(&pubkey).expect("create p2");
-        let p3 = store.create(&pubkey).expect("create p3");
+        let p1 = store.create(&pubkey, None).expect("create p1");
+        let p2 = store.create(&pubkey, None).expect("create p2");
+        let p3 = store.create(&pubkey, None).expect("create p3");
 
         let mut ids = store.list().expect("list should succeed");
         ids.sort();

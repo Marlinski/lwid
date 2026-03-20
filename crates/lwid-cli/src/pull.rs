@@ -3,13 +3,14 @@
 use std::path::Path;
 
 use lwid_common::crypto;
+use lwid_common::limits::DEFAULT_SERVER;
 
 use crate::client::Client;
 use crate::config;
 
 pub async fn run(dir: &str) -> Result<(), Box<dyn std::error::Error>> {
     let cfg = config::load(dir)?;
-    let client = Client::new(&cfg.server);
+    let client = Client::new(DEFAULT_SERVER);
     let read_key: [u8; 32] = cfg
         .read_key
         .clone()
@@ -24,9 +25,8 @@ pub async fn run(dir: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     eprintln!("Root CID: {root_cid}");
 
-    // 2. Download and decrypt manifest
-    let encrypted_manifest = client.get_blob(&root_cid).await?;
-    let manifest_bytes = crypto::decrypt(&read_key, &encrypted_manifest)?;
+    // 2. Download manifest (plaintext JSON — no decryption needed)
+    let manifest_bytes = client.get_blob(&root_cid).await?;
     let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)?;
 
     let files = manifest["files"]

@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use lwid_common::limits::DEFAULT_SERVER;
 
 mod client;
 mod config;
@@ -16,13 +17,24 @@ struct Cli {
 enum Commands {
     /// Push local files to lookwhatidid (creates project if needed)
     Push {
-        /// Server URL (overrides .lwid.json)
-        #[arg(long, default_value = "https://lookwhatidid.ovh")]
+        /// Server URL override (for development only)
+        #[arg(long, default_value = DEFAULT_SERVER, hide = true)]
         server: String,
 
         /// Directory to push (default: current directory)
         #[arg(long, default_value = ".")]
         dir: String,
+
+        /// Skip confirmation prompt on first push
+        #[arg(short = 'y', long = "yes")]
+        yes: bool,
+
+        /// Time-to-live for new projects: 1h, 1d, 7d, 30d, never (default: 7d)
+        #[arg(long, default_value = "7d")]
+        ttl: String,
+
+        /// Paths to push (default: entire directory)
+        paths: Vec<String>,
     },
     /// Pull project files to local directory
     Pull {
@@ -39,8 +51,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Push { server, dir }) => {
-            push::run(&dir, &server).await?;
+        Some(Commands::Push {
+            server,
+            dir,
+            yes,
+            ttl,
+            paths,
+        }) => {
+            push::run(&dir, &server, yes, &paths, Some(&ttl)).await?;
         }
         Some(Commands::Pull { dir }) => {
             pull::run(&dir).await?;
@@ -50,19 +68,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let read_key_b64 = base64_url_encode(&cfg.read_key);
             let write_key_b64 = base64_url_encode(&cfg.write_key);
             println!("Project:  {}", cfg.project_id);
-            println!("Server:   {}", cfg.server);
+            println!("Server:   {DEFAULT_SERVER}");
             println!(
-                "Edit URL: {}/p/{}#{}:{}",
-                cfg.server, cfg.project_id, read_key_b64, write_key_b64
+                "Edit URL: {DEFAULT_SERVER}/p/{}#{}:{}",
+                cfg.project_id, read_key_b64, write_key_b64
             );
             println!(
-                "View URL: {}/p/{}#{}",
-                cfg.server, cfg.project_id, read_key_b64
+                "View URL: {DEFAULT_SERVER}/p/{}#{}",
+                cfg.project_id, read_key_b64
             );
         }
         None => {
-            // Default: push
-            push::run(".", "https://lookwhatidid.ovh").await?;
+            // Default: push current dir
+            push::run(".", DEFAULT_SERVER, false, &[], Some("7d")).await?;
         }
     }
 

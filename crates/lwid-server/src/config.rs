@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 const DEFAULT_DATA_DIR: &str = "./data";
 const DEFAULT_LISTEN: &str = "0.0.0.0:8080";
-const DEFAULT_MAX_BLOB_SIZE: usize = 10 * 1024 * 1024; // 10 MB
+const DEFAULT_MAX_BLOB_SIZE: usize = lwid_common::limits::MAX_BLOB_SIZE;
 const DEFAULT_SHELL_DIR: &str = "./shell";
 
 // ── Error type ──────────────────────────────────────────────────────────────

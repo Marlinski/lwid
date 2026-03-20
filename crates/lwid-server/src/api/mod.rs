@@ -53,6 +53,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/projects", post(projects::create_project))
         .route("/api/projects/{id}", get(projects::get_project))
         .route("/api/projects/{id}/root", put(projects::update_root))
+        .route("/api/projects/{id}/ttl", put(projects::extend_ttl))
         .with_state(state)
         // ── SPA catch-all for /p/{id} (serves index.html) ─────────────
         .nest_service("/p", spa_fallback)
