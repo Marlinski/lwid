@@ -22,6 +22,8 @@ tokio = { version = "1", features = ["full"] }
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 base64 = "0.22"
+sha2 = "0.10"
+hmac = "0.12"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

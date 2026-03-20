@@ -8,6 +8,7 @@ use tracing::info;
 use lwid_server::api::{self, AppState};
 use lwid_server::config::{CliArgs, Config};
 use lwid_server::reaper;
+use lwid_common::kv::FsKvStore;
 use lwid_common::project::FsProjectStore;
 use lwid_common::store::FsBlobStore;
 
@@ -25,10 +26,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let blob_store = FsBlobStore::new(config.storage.data_dir.join("blobs"))?;
     let project_store = FsProjectStore::new(config.storage.data_dir.join("projects"))?;
+    let kv_store = FsKvStore::new(config.storage.data_dir.join("store"))?;
 
     let state = AppState {
         blobs: Arc::new(blob_store),
         projects: Arc::new(project_store),
+        kv: Arc::new(kv_store),
         config: config.clone(),
     };
 
@@ -44,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(DefaultBodyLimit::max(body_limit));
 
     // Start background reaper for expired projects.
-    reaper::spawn(state.projects.clone(), state.blobs.clone());
+    reaper::spawn(state.projects.clone(), state.blobs.clone(), state.kv.clone());
 
     let listener = tokio::net::TcpListener::bind(&config.server.listen).await?;
     info!("listening on {}", config.server.listen);
@@ -64,6 +67,7 @@ fn build_cors(origins: &[String]) -> CorsLayer {
         Method::GET,
         Method::POST,
         Method::PUT,
+        Method::DELETE,
         Method::HEAD,
         Method::OPTIONS,
     ];

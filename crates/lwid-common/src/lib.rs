@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod cid;
 pub mod crypto;
+pub mod kv;
 pub mod limits;
 pub mod manifest;
 pub mod project;

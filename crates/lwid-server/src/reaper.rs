@@ -12,6 +12,7 @@ use chrono::Utc;
 use tracing::{error, info, warn};
 
 use lwid_common::cid::Cid;
+use lwid_common::kv::KvStore;
 use lwid_common::project::ProjectStore;
 use lwid_common::store::BlobStore;
 
@@ -23,12 +24,12 @@ const SWEEP_INTERVAL: Duration = Duration::from_secs(5 * 60); // 5 minutes
 /// The reaper runs forever, sleeping `SWEEP_INTERVAL` between sweeps. It is
 /// designed to tolerate errors gracefully — a failed sweep is logged and
 /// retried on the next cycle.
-pub fn spawn(projects: Arc<dyn ProjectStore>, blobs: Arc<dyn BlobStore>) {
+pub fn spawn(projects: Arc<dyn ProjectStore>, blobs: Arc<dyn BlobStore>, kv: Arc<dyn KvStore>) {
     tokio::spawn(async move {
         info!("reaper started (sweep interval: {}s)", SWEEP_INTERVAL.as_secs());
         loop {
             tokio::time::sleep(SWEEP_INTERVAL).await;
-            sweep(&*projects, &*blobs);
+            sweep(&*projects, &*blobs, &*kv);
         }
     });
 }
@@ -38,7 +39,7 @@ pub fn spawn(projects: Arc<dyn ProjectStore>, blobs: Arc<dyn BlobStore>) {
 /// Lists all projects, identifies expired ones, collects the set of blob CIDs
 /// owned by *live* projects, then deletes each expired project and any of its
 /// blobs that are not referenced by a live project.
-fn sweep(projects: &dyn ProjectStore, blobs: &dyn BlobStore) {
+fn sweep(projects: &dyn ProjectStore, blobs: &dyn BlobStore, kv: &dyn KvStore) {
     let ids = match projects.list() {
         Ok(ids) => ids,
         Err(e) => {
@@ -97,6 +98,16 @@ fn sweep(projects: &dyn ProjectStore, blobs: &dyn BlobStore) {
                         } else {
                             deleted_blobs += 1;
                         }
+                    }
+                }
+
+                // Clean up KV store data for this project.
+                match kv.delete_all(id) {
+                    Ok(()) => {
+                        info!(project_id = %id, "reaper: cleaned up store data");
+                    }
+                    Err(e) => {
+                        warn!("reaper: failed to clean up store data for {id}: {e}");
                     }
                 }
 

@@ -33,6 +33,7 @@ impl Client {
         &self,
         write_pubkey_b64: &str,
         ttl: Option<&str>,
+        store_token: Option<&str>,
     ) -> Result<CreateProjectResponse, ApiError> {
         let resp = self
             .http
@@ -40,6 +41,7 @@ impl Client {
             .json(&CreateProjectRequest {
                 write_pubkey: write_pubkey_b64.to_string(),
                 ttl: ttl.map(|s| s.to_string()),
+                store_token: store_token.map(|s| s.to_string()),
             })
             .send()
             .await?;
@@ -141,5 +143,112 @@ impl Client {
         }
 
         Ok(resp.json().await?)
+    }
+
+    /// PUT a value into the project store.
+    pub async fn put_store_value(
+        &self,
+        project_id: &str,
+        key: &str,
+        value: &[u8],
+        store_token: &str,
+    ) -> Result<(), ApiError> {
+        let url = format!(
+            "{}/api/projects/{}/store/{}",
+            self.base_url, project_id, key
+        );
+        let resp = self
+            .http
+            .put(&url)
+            .header("X-Store-Token", store_token)
+            .header("Content-Type", "application/octet-stream")
+            .body(value.to_vec())
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ApiError::Server { status, body });
+        }
+        Ok(())
+    }
+
+    /// GET a value from the project store. Returns None if not found (404).
+    pub async fn get_store_value(
+        &self,
+        project_id: &str,
+        key: &str,
+        store_token: &str,
+    ) -> Result<Option<Vec<u8>>, ApiError> {
+        let url = format!(
+            "{}/api/projects/{}/store/{}",
+            self.base_url, project_id, key
+        );
+        let resp = self
+            .http
+            .get(&url)
+            .header("X-Store-Token", store_token)
+            .send()
+            .await?;
+        if resp.status().as_u16() == 404 {
+            return Ok(None);
+        }
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ApiError::Server { status, body });
+        }
+        let bytes = resp.bytes().await?;
+        Ok(Some(bytes.to_vec()))
+    }
+
+    /// DELETE a value from the project store.
+    pub async fn delete_store_value(
+        &self,
+        project_id: &str,
+        key: &str,
+        store_token: &str,
+    ) -> Result<(), ApiError> {
+        let url = format!(
+            "{}/api/projects/{}/store/{}",
+            self.base_url, project_id, key
+        );
+        let resp = self
+            .http
+            .delete(&url)
+            .header("X-Store-Token", store_token)
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ApiError::Server { status, body });
+        }
+        Ok(())
+    }
+
+    /// List all keys in the project store.
+    pub async fn list_store_keys(
+        &self,
+        project_id: &str,
+        store_token: &str,
+    ) -> Result<StoreListResponse, ApiError> {
+        let url = format!(
+            "{}/api/projects/{}/store",
+            self.base_url, project_id
+        );
+        let resp = self
+            .http
+            .get(&url)
+            .header("X-Store-Token", store_token)
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ApiError::Server { status, body });
+        }
+        let result = resp.json().await?;
+        Ok(result)
     }
 }

@@ -357,8 +357,11 @@ async fn create_new_project(
     let pubkey_bytes = signing_key.verifying_key().to_bytes();
     let pubkey_b64 = BASE64_STANDARD.encode(pubkey_bytes);
 
+    // Derive store token so the server registers it at creation time
+    let store_token = crate::store::derive_store_token(&read_key);
+
     // Create project on server
-    let resp = client.create_project(&pubkey_b64, ttl).await?;
+    let resp = client.create_project(&pubkey_b64, ttl, Some(&store_token)).await?;
     eprintln!("Created project: {}", resp.project_id);
 
     // write_key = seed bytes (32 bytes of the signing key)

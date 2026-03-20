@@ -12,6 +12,9 @@ pub struct CreateProjectRequest {
     /// Defaults to `"7d"` if omitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ttl: Option<String>,
+    /// SHA-256 hash of the read key, base64-encoded. Used to authenticate store operations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub store_token: Option<String>,
 }
 
 /// Response body for `POST /api/projects`.
@@ -51,4 +54,11 @@ pub struct ExtendTtlRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UploadBlobResponse {
     pub cid: String,
+}
+
+/// Response body for `GET /api/projects/{id}/store` (list keys).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StoreListResponse {
+    pub keys: Vec<String>,
+    pub total_size: u64,
 }

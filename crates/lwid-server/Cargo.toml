@@ -26,6 +26,7 @@ clap = { version = "4", features = ["derive"] }
 
 # Crypto (for base64 decoding of pubkeys/signatures in API handlers)
 base64 = "0.22"
+subtle = "2"
 
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }

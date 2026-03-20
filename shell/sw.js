@@ -100,6 +100,34 @@ function handleSandboxRequest(url) {
   const entry = fileCache.get(path);
 
   if (entry) {
+    // Inject lwid-sdk.js into HTML responses
+    if (entry.mimeType === 'text/html') {
+      let html = new TextDecoder().decode(entry.content);
+      const scriptTag = '<script src="/js/lwid-sdk.js"></script>';
+
+      const headMatch = html.match(/<head(\s[^>]*)?>|<head>/i);
+      if (headMatch) {
+        // Insert right after the opening <head...> tag
+        const insertPos = headMatch.index + headMatch[0].length;
+        html = html.slice(0, insertPos) + scriptTag + html.slice(insertPos);
+      } else {
+        const htmlMatch = html.match(/<html(\s[^>]*)?>|<html>/i);
+        if (htmlMatch) {
+          // Insert <head> block with script after <html...>
+          const insertPos = htmlMatch.index + htmlMatch[0].length;
+          html = html.slice(0, insertPos) + '<head>' + scriptTag + '</head>' + html.slice(insertPos);
+        } else {
+          // No <head> or <html> tag — prepend to document
+          html = scriptTag + '\n' + html;
+        }
+      }
+
+      return new Response(html, {
+        status: 200,
+        headers: { 'Content-Type': entry.mimeType },
+      });
+    }
+
     return new Response(entry.content, {
       status: 200,
       headers: { 'Content-Type': entry.mimeType },

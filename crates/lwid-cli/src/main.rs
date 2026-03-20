@@ -5,6 +5,7 @@ mod client;
 mod config;
 mod pull;
 mod push;
+mod store;
 
 #[derive(Parser)]
 #[command(name = "lwid", version, about = "Push and pull encrypted projects to lookwhatidid")]
@@ -42,6 +43,26 @@ enum Commands {
         #[arg(long, default_value = ".")]
         dir: String,
     },
+    /// Get or set a key-value pair
+    Kv {
+        /// Store key
+        key: String,
+        /// Value to set (omit to get)
+        value: Option<String>,
+        /// Project directory
+        #[arg(long, default_value = ".")]
+        dir: String,
+    },
+    /// Get or set a binary blob
+    Blob {
+        /// Store key
+        key: String,
+        /// File to upload (use "-" for stdin; omit to download)
+        file: Option<String>,
+        /// Project directory
+        #[arg(long, default_value = ".")]
+        dir: String,
+    },
     /// Show project info
     Info,
 }
@@ -62,6 +83,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::Pull { dir }) => {
             pull::run(&dir).await?;
+        }
+        Some(Commands::Kv { key, value, dir }) => {
+            store::run_kv(&dir, &key, value.as_deref()).await?;
+        }
+        Some(Commands::Blob { key, file, dir }) => {
+            store::run_blob(&dir, &key, file.as_deref()).await?;
         }
         Some(Commands::Info) => {
             let cfg = config::load(".")?;

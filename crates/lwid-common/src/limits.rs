@@ -11,6 +11,15 @@ pub const MAX_BLOB_SIZE: usize = 10 * 1024 * 1024;
 /// Maximum total size of all files in a single project, in bytes (10 MB).
 pub const MAX_PROJECT_SIZE: usize = 10 * 1024 * 1024;
 
+/// Maximum size of a single store value, in bytes (10 MB).
+pub const MAX_STORE_VALUE_SIZE: usize = 10 * 1024 * 1024;
+
+/// Maximum total store size per project, in bytes (50 MB).
+pub const MAX_STORE_TOTAL_SIZE: usize = 50 * 1024 * 1024;
+
+/// Maximum store key length in characters.
+pub const MAX_STORE_KEY_LENGTH: usize = 256;
+
 /// Default server URL.
 pub const DEFAULT_SERVER: &str = "https://lookwhatidid.ovh";
 

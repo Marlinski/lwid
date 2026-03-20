@@ -15,6 +15,7 @@ use tempfile::TempDir;
 
 use lwid_server::api::{self, AppState};
 use lwid_server::config::Config;
+use lwid_common::kv::FsKvStore;
 use lwid_common::project::FsProjectStore;
 use lwid_common::store::FsBlobStore;
 

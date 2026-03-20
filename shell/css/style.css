@@ -107,6 +107,32 @@ button:disabled {
   min-height: 100vh;
   padding: 2rem;
   text-align: center;
+  position: relative;
+}
+
+.landing__nav {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.5rem;
+  display: flex;
+  gap: 1rem;
+  z-index: 10;
+}
+
+.landing__nav-link {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius);
+  transition: color 0.15s, background 0.15s;
+}
+
+.landing__nav-link:hover {
+  color: var(--accent);
+  background: var(--accent-dim);
 }
 
 .landing__title {
@@ -625,6 +651,44 @@ button:disabled {
   margin-left: auto;
   font-size: 0.7rem;
   color: var(--text-subtle);
+  flex-shrink: 0;
+}
+
+.source-panel__store-section {
+  border-top: 1px solid var(--border);
+}
+
+.source-panel__store-header {
+  display: flex;
+  align-items: center;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.source-panel__store-header h3 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.source-panel__store-empty {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-subtle);
+  font-style: italic;
+}
+
+.source-panel__store-value {
+  font-size: 0.7rem;
+  color: var(--text-subtle);
+  margin-left: auto;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   flex-shrink: 0;
 }
 

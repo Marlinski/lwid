@@ -65,11 +65,13 @@ export class ApiClient {
    * @returns {Promise<{ project_id: string }>}
    * @throws {ApiError}
    */
-  async createProject(writePublicKeyBase64, ttl = '7d') {
+  async createProject(writePublicKeyBase64, ttl = '7d', storeToken = null) {
+    const body = { write_pubkey: writePublicKeyBase64, ttl };
+    if (storeToken) body.store_token = storeToken;
     const res = await fetch(`${this.baseUrl}/api/projects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ write_pubkey: writePublicKeyBase64, ttl }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw await errorFromResponse(res);
     return res.json();
@@ -178,5 +180,84 @@ export class ApiClient {
     if (res.ok) return true;
     if (res.status === 404) return false;
     throw await errorFromResponse(res);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Store
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Store a value under the given key.
+   *
+   * @param {string} id - Project identifier.
+   * @param {string} key - Store key (may contain `/` for hierarchical keys).
+   * @param {Uint8Array} value - Raw bytes to store.
+   * @param {string} storeToken - Token sent as `X-Store-Token` header.
+   * @returns {Promise<void>}
+   * @throws {ApiError}
+   */
+  async putStoreValue(id, key, value, storeToken) {
+    const res = await fetch(`${this.baseUrl}/api/projects/${encodeURIComponent(id)}/store/${key}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'X-Store-Token': storeToken,
+      },
+      body: value,
+    });
+    if (!res.ok) throw await errorFromResponse(res);
+  }
+
+  /**
+   * Retrieve the value stored under the given key.
+   *
+   * @param {string} id - Project identifier.
+   * @param {string} key - Store key (may contain `/` for hierarchical keys).
+   * @param {string} storeToken - Token sent as `X-Store-Token` header.
+   * @returns {Promise<Uint8Array|null>} The raw bytes, or `null` if the key
+   *   does not exist (HTTP 404).
+   * @throws {ApiError} For any status other than 200 or 404.
+   */
+  async getStoreValue(id, key, storeToken) {
+    const res = await fetch(`${this.baseUrl}/api/projects/${encodeURIComponent(id)}/store/${key}`, {
+      headers: { 'X-Store-Token': storeToken },
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) throw await errorFromResponse(res);
+    const buf = await res.arrayBuffer();
+    return new Uint8Array(buf);
+  }
+
+  /**
+   * Delete the value stored under the given key.
+   *
+   * @param {string} id - Project identifier.
+   * @param {string} key - Store key (may contain `/` for hierarchical keys).
+   * @param {string} storeToken - Token sent as `X-Store-Token` header.
+   * @returns {Promise<void>}
+   * @throws {ApiError}
+   */
+  async deleteStoreValue(id, key, storeToken) {
+    const res = await fetch(`${this.baseUrl}/api/projects/${encodeURIComponent(id)}/store/${key}`, {
+      method: 'DELETE',
+      headers: { 'X-Store-Token': storeToken },
+    });
+    if (!res.ok) throw await errorFromResponse(res);
+  }
+
+  /**
+   * List all keys in the project store.
+   *
+   * @param {string} id - Project identifier.
+   * @param {string} storeToken - Token sent as `X-Store-Token` header.
+   * @returns {Promise<{ keys: string[], total_size: number }>}
+   * @throws {ApiError}
+   */
+  async listStoreKeys(id, storeToken) {
+    const res = await fetch(`${this.baseUrl}/api/projects/${encodeURIComponent(id)}/store`, {
+      headers: { 'X-Store-Token': storeToken },
+    });
+    if (!res.ok) throw await errorFromResponse(res);
+    return res.json();
   }
 }

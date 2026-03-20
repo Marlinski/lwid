@@ -193,6 +193,27 @@ export async function getPublicKeyBytes(privateKeyB64url) {
 }
 
 // ---------------------------------------------------------------------------
+// Store authentication
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive an authentication token for the store from the read key.
+ *
+ * Computes `SHA-256("lwid-store-auth:" + readKeyB64url)` and returns
+ * the hash as a **standard base64** string (with `+`, `/`, and `=`
+ * padding) to match server expectations.
+ *
+ * @param {string} readKeyB64url — base64url-encoded 256-bit AES key
+ * @returns {Promise<string>} standard base64-encoded SHA-256 hash
+ */
+export async function deriveStoreToken(readKeyB64url) {
+  const data = new TextEncoder().encode('lwid-store-auth:' + readKeyB64url);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  // Return as standard base64 (not base64url) to match server expectations
+  return btoa(String.fromCharCode(...new Uint8Array(hash)));
+}
+
+// ---------------------------------------------------------------------------
 // Key serialization for URL fragment
 // ---------------------------------------------------------------------------
 

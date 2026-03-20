@@ -146,7 +146,7 @@ pub async fn create_project(
     let expires_at =
         parse_ttl(ttl_str, Utc::now()).map_err(|e| AppError::BadRequest(e.to_string()))?;
 
-    let project = state.projects.create(&pubkey, expires_at)?;
+    let project = state.projects.create(&pubkey, expires_at, req.store_token)?;
 
     info!(
         project_id = %project.id,

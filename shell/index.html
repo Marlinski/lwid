@@ -15,6 +15,11 @@
        A. Landing page (create new project)
        =================================================================== -->
   <section id="landing" class="landing hidden">
+    <nav class="landing__nav">
+      <a href="/docs.html" class="landing__nav-link">Docs</a>
+      <a href="/SKILL.md" class="landing__nav-link">Skill</a>
+      <a href="/SKILL-store.md" class="landing__nav-link">Store Skill</a>
+    </nav>
     <h1 class="landing__title">lookwhatidid</h1>
     <p class="landing__subtitle">
       Share your creation with the world<br>
@@ -197,6 +202,13 @@
           <button id="btn-close-source" class="source-panel__close" aria-label="Close source panel">&times;</button>
         </div>
         <ul id="source-tree" class="source-panel__tree"></ul>
+        <div id="store-section" class="source-panel__store-section hidden">
+          <div class="source-panel__store-header">
+            <h3>Store</h3>
+          </div>
+          <ul id="store-tree" class="source-panel__tree"></ul>
+          <div id="store-empty" class="source-panel__store-empty hidden">No store entries</div>
+        </div>
       </aside>
 
       <!-- Preview area -->
@@ -268,7 +280,7 @@
        =================================================================== -->
   <script type="module">
     import { ApiClient } from '/js/api.js';
-    import { decodeKeys, encodeKeys, generateReadKey, generateWriteKeyPair, sign, toBase64Url } from '/js/crypto.js';
+    import { decodeKeys, deriveStoreToken, encodeKeys, encrypt, decrypt, fromBase64Url, generateReadKey, generateWriteKeyPair, sign, toBase64Url } from '/js/crypto.js';
     import {
       pushVersion,
       pullLatest,
@@ -320,6 +332,9 @@
     const $sourcePanel      = document.getElementById('source-panel');
     const $btnCloseSource   = document.getElementById('btn-close-source');
     const $sourceTree       = document.getElementById('source-tree');
+    const $storeSection     = document.getElementById('store-section');
+    const $storeTree        = document.getElementById('store-tree');
+    const $storeEmpty       = document.getElementById('store-empty');
 
     // Source viewer
     const $sourceViewer     = document.getElementById('source-viewer');
@@ -363,6 +378,7 @@
     /** @type {File[]} */
     let uploadStagedFiles = [];
     let selectedTtl      = '7d';
+    let currentStoreToken = null;
 
     // -----------------------------------------------------------------------
     // Service Worker registration
@@ -606,6 +622,156 @@
     }
 
     // -----------------------------------------------------------------------
+    // postMessage bridge — handles store requests from sandboxed apps
+    // -----------------------------------------------------------------------
+
+    // Key obfuscation: HMAC-SHA256(readKey, originalKey) → base64url string.
+    // Deterministic so get("foo") always maps to the same server-side key.
+    // Server never sees the original key names.
+    let _hmacKey = null;
+    async function getHmacKey() {
+      if (_hmacKey) return _hmacKey;
+      const raw = fromBase64Url(currentReadKey);
+      _hmacKey = await crypto.subtle.importKey(
+        'raw', raw, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+      );
+      return _hmacKey;
+    }
+
+    async function obfuscateKey(key) {
+      const hmacKey = await getHmacKey();
+      const data = new TextEncoder().encode(key);
+      const sig = await crypto.subtle.sign('HMAC', hmacKey, data);
+      return toBase64Url(new Uint8Array(sig));
+    }
+
+    // Key index: an encrypted JSON array of original key names stored under
+    // the server key "_idx". Updated on every set/delete so keys()/list()
+    // can return human-readable names.
+    const IDX_SERVER_KEY = '_idx';
+
+    async function loadKeyIndex() {
+      const encrypted = await api.getStoreValue(currentProjectId, IDX_SERVER_KEY, currentStoreToken);
+      if (encrypted === null) return [];
+      const plain = await decrypt(currentReadKey, encrypted);
+      return JSON.parse(new TextDecoder().decode(plain));
+    }
+
+    async function saveKeyIndex(keys) {
+      const plain = new TextEncoder().encode(JSON.stringify(keys));
+      const encrypted = await encrypt(currentReadKey, plain);
+      await api.putStoreValue(currentProjectId, IDX_SERVER_KEY, encrypted, currentStoreToken);
+    }
+
+    window.addEventListener('message', async (event) => {
+      const msg = event.data;
+      if (!msg || typeof msg.type !== 'string' || !msg.type.startsWith('LWID_')) return;
+      if (!currentProjectId || !currentReadKey || !currentStoreToken) return;
+
+      const { type, id } = msg;
+
+      function reply(value) {
+        $sandboxFrame.contentWindow.postMessage({ type: 'LWID_RESULT', id, value }, '*');
+      }
+      function replyError(err) {
+        $sandboxFrame.contentWindow.postMessage(
+          { type: 'LWID_RESULT', id, error: err instanceof Error ? err.message : String(err) },
+          '*',
+        );
+      }
+
+      try {
+        switch (type) {
+          case 'LWID_STORE_GET': {
+            const serverKey = await obfuscateKey(msg.key);
+            const encrypted = await api.getStoreValue(currentProjectId, serverKey, currentStoreToken);
+            if (encrypted === null) { reply(null); return; }
+            const plain = await decrypt(currentReadKey, encrypted);
+            reply(new TextDecoder().decode(plain));
+            break;
+          }
+          case 'LWID_STORE_SET': {
+            const serverKey = await obfuscateKey(msg.key);
+            const plain = new TextEncoder().encode(msg.value);
+            const encrypted = await encrypt(currentReadKey, plain);
+            await api.putStoreValue(currentProjectId, serverKey, encrypted, currentStoreToken);
+            // Update key index
+            const idx = await loadKeyIndex();
+            if (!idx.includes(msg.key)) {
+              idx.push(msg.key);
+              await saveKeyIndex(idx);
+            }
+            reply(undefined);
+            break;
+          }
+          case 'LWID_STORE_DELETE': {
+            const serverKey = await obfuscateKey(msg.key);
+            await api.deleteStoreValue(currentProjectId, serverKey, currentStoreToken);
+            // Update key index
+            const idx = await loadKeyIndex();
+            const pos = idx.indexOf(msg.key);
+            if (pos !== -1) {
+              idx.splice(pos, 1);
+              await saveKeyIndex(idx);
+            }
+            reply(undefined);
+            break;
+          }
+          case 'LWID_STORE_KEYS': {
+            const idx = await loadKeyIndex();
+            reply(idx);
+            break;
+          }
+          case 'LWID_BLOB_GET': {
+            const serverKey = await obfuscateKey(msg.key);
+            const encrypted = await api.getStoreValue(currentProjectId, serverKey, currentStoreToken);
+            if (encrypted === null) { reply(null); return; }
+            const plain = await decrypt(currentReadKey, encrypted);
+            reply(plain.buffer);
+            break;
+          }
+          case 'LWID_BLOB_SET': {
+            const serverKey = await obfuscateKey(msg.key);
+            const plain = new Uint8Array(msg.value);
+            const encrypted = await encrypt(currentReadKey, plain);
+            await api.putStoreValue(currentProjectId, serverKey, encrypted, currentStoreToken);
+            // Update key index
+            const idx = await loadKeyIndex();
+            if (!idx.includes(msg.key)) {
+              idx.push(msg.key);
+              await saveKeyIndex(idx);
+            }
+            reply(undefined);
+            break;
+          }
+          case 'LWID_BLOB_DELETE': {
+            const serverKey = await obfuscateKey(msg.key);
+            await api.deleteStoreValue(currentProjectId, serverKey, currentStoreToken);
+            // Update key index
+            const idx = await loadKeyIndex();
+            const pos = idx.indexOf(msg.key);
+            if (pos !== -1) {
+              idx.splice(pos, 1);
+              await saveKeyIndex(idx);
+            }
+            reply(undefined);
+            break;
+          }
+          case 'LWID_BLOB_LIST': {
+            const idx = await loadKeyIndex();
+            reply(idx);
+            break;
+          }
+          default:
+            break;
+        }
+      } catch (err) {
+        console.error('Store bridge error:', err);
+        replyError(err);
+      }
+    });
+
+    // -----------------------------------------------------------------------
     // Router
     // -----------------------------------------------------------------------
 
@@ -700,7 +866,8 @@
         const readKey = generateReadKey();
         const { publicKeyBytes, privateKeyB64url: writeKey } = await generateWriteKeyPair();
         const pubkeyBase64 = toStandardBase64(publicKeyBytes);
-        const { project_id: projectId } = await api.createProject(pubkeyBase64, selectedTtl);
+        const storeToken = await deriveStoreToken(readKey);
+        const { project_id: projectId } = await api.createProject(pubkeyBase64, selectedTtl, storeToken);
 
         setStatus('Encrypting and uploading files...');
 
@@ -752,6 +919,8 @@
       currentProjectId = projectId;
       currentReadKey = readKey;
       currentWriteKey = writeKey;
+      currentStoreToken = await deriveStoreToken(readKey);
+      _hmacKey = null; // reset HMAC key cache for new project
 
       // Configure toolbar
       $projectIdLabel.textContent = truncateId(projectId);
@@ -958,6 +1127,136 @@
       }
     }
 
+    /** Load and display store entries in the source panel. */
+    async function loadStoreEntries() {
+      if (!currentProjectId || !currentReadKey || !currentStoreToken) return;
+
+      try {
+        const keys = await loadKeyIndex();
+        $storeTree.innerHTML = '';
+
+        if (keys.length === 0) {
+          show($storeEmpty);
+          hide($storeTree);
+          show($storeSection);
+          return;
+        }
+
+        hide($storeEmpty);
+        show($storeTree);
+        show($storeSection);
+
+        for (const key of keys.sort()) {
+          const li = document.createElement('li');
+          li.className = 'source-panel__file';
+
+          // Try to load and decrypt the value for a preview
+          let preview = '';
+          try {
+            const serverKey = await obfuscateKey(key);
+            const encrypted = await api.getStoreValue(currentProjectId, serverKey, currentStoreToken);
+            if (encrypted) {
+              const plain = await decrypt(currentReadKey, encrypted);
+              const bytes = new Uint8Array(plain);
+              // Try to decode as text for preview
+              try {
+                const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+                // Truncate for display
+                preview = text.length > 60 ? text.slice(0, 57) + '...' : text;
+              } catch {
+                preview = `${formatBytes(bytes.byteLength)} (binary)`;
+              }
+            }
+          } catch {
+            preview = '(error)';
+          }
+
+          // Use a database/storage icon
+          li.innerHTML = `
+            ${storeIconSvg()}
+            <span class="source-panel__file-name" title="${key}">${key}</span>
+            <span class="source-panel__store-value" title="${preview.replace(/"/g, '&quot;')}">${preview}</span>
+          `;
+          li.addEventListener('click', () => openStoreViewer(key));
+          $storeTree.appendChild(li);
+        }
+      } catch (err) {
+        console.error('Failed to load store entries:', err);
+        // Don't show the section if we can't load entries
+        hide($storeSection);
+      }
+    }
+
+    /** SVG icon for store entries (small database icon). */
+    function storeIconSvg() {
+      return `<svg class="source-panel__file-icon" viewBox="0 0 16 16" fill="none" stroke="var(--text-muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="8" cy="4" rx="5.5" ry="2.5"/><path d="M2.5 4v4c0 1.38 2.46 2.5 5.5 2.5s5.5-1.12 5.5-2.5V4"/><path d="M2.5 8v4c0 1.38 2.46 2.5 5.5 2.5s5.5-1.12 5.5-2.5V8"/></svg>`;
+    }
+
+    /** Open the source viewer to display a store entry. */
+    async function openStoreViewer(key) {
+      try {
+        const serverKey = await obfuscateKey(key);
+        const encrypted = await api.getStoreValue(currentProjectId, serverKey, currentStoreToken);
+        if (!encrypted) {
+          showToast('Store entry not found');
+          return;
+        }
+        const plain = await decrypt(currentReadKey, encrypted);
+        const bytes = new Uint8Array(plain);
+
+        $sourceViewerPath.textContent = `store: ${key}`;
+
+        // Mark active in store tree
+        for (const item of $storeTree.children) {
+          item.classList.toggle(
+            'source-panel__file--active',
+            item.querySelector('.source-panel__file-name')?.textContent === key,
+          );
+        }
+        // Unmark file tree items
+        for (const item of $sourceTree.children) {
+          item.classList.remove('source-panel__file--active');
+        }
+
+        // Try to display as text
+        let isText = false;
+        try {
+          const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+          isText = true;
+          // Try to pretty-print JSON
+          let displayText = text;
+          try {
+            const parsed = JSON.parse(text);
+            displayText = JSON.stringify(parsed, null, 2);
+          } catch {
+            // Not JSON, display as-is
+          }
+          if (typeof hljs !== 'undefined') {
+            $sourceViewerCode.innerHTML = hljs.highlight(displayText, { language: 'json' }).value;
+            $sourceViewerCode.classList.add('hljs');
+          } else {
+            $sourceViewerCode.textContent = displayText;
+            $sourceViewerCode.classList.remove('hljs');
+          }
+          show($sourceViewerCode);
+          hide($sourceViewerImg);
+        } catch {
+          // Binary data — show hex dump or size info
+          $sourceViewerCode.textContent = `Binary data (${formatBytes(bytes.byteLength)})`;
+          $sourceViewerCode.classList.remove('hljs');
+          show($sourceViewerCode);
+          hide($sourceViewerImg);
+        }
+
+        // Show viewer, hide iframe
+        show($sourceViewer);
+        hide($sandboxFrame);
+      } catch (err) {
+        console.error('Failed to open store entry:', err);
+        showToast(`Error: ${err.message}`);
+      }
+    }
+
     /** Open the source viewer for a given file path. */
     function openSourceViewer(path) {
       if (!currentFiles || !currentFiles.has(path)) return;
@@ -1056,6 +1355,9 @@
 
         // Build source tree
         buildSourceTree(result.files);
+
+        // Load store entries (non-blocking — don't await)
+        loadStoreEntries();
 
         // Send files to Service Worker and load sandbox iframe
         await sendFilesToSW(result.files);

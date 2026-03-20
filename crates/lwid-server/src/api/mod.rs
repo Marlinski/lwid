@@ -5,6 +5,7 @@
 
 pub mod blobs;
 pub mod projects;
+pub mod store;
 
 use std::sync::Arc;
 
@@ -13,6 +14,7 @@ use axum::Router;
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config::Config;
+use lwid_common::kv::KvStore;
 use lwid_common::project::ProjectStore;
 use lwid_common::store::BlobStore;
 
@@ -25,6 +27,7 @@ use lwid_common::store::BlobStore;
 pub struct AppState {
     pub blobs: Arc<dyn BlobStore>,
     pub projects: Arc<dyn ProjectStore>,
+    pub kv: Arc<dyn KvStore>,
     pub config: Config,
 }
 
@@ -54,6 +57,13 @@ pub fn router(state: AppState) -> Router {
         .route("/api/projects/{id}", get(projects::get_project))
         .route("/api/projects/{id}/root", put(projects::update_root))
         .route("/api/projects/{id}/ttl", put(projects::extend_ttl))
+        .route("/api/projects/{id}/store", get(store::list_keys))
+        .route(
+            "/api/projects/{id}/store/{*key}",
+            get(store::get_value)
+                .put(store::put_value)
+                .delete(store::delete_value),
+        )
         .with_state(state)
         // ── SPA catch-all for /p/{id} (serves index.html) ─────────────
         .nest_service("/p", spa_fallback)
