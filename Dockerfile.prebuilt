@@ -1,0 +1,32 @@
+# ---- Runtime ----
+# Uses a pre-built binary passed in via the BINARY build-arg path.
+# The binary must be compiled for x86_64-unknown-linux-gnu (glibc).
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd --system lwid \
+    && useradd --system --gid lwid --create-home lwid
+
+# Data directory (mount JuiceFS or host volume at /storage)
+RUN mkdir -p /storage && chown lwid:lwid /storage
+
+# Copy shell assets (readable by lwid user)
+COPY --chown=lwid:lwid shell/ /shell/
+
+# Copy the pre-built binary (supplied by the CI artifact)
+COPY lwid-server /usr/local/bin/lwid-server
+RUN chmod +x /usr/local/bin/lwid-server
+
+# Environment
+ENV LWID_STORAGE__DATA_DIR=/storage
+ENV LWID_SERVER__SHELL_DIR=/shell
+
+EXPOSE 8080
+
+USER lwid
+
+ENTRYPOINT ["lwid-server"]

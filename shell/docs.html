@@ -166,7 +166,7 @@
 
       <h3 id="web-ui">Web UI</h3>
       <ol>
-        <li>Go to <a href="/">lookwhatidid.ovh</a>.</li>
+        <li>Go to <a href="/" id="docs-home-link">lookwhatidid.xyz</a>.</li>
         <li>Drop your project folder (must contain an <code>index.html</code>).</li>
         <li>Click <strong>Create &amp; Share</strong>.</li>
         <li>You'll be redirected to your project's URL with both keys in the fragment.</li>
@@ -179,7 +179,7 @@
 
       <h4>First push (new project)</h4>
       <pre class="docs__code"><code>cd my-project/
-lwid push --server https://lookwhatidid.ovh --dir .</code></pre>
+lwid push --server https://lookwhatidid.xyz --dir .</code></pre>
       <p>This generates keys, creates the project, encrypts and uploads all files,
          and prints the shareable URL. A <code>.lwid.json</code> config file is
          saved in the directory.</p>
@@ -205,7 +205,7 @@ lwid push --server https://lookwhatidid.ovh --dir .</code></pre>
         Any coding agent that supports skill files can publish to lwid
         automatically. Point your agent at the skill URL:
       </p>
-      <pre class="docs__code"><code>https://lookwhatidid.ovh/SKILL.md</code></pre>
+      <pre class="docs__code"><code id="docs-skill-url">https://lookwhatidid.xyz/SKILL.md</code></pre>
       <p>
         The skill instructs the agent to install the CLI, run <code>lwid push</code>,
         and return the shareable URL. No manual steps required.
@@ -274,11 +274,17 @@ lwid push --server https://lookwhatidid.ovh --dir .</code></pre>
 
   <footer class="docs-footer">
     <p>
-      <a href="/">lookwhatidid.ovh</a> &mdash;
+      <a href="/" id="docs-footer-link">lookwhatidid.xyz</a> &mdash;
       <a href="https://github.com/Marlinski/lwid" target="_blank" rel="noopener">GitHub</a> &mdash;
       MIT License
     </p>
   </footer>
 
+  <script>
+    const origin = window.location.origin;
+    document.getElementById('docs-home-link').textContent = origin.replace(/^https?:\/\//, '');
+    document.getElementById('docs-footer-link').textContent = origin.replace(/^https?:\/\//, '');
+    document.getElementById('docs-skill-url').textContent = origin + '/SKILL.md';
+  </script>
 </body>
 </html>

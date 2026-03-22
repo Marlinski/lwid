@@ -1,5 +1,5 @@
 /**
- * lwid SDK — Persistent storage for apps hosted on lookwhatidid.ovh
+ * lwid SDK — Persistent storage for apps hosted on lookwhatidid.xyz
  *
  * This script is automatically injected into every HTML page served in the
  * sandbox. It provides two storage APIs via `window.lwid`:
@@ -32,7 +32,7 @@
  *
  * ## How it works
  *
- * The SDK communicates with the parent shell (lookwhatidid.ovh) via
+ * The SDK communicates with the parent shell (lookwhatidid.xyz) via
  * `window.parent.postMessage`. Each call sends a typed request with a unique
  * ID and waits for a `LWID_RESULT` message carrying the same ID. The parent
  * shell handles encryption, persistence, and quota enforcement transparently.

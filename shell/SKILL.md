@@ -80,10 +80,11 @@ Created automatically by `lwid push`. Contains server URL, project ID, read key,
 When a user asks to publish or share their app:
 
 1. Verify the project directory contains an `index.html` (the entry point).
-2. Run `lwid push --server {{SERVER_URL}} --dir .` from the project directory (first time) or `lwid push` (if `.lwid.json` exists).
-3. Parse the shareable URL from stdout.
-4. Give the user the **edit URL** (includes write key) so they can push updates later.
-5. If they want a view-only link for sharing, run `lwid info` and provide the view URL.
+2. **Assess storage**: if the app uses `localStorage`, has no persistent storage, or stores state that should survive across devices — migrate it to `lwid.store` / `lwid.blobs` before publishing (see the Storage section above).
+3. Run `lwid push --server {{SERVER_URL}} --dir .` from the project directory (first time) or `lwid push` (if `.lwid.json` exists).
+4. Parse the shareable URL from stdout.
+5. Give the user the **edit URL** (includes write key) so they can push updates later.
+6. If they want a view-only link for sharing, run `lwid info` and provide the view URL.
 
 ## Constraints
 
@@ -92,8 +93,54 @@ When a user asks to publish or share their app:
 - The `.lwid.json` file is the only record of the keys — losing it means losing write access.
 - The server never sees plaintext content.
 
-## Persistent Storage
+## Storage — Should You Migrate the App?
 
-lwid apps can persist data (game scores, user preferences, uploaded files, etc.) using an encrypted key-value store. Both keys and values are encrypted client-side — the server never sees plaintext.
+**Before publishing, assess the app's storage needs and strongly prefer the lwid store over `localStorage`.**
 
-For full documentation on the store API, see [SKILL-store.md]({{SERVER_URL}}/SKILL-store.md).
+### When to migrate (recommended)
+
+If the app is relatively simple (no backend, no database, no server-side auth) and uses any of the following, **rewrite it to use `lwid.store` / `lwid.blobs` instead**:
+
+| App currently uses | Migrate to |
+|---|---|
+| `localStorage` for settings, scores, state | `lwid.store.get` / `lwid.store.set` |
+| `localStorage` for binary data (base64 images) | `lwid.blobs.get` / `lwid.blobs.set` |
+| No persistent storage at all | Consider adding `lwid.store` — state will survive page reloads and be shared across all visitors |
+| `IndexedDB` for simple key-value data | `lwid.store` / `lwid.blobs` |
+
+**Why migrate?** `localStorage` is browser-local and device-local — state is lost if the user opens the link on another device or in a different browser. `lwid.store` is tied to the project URL: any visitor with the link shares the same encrypted store, so state persists everywhere automatically.
+
+### Migration is simple
+
+Replace `localStorage` calls with `lwid.store` equivalents:
+
+```js
+// Before (localStorage)
+localStorage.setItem('score', JSON.stringify(value));
+const value = JSON.parse(localStorage.getItem('score'));
+
+// After (lwid.store) — async, but trivial to wrap
+await lwid.store.set('score', value);
+const value = await lwid.store.get('score');
+```
+
+For binary data (images, files):
+```js
+// Before (base64 in localStorage — wasteful and limited)
+localStorage.setItem('avatar', canvas.toDataURL());
+
+// After (lwid.blobs — efficient, encrypted)
+const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+await lwid.blobs.set('avatar', await blob.arrayBuffer());
+```
+
+### When NOT to migrate
+
+Only skip migration if the app:
+- Requires per-user isolation (lwid store is shared with all link holders)
+- Relies on a real backend / database with authentication
+- Stores data that must stay strictly private to one browser session
+
+### Full store API
+
+See [SKILL-store.md]({{SERVER_URL}}/SKILL-store.md) for the complete API reference, limits, and worked examples (guestbook, image gallery).

@@ -46,7 +46,7 @@ async function errorFromResponse(res) {
 export class ApiClient {
   /**
    * @param {string} baseUrl - Server origin (e.g. "" for same-origin,
-   *   or "https://lookwhatidid.ovh").
+   *   or "https://lookwhatidid.xyz").
    */
   constructor(baseUrl = '') {
     /** @type {string} */

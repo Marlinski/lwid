@@ -229,7 +229,7 @@ export async function getVersionHistory(api, projectId) {
  *
  * The fragment never leaves the browser, so the server cannot see the keys.
  *
- * @param {string} baseUrl — origin (e.g. "https://lookwhatidid.ovh")
+ * @param {string} baseUrl — origin (e.g. "https://lookwhatidid.xyz")
  * @param {string} projectId — project identifier
  * @param {string} readKey — base64url-encoded AES-256 key
  * @param {string} [writeKey] — base64url-encoded PKCS8 private key (omit for view-only)

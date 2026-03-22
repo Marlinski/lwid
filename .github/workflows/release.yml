@@ -152,6 +152,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Download pre-built server binary
+        uses: actions/download-artifact@v4
+        with:
+          name: lwid-server-linux-x86_64
+          path: .
+
+      - name: Prepare binary for Docker context
+        run: |
+          mv lwid-server-linux-x86_64 lwid-server
+          chmod +x lwid-server
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -167,8 +178,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: Dockerfile.prebuilt
           push: true
-          build-args: GIT_HASH=${{ steps.tag.outputs.version }}
           tags: |
             ghcr.io/marlinski/lwid-server:latest
             ghcr.io/marlinski/lwid-server:${{ steps.tag.outputs.version }}
