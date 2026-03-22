@@ -1,15 +1,15 @@
 ---
 name: lwid-store
-description: Build stateful web apps with persistent encrypted storage on lookwhatidid.ovh
+description: Build stateful web apps with persistent encrypted storage on {{SERVER_URL}}
 ---
 
 # lwid Store — Persistent Storage for Web Apps
 
-Build web apps with persistent state on lookwhatidid.ovh. The lwid platform automatically injects a storage SDK into every deployed app, providing encrypted key-value and blob storage that persists across page loads and is shared with all visitors.
+Build web apps with persistent state on {{SERVER_URL}}. The lwid platform automatically injects a storage SDK into every deployed app, providing encrypted key-value and blob storage that persists across page loads and is shared with all visitors.
 
 ## How It Works
 
-When you deploy an HTML app to lookwhatidid.ovh, a small SDK (`lwid-sdk.js`) is automatically injected into every HTML page. This SDK provides `window.lwid.store` (JSON) and `window.lwid.blobs` (binary) APIs. All data is encrypted client-side with AES-256-GCM — the server never sees plaintext.
+When you deploy an HTML app to {{SERVER_URL}}, a small SDK (`lwid-sdk.js`) is automatically injected into every HTML page. This SDK provides `window.lwid.store` (JSON) and `window.lwid.blobs` (binary) APIs. All data is encrypted client-side with AES-256-GCM — the server never sees plaintext.
 
 **No setup required.** Just use the `lwid.store` and `lwid.blobs` APIs in your JavaScript. The SDK is available immediately when your script runs.
 
@@ -112,12 +112,12 @@ const allBlobs = await lwid.blobs.list();
 
 ## Deployment
 
-Use the lwid CLI to deploy. See the [lwid SKILL](https://lookwhatidid.ovh/SKILL.md) for full deployment instructions.
+Use the lwid CLI to deploy. See the [lwid SKILL]({{SERVER_URL}}/SKILL.md) for full deployment instructions.
 
 Quick reference:
 ```sh
 # First deploy
-lwid push --server https://lookwhatidid.ovh --dir . -y
+lwid push --server {{SERVER_URL}} --dir . -y
 
 # Update
 lwid push
@@ -204,7 +204,7 @@ Here's a minimal but complete app that uses the store:
 
 Deploy with:
 ```sh
-lwid push --server https://lookwhatidid.ovh --dir . -y
+lwid push --server {{SERVER_URL}} --dir . -y
 ```
 
 ## Complete Example: Image Gallery
@@ -270,7 +270,7 @@ When a user asks you to build a stateful web app:
 1. Create the HTML/CSS/JS files as a normal static web app
 2. Use `lwid.store.get/set/delete/keys` for JSON data (settings, scores, lists, etc.)
 3. Use `lwid.blobs.get/set/delete/list` for binary data (images, files, audio, etc.)
-4. Deploy with `lwid push --server https://lookwhatidid.ovh --dir . -y`
+4. Deploy with `lwid push --server {{SERVER_URL}} --dir . -y`
 5. Share the URL with the user
 
 No server code, no database setup, no environment variables — just HTML and JavaScript.

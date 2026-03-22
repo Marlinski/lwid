@@ -5,6 +5,7 @@
 
 pub mod blobs;
 pub mod projects;
+pub mod skill;
 pub mod store;
 
 use std::sync::Arc;
@@ -66,6 +67,9 @@ pub fn router(state: AppState) -> Router {
                 .put(store::put_value)
                 .delete(store::delete_value),
         )
+        // ── Skill files: domain-aware, correct charset ─────────────────
+        .route("/SKILL.md", get(skill::get_skill))
+        .route("/SKILL-store.md", get(skill::get_skill_store))
         .with_state(state)
         // ── SPA catch-all for /p/{id} (serves index.html) ─────────────
         .nest_service("/p", spa_fallback)

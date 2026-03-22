@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use lwid_common::limits::DEFAULT_SERVER;
 
 mod client;
+mod clone;
 mod config;
 mod pull;
 mod push;
@@ -37,10 +38,14 @@ enum Commands {
         /// Paths to push (default: entire directory)
         paths: Vec<String>,
     },
-    /// Pull project files to local directory
-    Pull {
-        /// Directory to pull into (default: current directory)
-        #[arg(long, default_value = ".")]
+    /// Pull project files into the current directory (requires .lwid.json)
+    Pull,
+    /// Clone a project from a share URL into a new directory
+    Clone {
+        /// Share URL (edit or view-only)
+        url: String,
+        /// Directory to clone into (default: current directory)
+        #[arg(default_value = ".")]
         dir: String,
     },
     /// Get or set a key-value pair (omit key to list all)
@@ -81,8 +86,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }) => {
             push::run(&dir, &server, yes, &paths, Some(&ttl)).await?;
         }
-        Some(Commands::Pull { dir }) => {
-            pull::run(&dir).await?;
+        Some(Commands::Pull) => {
+            pull::run(".").await?;
+        }
+        Some(Commands::Clone { url, dir }) => {
+            clone::run(&url, &dir).await?;
         }
         Some(Commands::Kv { key, value, dir }) => {
             match key {
@@ -101,14 +109,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let read_key_b64 = base64_url_encode(&cfg.read_key);
             let write_key_b64 = base64_url_encode(&cfg.write_key);
             println!("Project:  {}", cfg.project_id);
-            println!("Server:   {DEFAULT_SERVER}");
+            println!("Server:   {}", cfg.server);
             println!(
-                "Edit URL: {DEFAULT_SERVER}/p/{}#{}:{}",
-                cfg.project_id, read_key_b64, write_key_b64
+                "Edit URL: {}/p/{}#{}:{}",
+                cfg.server, cfg.project_id, read_key_b64, write_key_b64
             );
             println!(
-                "View URL: {DEFAULT_SERVER}/p/{}#{}",
-                cfg.project_id, read_key_b64
+                "View URL: {}/p/{}#{}",
+                cfg.server, cfg.project_id, read_key_b64
             );
         }
         None => {

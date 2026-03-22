@@ -1,4 +1,4 @@
-IMAGE    := ghcr.io/marlinski/lwid
+IMAGE    := ghcr.io/marlinski/lwid-server
 GIT_HASH := $(shell git rev-parse --short HEAD)
 
 .PHONY: build push deploy all

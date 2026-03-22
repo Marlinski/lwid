@@ -5,6 +5,8 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use lwid_common::limits::DEFAULT_SERVER;
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("no .lwid.json found in {0}")]
@@ -36,6 +38,7 @@ struct RawConfig {
 /// Parsed project configuration with raw key bytes.
 #[derive(Debug, Clone)]
 pub struct ProjectConfig {
+    pub server: String,
     pub project_id: String,
     pub read_key: Vec<u8>,
     pub write_key: Vec<u8>,
@@ -59,6 +62,7 @@ pub fn load(dir: &str) -> Result<ProjectConfig, ConfigError> {
         .map_err(|e| ConfigError::InvalidKey(format!("write_key: {e}")))?;
 
     Ok(ProjectConfig {
+        server: raw.server.unwrap_or_else(|| DEFAULT_SERVER.to_string()),
         project_id: raw.project_id,
         read_key,
         write_key,
@@ -73,7 +77,11 @@ pub fn load(dir: &str) -> Result<ProjectConfig, ConfigError> {
 pub fn save(dir: &str, cfg: &ProjectConfig) -> Result<(), ConfigError> {
     use base64::prelude::*;
     let raw = RawConfig {
-        server: None,
+        server: if cfg.server != DEFAULT_SERVER {
+            Some(cfg.server.clone())
+        } else {
+            None
+        },
         project_id: cfg.project_id.clone(),
         read_key: BASE64_URL_SAFE_NO_PAD.encode(&cfg.read_key),
         write_key: BASE64_URL_SAFE_NO_PAD.encode(&cfg.write_key),

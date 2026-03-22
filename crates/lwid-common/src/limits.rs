@@ -21,7 +21,8 @@ pub const MAX_STORE_TOTAL_SIZE: usize = 50 * 1024 * 1024;
 pub const MAX_STORE_KEY_LENGTH: usize = 256;
 
 /// Default server URL.
-pub const DEFAULT_SERVER: &str = "https://lookwhatidid.ovh";
+/// Overridable at compile time via the `LWID_DEFAULT_SERVER` environment variable.
+pub const DEFAULT_SERVER: &str = env!("LWID_DEFAULT_SERVER");
 
 /// Default TTL for new projects.
 pub const DEFAULT_TTL: &str = "7d";

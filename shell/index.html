@@ -34,9 +34,7 @@
       Share your vibe-coded static site with the world<br>
       <span class="landing__agent-hint">
         or just ask your agent to do it for you
-        <span class="landing__skill-link" id="skill-link" title="Click to copy skill URL">
-          https://lookwhatidid.ovh/SKILL.md
-        </span>
+        <span class="landing__skill-link" id="skill-link" title="Click to copy skill URL"></span>
       </span>
     </p>
 
@@ -940,8 +938,10 @@
 
       // Skill link click-to-copy
       const $skillLink = document.getElementById('skill-link');
+      const skillUrl = window.location.origin + '/SKILL.md';
+      $skillLink.textContent = skillUrl;
       $skillLink.addEventListener('click', () => {
-        navigator.clipboard.writeText($skillLink.textContent.trim()).then(
+        navigator.clipboard.writeText(skillUrl).then(
           () => showToast('Skill URL copied!'),
           () => showToast('Failed to copy'),
         );

@@ -5,7 +5,7 @@ use base64::Engine;
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 
-use lwid_common::limits::DEFAULT_SERVER;
+
 
 /// AES-256-GCM overhead: 12-byte nonce + 16-byte tag.
 const ENCRYPTION_OVERHEAD: u64 = 28;
@@ -68,7 +68,7 @@ async fn save_key_index(
 pub async fn run_kv(dir: &str, key: &str, value: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     let cfg = crate::config::load(dir)
         .map_err(|e| format!("No .lwid.json found -- run `lwid push` first to create a project: {e}"))?;
-    let client = crate::client::Client::new(DEFAULT_SERVER);
+    let client = crate::client::Client::new(&cfg.server);
     let read_key: [u8; 32] = cfg
         .read_key
         .try_into()
@@ -121,7 +121,7 @@ pub async fn run_kv(dir: &str, key: &str, value: Option<&str>) -> Result<(), Box
 pub async fn run_blob(dir: &str, key: &str, file: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     let cfg = crate::config::load(dir)
         .map_err(|e| format!("No .lwid.json found -- run `lwid push` first to create a project: {e}"))?;
-    let client = crate::client::Client::new(DEFAULT_SERVER);
+    let client = crate::client::Client::new(&cfg.server);
     let read_key: [u8; 32] = cfg
         .read_key
         .try_into()
@@ -199,7 +199,7 @@ pub async fn run_blob(dir: &str, key: &str, file: Option<&str>) -> Result<(), Bo
 async fn store_context(dir: &str) -> Result<(crate::config::ProjectConfig, crate::client::Client, [u8; 32], String), Box<dyn std::error::Error>> {
     let cfg = crate::config::load(dir)
         .map_err(|e| format!("No .lwid.json found -- run `lwid push` first to create a project: {e}"))?;
-    let client = crate::client::Client::new(DEFAULT_SERVER);
+    let client = crate::client::Client::new(&cfg.server);
     let read_key: [u8; 32] = cfg
         .read_key
         .clone()

@@ -370,6 +370,7 @@ async fn create_new_project(
     let write_key = signing_key.to_bytes().to_vec();
 
     let cfg = ProjectConfig {
+        server: server.to_string(),
         project_id: resp.project_id,
         read_key: read_key.to_vec(),
         write_key,

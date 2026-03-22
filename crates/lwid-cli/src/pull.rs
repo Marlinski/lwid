@@ -3,22 +3,33 @@
 use std::path::Path;
 
 use lwid_common::crypto;
-use lwid_common::limits::DEFAULT_SERVER;
 
 use crate::client::Client;
 use crate::config;
 
+/// Pull the latest version of the project whose `.lwid.json` lives in `dir`,
+/// writing all files into `dir`.
 pub async fn run(dir: &str) -> Result<(), Box<dyn std::error::Error>> {
     let cfg = config::load(dir)?;
-    let client = Client::new(DEFAULT_SERVER);
+    let client = Client::new(&cfg.server);
     let read_key: [u8; 32] = cfg
         .read_key
         .clone()
         .try_into()
         .map_err(|_| "read_key must be 32 bytes")?;
 
+    pull_files(&client, &cfg.project_id, &read_key, Path::new(dir)).await
+}
+
+/// Core download logic shared by `pull` and `clone`.
+pub async fn pull_files(
+    client: &Client,
+    project_id: &str,
+    read_key: &[u8; 32],
+    dest: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     // 1. Get project metadata
-    let project = client.get_project(&cfg.project_id).await?;
+    let project = client.get_project(project_id).await?;
     let root_cid = project
         .root_cid
         .ok_or("project has no published version")?;
@@ -36,7 +47,6 @@ pub async fn run(dir: &str) -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("Version has {} files", files.len());
 
     // 3. Download and decrypt each file
-    let dir_path = Path::new(dir);
     for file_entry in files {
         let path = file_entry["path"]
             .as_str()
@@ -46,9 +56,9 @@ pub async fn run(dir: &str) -> Result<(), Box<dyn std::error::Error>> {
             .ok_or("file entry missing cid")?;
 
         let encrypted_content = client.get_blob(cid).await?;
-        let content = crypto::decrypt(&read_key, &encrypted_content)?;
+        let content = crypto::decrypt(read_key, &encrypted_content)?;
 
-        let file_path = dir_path.join(path);
+        let file_path = dest.join(path);
         if let Some(parent) = file_path.parent() {
             std::fs::create_dir_all(parent)?;
         }

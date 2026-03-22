@@ -3,6 +3,5 @@
 .lwid.json
 .DS_Store
 .todo/
-.env
-.env.example
+.env*
 deploy/
