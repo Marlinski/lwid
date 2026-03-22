@@ -135,6 +135,77 @@ button:disabled {
   background: var(--accent-dim);
 }
 
+/* Sign-in quota tooltip */
+.signin-tooltip-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.signin-tooltip {
+  display: none;
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.85rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  z-index: 100;
+  pointer-events: none;
+  line-height: 1.5;
+}
+
+.signin-tooltip::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  right: 1rem;
+  width: 8px;
+  height: 8px;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  transform: rotate(45deg);
+}
+
+.signin-tooltip-wrap:hover .signin-tooltip {
+  display: block;
+}
+
+.signin-tooltip__tiers {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.signin-tooltip__tier {
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius);
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.signin-tooltip__tier--anon {
+  background: rgba(128,128,128,0.15);
+  color: var(--text-subtle);
+}
+
+.signin-tooltip__tier--free {
+  background: rgba(88, 166, 255, 0.12);
+  color: var(--accent);
+}
+
+.signin-tooltip__tier--pro {
+  background: rgba(163, 110, 255, 0.15);
+  color: #a36eff;
+}
+
 .landing__title {
   font-size: clamp(2rem, 6vw, 3.25rem);
   font-weight: 800;

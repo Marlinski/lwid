@@ -24,6 +24,7 @@
     <section class="docs__hero">
       <h1>How lwid works</h1>
       <p>An encrypted, zero-knowledge platform for sharing small web apps.</p>
+      <p>All your data is encrypted and decrypted directly in your browser before anything leaves your machine. The server never sees your files, your keys, or your filenames &mdash; only encrypted gibberish blobs.</p>
     </section>
 
     <!-- ================================================================= -->
@@ -73,6 +74,78 @@
           </p>
         </div>
       </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="docs__section" id="quotas">
+      <h2>Quotas</h2>
+      <p>Limits per account tier. <a href="/">Sign in</a> to unlock higher limits.</p>
+
+      <table class="docs__table quota-table" id="quota-table">
+        <thead>
+          <tr>
+            <th>Limit</th>
+            <th class="quota-tier quota-tier--anon">Anonymous</th>
+            <th class="quota-tier quota-tier--free">Signed-in User</th>
+            <th class="quota-tier quota-tier--pro">Pro</th>
+          </tr>
+        </thead>
+        <tbody id="quota-tbody">
+          <tr><td colspan="4" style="text-align:center;color:var(--text-subtle)">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="docs__section" id="usage">
+      <h2>Usage</h2>
+
+      <h3 id="web-ui">Web UI</h3>
+      <ol>
+        <li>Go to <a href="/" id="docs-home-link">lookwhatidid.xyz</a>.</li>
+        <li>Drop your project folder (must contain an <code>index.html</code>).</li>
+        <li>Click <strong>Create &amp; Share</strong>.</li>
+        <li>You'll be redirected to your project's URL with both keys in the fragment.</li>
+        <li>Share the <strong>view-only link</strong> (read key only) or the <strong>edit link</strong> (both keys).</li>
+      </ol>
+
+      <h3 id="cli">CLI</h3>
+      <p>Install the <code>lwid</code> CLI:</p>
+      <pre class="docs__code"><code>curl -fsSL https://raw.githubusercontent.com/Marlinski/lwid/main/install.sh | sh</code></pre>
+
+      <h4>First push (new project)</h4>
+      <pre class="docs__code"><code>cd my-project/
+lwid push --server https://lookwhatidid.xyz --dir .</code></pre>
+      <p>This generates keys, creates the project, encrypts and uploads all files,
+         and prints the shareable URL. A <code>.lwid.json</code> config file is
+         saved in the directory.</p>
+      <div class="docs__callout docs__callout--warn">
+        <strong>Important:</strong> Add <code>.lwid.json</code> to your
+        <code>.gitignore</code> immediately &mdash; it contains your encryption
+        and signing keys.
+      </div>
+
+      <h4>Update an existing project</h4>
+      <pre class="docs__code"><code>lwid push</code></pre>
+      <p>Reads config from <code>.lwid.json</code> in the current directory.</p>
+
+      <h4>Pull a project</h4>
+      <pre class="docs__code"><code>lwid pull --dir .</code></pre>
+
+      <h4>Project info</h4>
+      <pre class="docs__code"><code>lwid info</code></pre>
+      <p>Prints project ID, server URL, edit URL, and view-only URL.</p>
+
+      <h3 id="agent">AI agent integration</h3>
+      <p>
+        Any coding agent that supports skill files can publish to lwid
+        automatically. Point your agent at the skill URL:
+      </p>
+      <pre class="docs__code"><code id="docs-skill-url">https://lookwhatidid.xyz/SKILL.md</code></pre>
+      <p>
+        The skill instructs the agent to install the CLI, run <code>lwid push</code>,
+        and return the shareable URL. No manual steps required.
+      </p>
     </section>
 
     <!-- ================================================================= -->
@@ -161,58 +234,6 @@
     </section>
 
     <!-- ================================================================= -->
-    <section class="docs__section" id="usage">
-      <h2>Usage</h2>
-
-      <h3 id="web-ui">Web UI</h3>
-      <ol>
-        <li>Go to <a href="/" id="docs-home-link">lookwhatidid.xyz</a>.</li>
-        <li>Drop your project folder (must contain an <code>index.html</code>).</li>
-        <li>Click <strong>Create &amp; Share</strong>.</li>
-        <li>You'll be redirected to your project's URL with both keys in the fragment.</li>
-        <li>Share the <strong>view-only link</strong> (read key only) or the <strong>edit link</strong> (both keys).</li>
-      </ol>
-
-      <h3 id="cli">CLI</h3>
-      <p>Install the <code>lwid</code> CLI:</p>
-      <pre class="docs__code"><code>curl -fsSL https://raw.githubusercontent.com/Marlinski/lwid/main/install.sh | sh</code></pre>
-
-      <h4>First push (new project)</h4>
-      <pre class="docs__code"><code>cd my-project/
-lwid push --server https://lookwhatidid.xyz --dir .</code></pre>
-      <p>This generates keys, creates the project, encrypts and uploads all files,
-         and prints the shareable URL. A <code>.lwid.json</code> config file is
-         saved in the directory.</p>
-      <div class="docs__callout docs__callout--warn">
-        <strong>Important:</strong> Add <code>.lwid.json</code> to your
-        <code>.gitignore</code> immediately &mdash; it contains your encryption
-        and signing keys.
-      </div>
-
-      <h4>Update an existing project</h4>
-      <pre class="docs__code"><code>lwid push</code></pre>
-      <p>Reads config from <code>.lwid.json</code> in the current directory.</p>
-
-      <h4>Pull a project</h4>
-      <pre class="docs__code"><code>lwid pull --dir .</code></pre>
-
-      <h4>Project info</h4>
-      <pre class="docs__code"><code>lwid info</code></pre>
-      <p>Prints project ID, server URL, edit URL, and view-only URL.</p>
-
-      <h3 id="agent">AI agent integration</h3>
-      <p>
-        Any coding agent that supports skill files can publish to lwid
-        automatically. Point your agent at the skill URL:
-      </p>
-      <pre class="docs__code"><code id="docs-skill-url">https://lookwhatidid.xyz/SKILL.md</code></pre>
-      <p>
-        The skill instructs the agent to install the CLI, run <code>lwid push</code>,
-        and return the shareable URL. No manual steps required.
-      </p>
-    </section>
-
-    <!-- ================================================================= -->
     <section class="docs__section" id="url-scheme">
       <h2>URL scheme</h2>
       <table class="docs__table">
@@ -236,17 +257,6 @@ lwid push --server https://lookwhatidid.xyz --dir .</code></pre>
         Keys are <strong>base64url</strong>-encoded (no padding). The fragment
         (<code>#...</code>) is never sent to the server by the browser.
       </p>
-    </section>
-
-    <!-- ================================================================= -->
-    <section class="docs__section" id="constraints">
-      <h2>Constraints</h2>
-      <ul>
-        <li>Maximum project size: <strong>10 MB</strong>.</li>
-        <li>All files in the directory are uploaded (except hidden files, <code>node_modules</code>, and <code>.lwid.json</code>).</li>
-        <li>The entry point must be <code>index.html</code>.</li>
-        <li>Losing <code>.lwid.json</code> means losing write access permanently &mdash; the server cannot recover your keys.</li>
-      </ul>
     </section>
 
     <!-- ================================================================= -->
@@ -285,6 +295,52 @@ lwid push --server https://lookwhatidid.xyz --dir .</code></pre>
     document.getElementById('docs-home-link').textContent = origin.replace(/^https?:\/\//, '');
     document.getElementById('docs-footer-link').textContent = origin.replace(/^https?:\/\//, '');
     document.getElementById('docs-skill-url').textContent = origin + '/SKILL.md';
+
+    // ── Quota table ─────────────────────────────────────────────────────
+    function fmtBytes(n) {
+      if (n === 0) return '0 B';
+      const units = ['B','KB','MB','GB'];
+      let i = 0;
+      while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+      return (Number.isInteger(n) ? n : n.toFixed(n < 10 ? 1 : 0)) + ' ' + units[i];
+    }
+    function fmtTtl(s) {
+      if (s === 'never') return 'No expiry';
+      return 'Up to ' + s;
+    }
+
+    async function loadQuotas() {
+      const tbody = document.getElementById('quota-tbody');
+      let policy;
+      try {
+        // Prefer already-loaded manifest from auth.js; fall back to direct fetch.
+        const data = window.lwManifest || await fetch('/api/manifest').then(r => r.json());
+        policy = data.policy;
+      } catch {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-subtle)">Failed to load quota data.</td></tr>';
+        return;
+      }
+
+      const rows = [
+        ['Max project size', fmtBytes(policy.anonymous.max_project_size), fmtBytes(policy.free.max_project_size), fmtBytes(policy.pro.max_project_size)],
+        ['Project TTL',      fmtTtl(policy.anonymous.max_ttl),            fmtTtl(policy.free.max_ttl),            fmtTtl(policy.pro.max_ttl)],
+      ];
+
+      tbody.innerHTML = rows.map(([label, anon, free, pro]) => `
+        <tr>
+          <td>${label}</td>
+          <td class="quota-tier quota-tier--anon">${anon}</td>
+          <td class="quota-tier quota-tier--free">${free}</td>
+          <td class="quota-tier quota-tier--pro">${pro}</td>
+        </tr>`).join('');
+    }
+
+    // Run after DOM is ready; if auth.js has already set lwManifest it'll be used.
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', loadQuotas);
+    } else {
+      loadQuotas();
+    }
   </script>
 </body>
 </html>

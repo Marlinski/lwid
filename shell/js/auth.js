@@ -81,13 +81,15 @@ function renderProviders(providers) {
 }
 
 function renderSignedIn(me) {
-  const signinBtn = document.getElementById('auth-signin-btn');
-  const userMenu  = document.getElementById('auth-user-menu');
-  const avatarBtn = document.getElementById('auth-avatar-btn');
-  const userInfo  = document.getElementById('auth-user-info');
-  const dropdown  = document.getElementById('auth-dropdown');
+  const signinBtn    = document.getElementById('auth-signin-btn');
+  const signinWrap   = document.getElementById('signin-tooltip-wrap');
+  const userMenu     = document.getElementById('auth-user-menu');
+  const avatarBtn    = document.getElementById('auth-avatar-btn');
+  const userInfo     = document.getElementById('auth-user-info');
+  const dropdown     = document.getElementById('auth-dropdown');
 
-  if (signinBtn) signinBtn.style.display = 'none';
+  if (signinBtn)  signinBtn.style.display  = 'none';
+  if (signinWrap) signinWrap.style.display = 'none';
   if (userMenu)  userMenu.style.display  = 'flex';
 
   if (avatarBtn) {
@@ -121,9 +123,11 @@ async function initAuth() {
   window.lwManifest = manifest;
 
   // If auth is not configured, hide the sign-in button entirely and stop.
-  const signinBtn = document.getElementById('auth-signin-btn');
+  const signinBtn  = document.getElementById('auth-signin-btn');
+  const signinWrap = document.getElementById('signin-tooltip-wrap');
   if (!manifest.auth.enabled) {
-    if (signinBtn) signinBtn.style.display = 'none';
+    if (signinBtn)  signinBtn.style.display  = 'none';
+    if (signinWrap) signinWrap.style.display = 'none';
     return;
   }
 

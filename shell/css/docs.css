@@ -347,6 +347,40 @@
 }
 
 /* ---------------------------------------------------------------------------
+ * Quota table tier columns
+ * --------------------------------------------------------------------------- */
+
+.quota-tier {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-table thead .quota-tier--anon {
+  color: var(--text-subtle);
+}
+
+.quota-table thead .quota-tier--free {
+  color: var(--accent);
+}
+
+.quota-table thead .quota-tier--pro {
+  color: #a36eff;
+}
+
+.quota-table tbody .quota-tier--anon {
+  color: var(--text-muted);
+}
+
+.quota-table tbody .quota-tier--free {
+  color: var(--text);
+}
+
+.quota-table tbody .quota-tier--pro {
+  color: #c8a0ff;
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
  * Footer
  * --------------------------------------------------------------------------- */
 
