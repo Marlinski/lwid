@@ -166,7 +166,7 @@ async fn send_email(state: &AppState, to: &str, magic_url: &str) -> Result<(), S
         // Connecting via tunnel: smtp_host is e.g. localhost but the TLS cert
         // is issued for tls_hostname (e.g. mail.lookwhatidid.xyz).
         let tls = TlsParameters::builder(tls_hostname.to_owned())
-            .build_native()
+            .build()
             .map_err(|e| e.to_string())?;
         AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(smtp_host)
             .port(smtp_port)
