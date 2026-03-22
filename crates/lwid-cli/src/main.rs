@@ -4,6 +4,7 @@ use lwid_common::limits::DEFAULT_SERVER;
 mod client;
 mod clone;
 mod config;
+mod login;
 mod pull;
 mod push;
 mod store;
@@ -70,6 +71,14 @@ enum Commands {
     },
     /// Show project info
     Info,
+    /// Authenticate with lookwhatidid via browser
+    Login {
+        /// Server URL override (for development only)
+        #[arg(long, default_value = DEFAULT_SERVER, hide = true)]
+        server: String,
+    },
+    /// Remove saved authentication token
+    Logout,
 }
 
 #[tokio::main]
@@ -118,6 +127,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "View URL: {}/p/{}#{}",
                 cfg.server, cfg.project_id, read_key_b64
             );
+        }
+        Some(Commands::Login { server }) => {
+            login::login(&server).await?;
+        }
+        Some(Commands::Logout) => {
+            login::logout().await?;
         }
         None => {
             // Default: push current dir

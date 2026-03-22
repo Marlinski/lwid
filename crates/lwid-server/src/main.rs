@@ -1,12 +1,17 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::DefaultBodyLimit;
 use clap::Parser;
+use tokio::sync::Mutex;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
 use lwid_server::api::{self, AppState};
+use lwid_server::auth;
+use lwid_server::auth::session::cookie_key_from_secret;
 use lwid_server::config::{CliArgs, Config};
+use lwid_server::db;
 use lwid_server::reaper;
 use lwid_common::kv::FsKvStore;
 use lwid_common::project::FsProjectStore;
@@ -30,11 +35,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let project_store = FsProjectStore::new(config.storage.data_dir.join("projects"))?;
     let kv_store = FsKvStore::new(config.storage.data_dir.join("store"))?;
 
+    // Initialize the SQLite database pool.
+    let db_path = config.storage.resolved_db_path();
+    let pool = db::init_pool(&db_path).await?;
+
+    // Derive the cookie signing key from the session secret (zero-padded to 64 bytes).
+    let cookie_key = cookie_key_from_secret(&config.auth.session_secret_bytes());
+
     let state = AppState {
         blobs: Arc::new(blob_store),
         projects: Arc::new(project_store),
         kv: Arc::new(kv_store),
         config: config.clone(),
+        db: Arc::new(pool),
+        cookie_key,
+        oauth_states: Arc::new(Mutex::new(HashMap::new())),
+        magic_tokens: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let cors = build_cors(&config.server.cors_origins);
@@ -45,6 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let body_limit = config.server.max_blob_size + 4096;
 
     let app = api::router(state.clone())
+        .merge(auth::router(state.clone()))
         .layer(cors)
         .layer(DefaultBodyLimit::max(body_limit));
 

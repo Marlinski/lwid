@@ -85,3 +85,66 @@ pub struct DeleteProjectRequest {
 pub struct VersionResponse {
     pub version: String,
 }
+
+/// Response body for `GET /auth/me`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserResponse {
+    pub id: String,
+    pub email: Option<String>,
+    pub display_name: Option<String>,
+    /// "anonymous" | "free" | "pro"
+    pub tier: String,
+    /// e.g. ["github", "google"]
+    pub enabled_providers: Vec<String>,
+}
+
+/// Request body for `POST /auth/magic`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MagicLinkRequest {
+    pub email: String,
+}
+
+// ---------------------------------------------------------------------------
+// Manifest
+// ---------------------------------------------------------------------------
+
+/// Response body for `GET /api/manifest`.
+///
+/// Unauthenticated — returns static server configuration that the frontend
+/// can use to conditionally render UI (sign-in button, quota indicators, etc.)
+/// before any user interaction.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ManifestResponse {
+    pub auth: ManifestAuth,
+    pub policy: ManifestPolicy,
+}
+
+/// Auth section of the manifest.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ManifestAuth {
+    /// True if at least one auth provider is configured.
+    pub enabled: bool,
+    /// Names of the configured providers, e.g. `["github", "google", "email"]`.
+    pub providers: Vec<String>,
+}
+
+/// Policy section of the manifest — all three tiers exposed so the frontend
+/// can show upgrade incentives and pre-validate sizes client-side.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ManifestPolicy {
+    pub anonymous: ManifestTierPolicy,
+    pub free: ManifestTierPolicy,
+    pub pro: ManifestTierPolicy,
+}
+
+/// Quota limits for a single tier.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ManifestTierPolicy {
+    pub max_blob_size: usize,
+    pub max_project_size: usize,
+    pub max_store_total: usize,
+    /// Maximum TTL string, e.g. `"7d"` or `"never"`.
+    pub max_ttl: String,
+    /// Maximum number of live projects. `0` means unlimited.
+    pub max_projects: usize,
+}

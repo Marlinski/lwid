@@ -17,9 +17,10 @@ use lwid_common::kv::KvError;
 use lwid_common::limits::MAX_STORE_VALUE_SIZE;
 use lwid_common::wire;
 
+use crate::auth::OptionalUser;
 use crate::error::AppError;
 
-use super::AppState;
+use super::{tier_policy, AppState};
 
 // ---------------------------------------------------------------------------
 // Conversions
@@ -94,6 +95,7 @@ fn verify_store_token(
 /// match the project's stored token.
 pub async fn put_value(
     State(state): State<AppState>,
+    user: OptionalUser,
     Path((id, key)): Path<(String, String)>,
     headers: HeaderMap,
     body: Bytes,
@@ -106,6 +108,17 @@ pub async fn put_value(
             "store value size {} exceeds maximum of {} bytes",
             body.len(),
             MAX_STORE_VALUE_SIZE,
+        )));
+    }
+
+    // Enforce per-tier total store quota.
+    let policy = tier_policy(&state.config, &user);
+    let entries = state.kv.list_keys_with_sizes(&id)?;
+    let current_total: u64 = entries.iter().map(|(_, s)| *s).sum();
+    if current_total + body.len() as u64 > policy.max_store_total as u64 {
+        return Err(AppError::PayloadTooLarge(format!(
+            "store quota exceeded for project {id}: limit={}, current={}",
+            policy.max_store_total, current_total,
         )));
     }
 

@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/languages/rust.min.js"></script>
+  <script src="/js/auth.js" defer></script>
 </head>
 <body>
 
@@ -28,6 +29,14 @@
       <a href="/docs.html" class="landing__nav-link">Docs</a>
       <a href="/SKILL.md" class="landing__nav-link">Skill</a>
       <a href="/SKILL-store.md" class="landing__nav-link">Store Skill</a>
+      <button id="auth-signin-btn" class="btn btn--ghost" onclick="authModal.open()">Sign in</button>
+      <div id="auth-user-menu" style="display:none">
+        <button class="btn btn--ghost btn--avatar" id="auth-avatar-btn"></button>
+        <div id="auth-dropdown" class="auth-dropdown" style="display:none">
+          <div id="auth-user-info"></div>
+          <button class="btn btn--ghost" onclick="authLogout()">Sign out</button>
+        </div>
+      </div>
     </nav>
     <h1 class="landing__title">lookwhatidid</h1>
     <p class="landing__subtitle">
@@ -323,6 +332,17 @@
 
   <!-- Toast -->
   <div id="toast" class="toast" aria-live="polite"></div>
+
+  <div id="auth-modal" class="modal" style="display:none" role="dialog" aria-modal="true" aria-label="Sign in">
+    <div class="modal__overlay" onclick="authModal.close()"></div>
+    <div class="modal__box">
+      <button class="modal__close" onclick="authModal.close()" aria-label="Close">&times;</button>
+      <h2 class="modal__title">Sign in</h2>
+      <div id="auth-providers" class="auth-providers">
+        <!-- populated by auth.js -->
+      </div>
+    </div>
+  </div>
 
   <!-- ===================================================================
        Main script

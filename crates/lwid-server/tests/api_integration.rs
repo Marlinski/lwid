@@ -3,6 +3,7 @@
 //! These tests exercise the full create → upload → update-root → fetch flow
 //! using an in-process axum test server backed by temporary directories.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::http::StatusCode;
@@ -12,9 +13,12 @@ use ed25519_dalek::{Signer, SigningKey};
 use rand_core::OsRng;
 use serde_json::{json, Value};
 use tempfile::TempDir;
+use tokio::sync::Mutex;
 
 use lwid_server::api::{self, AppState};
+use lwid_server::auth::session::cookie_key_from_secret;
 use lwid_server::config::Config;
+use lwid_server::db;
 use lwid_common::kv::FsKvStore;
 use lwid_common::project::FsProjectStore;
 use lwid_common::store::FsBlobStore;
@@ -24,13 +28,14 @@ use lwid_common::store::FsBlobStore;
 // ---------------------------------------------------------------------------
 
 /// Spin up a test server backed by temp directories.
-fn test_server() -> (TestServer, TempDir) {
+async fn test_server() -> (TestServer, TempDir) {
     let tmp = TempDir::new().expect("create temp dir");
 
     let blob_dir = tmp.path().join("blobs");
     let project_dir = tmp.path().join("projects");
     let kv_dir = tmp.path().join("store");
     let shell_dir = tmp.path().join("shell");
+    let db_path = tmp.path().join("test.db");
 
     // Create a minimal shell dir with an index.html for static serving tests
     std::fs::create_dir_all(&shell_dir).unwrap();
@@ -43,11 +48,19 @@ fn test_server() -> (TestServer, TempDir) {
     let mut config = Config::default();
     config.server.shell_dir = shell_dir;
 
+    let pool = db::init_pool(&db_path).await.expect("init test db");
+
+    let cookie_key = cookie_key_from_secret(b"test-secret-key-for-integration-tests-padded!!");
+
     let state = AppState {
         blobs: Arc::new(blob_store),
         projects: Arc::new(project_store),
         kv: Arc::new(kv_store),
         config,
+        db: Arc::new(pool),
+        cookie_key,
+        oauth_states: Arc::new(Mutex::new(HashMap::new())),
+        magic_tokens: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let app = api::router(state);
@@ -115,7 +128,7 @@ async fn sign_and_update_root(
 
 #[tokio::test]
 async fn full_lifecycle_create_push_fetch() {
-    let (server, _tmp) = test_server();
+    let (server, _tmp) = test_server().await;
     let (signing_key, pubkey_b64) = generate_keypair();
 
     // 1. Create a project
@@ -190,7 +203,7 @@ async fn full_lifecycle_create_push_fetch() {
 
 #[tokio::test]
 async fn create_project_with_ttl() {
-    let (server, _tmp) = test_server();
+    let (server, _tmp) = test_server().await;
     let (_, pubkey_b64) = generate_keypair();
 
     // Default TTL (7d)
@@ -211,7 +224,8 @@ async fn create_project_with_ttl() {
         "default TTL should set expires_at",
     );
 
-    // Explicit TTL = "never"
+    // Explicit TTL = "never" — but anonymous tier caps at "7d", so it is clamped.
+    // The project is still created successfully, but expires_at will be set (not null).
     let (_, pubkey_b64_2) = generate_keypair();
     let resp2 = server
         .post("/api/projects")
@@ -226,8 +240,8 @@ async fn create_project_with_ttl() {
         .await;
     let project2: Value = get_resp2.json();
     assert!(
-        project2["expires_at"].is_null(),
-        "TTL 'never' should not set expires_at",
+        project2["expires_at"].as_str().is_some(),
+        "anonymous TTL 'never' is clamped to '7d' — expires_at must be set",
     );
 
     // Invalid TTL
@@ -241,7 +255,7 @@ async fn create_project_with_ttl() {
 
 #[tokio::test]
 async fn update_root_wrong_key_is_rejected() {
-    let (server, _tmp) = test_server();
+    let (server, _tmp) = test_server().await;
     let (_, pubkey_b64) = generate_keypair();
     let (wrong_key, _) = generate_keypair();
 
@@ -275,7 +289,7 @@ async fn update_root_wrong_key_is_rejected() {
 
 #[tokio::test]
 async fn update_root_rejects_invalid_manifest() {
-    let (server, _tmp) = test_server();
+    let (server, _tmp) = test_server().await;
     let (signing_key, pubkey_b64) = generate_keypair();
 
     // Create a project
@@ -311,7 +325,7 @@ async fn update_root_rejects_invalid_manifest() {
 
 #[tokio::test]
 async fn version_chain_two_pushes() {
-    let (server, _tmp) = test_server();
+    let (server, _tmp) = test_server().await;
     let (signing_key, pubkey_b64) = generate_keypair();
 
     // Create project
@@ -354,7 +368,7 @@ async fn version_chain_two_pushes() {
 
 #[tokio::test]
 async fn static_serving_works() {
-    let (server, _tmp) = test_server();
+    let (server, _tmp) = test_server().await;
 
     // GET / should serve index.html
     let resp = server.get("/").await;
@@ -371,7 +385,7 @@ async fn static_serving_works() {
 
 #[tokio::test]
 async fn blob_too_large_is_rejected() {
-    let (server, _tmp) = test_server();
+    let (server, _tmp) = test_server().await;
 
     // Default max is 10MB, upload something just over
     let big_data = vec![0u8; 10 * 1024 * 1024 + 1];
@@ -386,7 +400,7 @@ async fn blob_too_large_is_rejected() {
 
 #[tokio::test]
 async fn idempotent_blob_upload() {
-    let (server, _tmp) = test_server();
+    let (server, _tmp) = test_server().await;
 
     let data = b"same content twice";
 
@@ -414,7 +428,7 @@ async fn idempotent_blob_upload() {
 
 #[tokio::test]
 async fn delete_project_with_valid_signature() {
-    let (server, _tmp) = test_server();
+    let (server, _tmp) = test_server().await;
     let (signing_key, pubkey_b64) = generate_keypair();
 
     // 1. Create a project
@@ -447,7 +461,7 @@ async fn delete_project_with_valid_signature() {
 
 #[tokio::test]
 async fn delete_project_with_wrong_key_is_rejected() {
-    let (server, _tmp) = test_server();
+    let (server, _tmp) = test_server().await;
     let (_signing_key, pubkey_b64) = generate_keypair();
 
     // Create with one key

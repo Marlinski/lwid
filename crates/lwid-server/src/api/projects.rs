@@ -16,14 +16,16 @@ use tracing::info;
 
 use lwid_common::auth::{self, AuthError};
 use lwid_common::cid::Cid;
-use lwid_common::limits::{parse_ttl, DEFAULT_TTL, MAX_PROJECT_SIZE, TTL_CHOICES};
+use lwid_common::limits::{parse_ttl, DEFAULT_TTL, TTL_CHOICES};
 use lwid_common::manifest::Manifest;
 use lwid_common::project::{Project, ProjectError};
 use lwid_common::wire;
 
+use crate::auth::OptionalUser;
+use crate::db;
 use crate::error::AppError;
 
-use super::AppState;
+use super::{clamp_ttl, tier_policy, AppState};
 
 // ---------------------------------------------------------------------------
 // Conversions
@@ -129,8 +131,11 @@ fn collect_all_blob_cids(
 /// - `500 Internal Server Error` on store failure.
 pub async fn create_project(
     State(state): State<AppState>,
+    user: OptionalUser,
     Json(req): Json<wire::CreateProjectRequest>,
 ) -> Result<(StatusCode, Json<wire::CreateProjectResponse>), AppError> {
+    let policy = tier_policy(&state.config, &user);
+
     let pubkey = BASE64_STANDARD
         .decode(&req.write_pubkey)
         .map_err(|e| AppError::BadRequest(format!("invalid base64 for write_pubkey: {e}")))?;
@@ -142,12 +147,38 @@ pub async fn create_project(
         )));
     }
 
-    let ttl_str = req.ttl.as_deref().unwrap_or(DEFAULT_TTL);
+    let requested_ttl = req.ttl.as_deref().unwrap_or(DEFAULT_TTL);
+    let ttl_str = clamp_ttl(requested_ttl, &policy.max_ttl);
     let expires_at =
         parse_ttl(ttl_str, Utc::now()).map_err(|e| AppError::BadRequest(e.to_string()))?;
 
+    // Enforce max_projects quota (if limited and user is logged in).
+    if policy.max_projects > 0 {
+        if let Some(ref u) = user.0 {
+            let all_ids = state.projects.list().map_err(|e| {
+                AppError::Internal(format!("failed to list projects: {e}"))
+            })?;
+            let count = db::count_live_projects(&state.db, &u.id, &all_ids)
+                .await
+                .map_err(|e| AppError::Internal(format!("failed to count projects: {e}")))?;
+            if count >= policy.max_projects {
+                return Err(AppError::PayloadTooLarge(format!(
+                    "project quota exceeded: limit={}, current={}",
+                    policy.max_projects, count,
+                )));
+            }
+        }
+    }
+
     let created_with = req.client_version.unwrap_or_else(|| env!("LWID_VERSION").to_string());
     let project = state.projects.create(&pubkey, expires_at, req.store_token, Some(created_with.clone()))?;
+
+    // Record ownership if the user is logged in.
+    if let Some(ref u) = user.0 {
+        if let Err(e) = db::set_project_owner(&state.db, &project.id, &u.id).await {
+            tracing::warn!(project_id = %project.id, error = %e, "failed to record project owner");
+        }
+    }
 
     info!(
         project_id = %project.id,
@@ -200,9 +231,12 @@ pub async fn get_project(
 /// - `500 Internal Server Error` on store failure.
 pub async fn update_root(
     State(state): State<AppState>,
+    user: OptionalUser,
     Path(id): Path<String>,
     Json(req): Json<wire::UpdateRootRequest>,
 ) -> Result<Json<wire::ProjectResponse>, AppError> {
+    let policy = tier_policy(&state.config, &user);
+
     // Fetch the project to obtain the write pubkey.
     let project = state.projects.get(&id)?;
 
@@ -230,11 +264,12 @@ pub async fn update_root(
         AppError::BadRequest(format!("invalid manifest JSON: {e}"))
     })?;
 
-    // Validate total project size.
+    // Validate total project size against the tier policy.
     let total_size = manifest.total_size();
-    if total_size > MAX_PROJECT_SIZE as u64 {
+    let max_project_size = policy.max_project_size as u64;
+    if total_size > max_project_size {
         return Err(AppError::PayloadTooLarge(format!(
-            "total file size ({total_size} bytes) exceeds project limit ({MAX_PROJECT_SIZE} bytes)",
+            "total file size ({total_size} bytes) exceeds project limit ({max_project_size} bytes)",
         )));
     }
 
@@ -269,6 +304,7 @@ pub async fn update_root(
 /// - `500 Internal Server Error` on store failure.
 pub async fn extend_ttl(
     State(state): State<AppState>,
+    user: OptionalUser,
     Path(id): Path<String>,
     Json(body): Json<wire::ExtendTtlRequest>,
 ) -> Result<Json<wire::ProjectResponse>, AppError> {
@@ -281,6 +317,11 @@ pub async fn extend_ttl(
         )));
     }
 
+    let policy = tier_policy(&state.config, &user);
+
+    // Clamp TTL to what this tier allows.
+    let effective_ttl = clamp_ttl(&body.ttl, &policy.max_ttl).to_owned();
+
     // Fetch the project to obtain the write pubkey.
     let project = state.projects.get(&id)?;
 
@@ -289,23 +330,23 @@ pub async fn extend_ttl(
         .decode(&body.signature)
         .map_err(|e| AppError::BadRequest(format!("invalid base64 for signature: {e}")))?;
 
-    // Verify the signature over the TTL string bytes.
+    // Verify the signature over the TTL string bytes (the originally-requested TTL).
     auth::verify_signature(
         &project.write_pubkey,
         body.ttl.as_bytes(),
         &signature_bytes,
     )?;
 
-    // Parse the TTL into an expiry timestamp.
+    // Parse the (possibly clamped) TTL into an expiry timestamp.
     let expires_at =
-        parse_ttl(&body.ttl, Utc::now()).map_err(|e| AppError::BadRequest(e.to_string()))?;
+        parse_ttl(&effective_ttl, Utc::now()).map_err(|e| AppError::BadRequest(e.to_string()))?;
 
     // Persist the updated expiry.
     let updated = state.projects.update_expiry(&id, expires_at)?;
 
     info!(
         project_id = %id,
-        ttl = %body.ttl,
+        ttl = %effective_ttl,
         expires_at = ?updated.expires_at,
         "extended project TTL",
     );

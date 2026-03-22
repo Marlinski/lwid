@@ -13,6 +13,7 @@ lwid-common = { path = "../lwid-common" }
 
 # Web framework
 axum = { version = "0.8", features = ["multipart"] }
+axum-extra = { version = "0.10", features = ["cookie-private"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "fs", "limit"] }
 
@@ -27,12 +28,29 @@ clap = { version = "4", features = ["derive"] }
 # Crypto (for base64 decoding of pubkeys/signatures in API handlers)
 base64 = "0.22"
 subtle = "2"
+rand = "0.8"
+sha2 = "0.10"
+
+# Database
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "chrono", "macros"] }
+
+# OAuth2
+oauth2 = "4"
+
+# HTTP client (for OAuth token exchange)
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# Email (magic link)
+lettre = { version = "0.11", features = ["tokio1-native-tls", "smtp-transport", "builder"], default-features = false }
 
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "2"
+nanoid = "0.4"
+url = "2"
+time = "0.3"
 
 [dev-dependencies]
 tempfile = "3"

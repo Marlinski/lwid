@@ -1375,3 +1375,179 @@ button:disabled {
   color: var(--danger);
   background: var(--danger-dim);
 }
+
+/* ── Auth modal ─────────────────────────────────────────────────────────── */
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal__overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+.modal__box {
+  position: relative;
+  background: var(--surface, #1e1e2e);
+  border-radius: 12px;
+  padding: 2rem;
+  width: min(420px, 92vw);
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+.modal__close {
+  position: absolute;
+  top: .75rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.4rem;
+  cursor: pointer;
+  opacity: .6;
+}
+.modal__close:hover { opacity: 1; }
+.modal__title {
+  margin: 0 0 1.5rem;
+  font-size: 1.25rem;
+}
+.auth-providers {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+.btn--provider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .6rem;
+  padding: .65rem 1.25rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: .95rem;
+  text-decoration: none;
+  transition: background .15s, border-color .15s;
+  cursor: pointer;
+}
+.btn--provider__icon {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex-shrink: 0;
+}
+/* divider between OAuth buttons and email form */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  color: rgba(255,255,255,.35);
+  font-size: .8rem;
+  margin: .25rem 0;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255,255,255,.12);
+}
+.btn--github {
+  /* GitHub official brand: #24292e background, white text */
+  background: #24292e;
+  color: #fff;
+  border: 1px solid #24292e;
+}
+.btn--github:hover {
+  background: #2f363d;
+  border-color: #2f363d;
+  opacity: 1;
+}
+.btn--google {
+  /* Dark style to match GitHub button */
+  background: #131316;
+  color: #fff;
+  border: 1px solid #3c3c44;
+}
+.btn--google:hover {
+  background: #1e1e24;
+  border-color: #555560;
+  opacity: 1;
+}
+.auth-magic-form {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+.auth-magic-form .input {
+  width: 100%;
+  padding: .65rem 1rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: .95rem;
+  outline: none;
+  transition: border-color .15s;
+}
+.auth-magic-form .input:focus {
+  border-color: var(--accent);
+}
+.auth-magic-sent, .auth-no-providers {
+  text-align: center;
+  opacity: .7;
+  font-size: .9rem;
+}
+.auth-magic-spam {
+  display: block;
+  margin-top: .35rem;
+  font-size: .8rem;
+  color: var(--text-muted);
+  opacity: .75;
+}
+/* ── User menu / avatar ─────────────────────────────────────────────────── */
+#auth-user-menu {
+  position: relative;
+  align-items: center;
+}
+.btn--avatar {
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  background: var(--accent, #7c6af7);
+  color: #fff;
+  font-weight: 700;
+  font-size: .85rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+}
+.auth-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + .5rem);
+  background: var(--surface, #1e1e2e);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px;
+  padding: .75rem 1rem;
+  min-width: 180px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.4);
+  z-index: 100;
+}
+.auth-user-name { font-weight: 600; }
+.auth-user-email { font-size: .85rem; opacity: .7; margin-bottom: .5rem; }
+.auth-user-tier {
+  font-size: .75rem;
+  background: rgba(255,255,255,.1);
+  border-radius: 4px;
+  padding: .15rem .4rem;
+  display: inline-block;
+  margin-bottom: .75rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}

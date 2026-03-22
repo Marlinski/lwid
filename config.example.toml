@@ -1,21 +1,151 @@
-# LookWhatIDid configuration
-# All values can be overridden by environment variables (prefixed with LWID_)
-# or CLI flags. Priority: CLI > env > config file > defaults.
+# LookWhatIDid — example configuration file
+#
+# Copy to config.toml and fill in the values you need.
+# All fields can also be set via environment variables (shown per field).
+# Priority: CLI flags > environment variables > config file > built-in defaults.
+#
+# Secrets (client secrets, session secret, SMTP password) should NEVER be put
+# in this file in production — use environment variables or a secrets manager.
+
+# ── Storage ───────────────────────────────────────────────────────────────────
 
 [storage]
-# Directory where blobs and project metadata are stored.
+# Directory where blobs, project metadata and the KV store are kept.
+# On Kubernetes this should be a JuiceFS or PV mount.
 # Env: LWID_STORAGE__DATA_DIR
 data_dir = "/data"
 
+# Path to the SQLite database file.
+# Defaults to {data_dir}/lwid.db if not set.
+# Override to place the DB on a separate volume from blob storage.
+# Env: LWID_STORAGE__DB_PATH
+# db_path = "/data-db/lwid.db"
+
+# ── Server ────────────────────────────────────────────────────────────────────
+
 [server]
-# Address to listen on.
+# TCP address to listen on.
 # Env: LWID_SERVER__LISTEN
 listen = "0.0.0.0:8080"
 
-# Maximum size of a single blob upload (bytes). Default: 10MB.
+# Public base URL of the server — used to build OAuth redirect URIs and
+# magic-link URLs. Must not have a trailing slash.
+# Env: LWID_SERVER__BASE_URL
+base_url = "https://example.com"
+
+# Maximum size of a single blob upload in bytes (default: 10 MB).
+# This is a hard axum body limit applied before any per-tier policy.
 # Env: LWID_SERVER__MAX_BLOB_SIZE
 max_blob_size = 10_485_760
 
-# Allowed CORS origins (comma-separated).
-# Env: LWID_SERVER__CORS_ORIGINS
+# Allowed CORS origins. Use ["*"] to allow all origins.
+# Env: LWID_SERVER__CORS_ORIGINS  (comma-separated)
 cors_origins = ["*"]
+
+# Directory containing the shell SPA (index.html, js/, css/, sw.js).
+# Env: LWID_SERVER__SHELL_DIR
+shell_dir = "./shell"
+
+# ── Per-tier quota policies ───────────────────────────────────────────────────
+#
+# max_ttl must be one of: "1h", "1d", "7d", "30d", "never"
+# max_projects: 0 = unlimited
+# All byte limits are in bytes.
+#
+# Env vars follow the pattern:
+#   LWID_POLICY__{TIER}__{FIELD}
+# e.g. LWID_POLICY__ANONYMOUS__MAX_BLOB_SIZE
+
+[policy.anonymous]
+# Env: LWID_POLICY__ANONYMOUS__MAX_BLOB_SIZE
+max_blob_size    = 10_485_760    # 10 MB
+# Env: LWID_POLICY__ANONYMOUS__MAX_PROJECT_SIZE
+max_project_size = 10_485_760    # 10 MB
+# Env: LWID_POLICY__ANONYMOUS__MAX_STORE_TOTAL
+max_store_total  = 52_428_800    # 50 MB
+# Env: LWID_POLICY__ANONYMOUS__MAX_TTL
+max_ttl          = "7d"
+# Env: LWID_POLICY__ANONYMOUS__MAX_PROJECTS
+max_projects     = 3
+
+[policy.free]
+# Env: LWID_POLICY__FREE__MAX_BLOB_SIZE
+max_blob_size    = 10_485_760    # 10 MB
+# Env: LWID_POLICY__FREE__MAX_PROJECT_SIZE
+max_project_size = 52_428_800    # 50 MB
+# Env: LWID_POLICY__FREE__MAX_STORE_TOTAL
+max_store_total  = 104_857_600   # 100 MB
+# Env: LWID_POLICY__FREE__MAX_TTL
+max_ttl          = "30d"
+# Env: LWID_POLICY__FREE__MAX_PROJECTS
+max_projects     = 20
+
+[policy.pro]
+# Env: LWID_POLICY__PRO__MAX_BLOB_SIZE
+max_blob_size    = 104_857_600   # 100 MB
+# Env: LWID_POLICY__PRO__MAX_PROJECT_SIZE
+max_project_size = 524_288_000   # 500 MB
+# Env: LWID_POLICY__PRO__MAX_STORE_TOTAL
+max_store_total  = 1_073_741_824 # 1 GB
+# Env: LWID_POLICY__PRO__MAX_TTL
+max_ttl          = "never"
+# Env: LWID_POLICY__PRO__MAX_PROJECTS
+max_projects     = 0             # unlimited
+
+# ── Authentication ────────────────────────────────────────────────────────────
+#
+# All auth providers are optional. A provider is only enabled when ALL of its
+# required fields are set to non-empty values.
+# If no provider is configured, the sign-in button is hidden in the UI and
+# all users are treated as anonymous.
+
+[auth]
+# Secret used to sign and encrypt session cookies.
+# Must be at least 32 characters. Change this and all sessions are invalidated.
+# In production, set via env var — do NOT put the real value here.
+# Env: LWID_AUTH__SESSION_SECRET
+session_secret = ""
+
+# How long browser sessions last, in days. Default: 30.
+# Env: LWID_AUTH__SESSION_TTL_DAYS
+session_ttl_days = 30
+
+# ── GitHub OAuth2 ─────────────────────────────────────────────────────────────
+# Create an OAuth App at: github.com/settings/developers
+# Callback URL: {base_url}/auth/github/callback
+# Enabled when both client_id and client_secret are non-empty.
+
+[auth.github]
+# Env: LWID_AUTH__GITHUB__CLIENT_ID
+client_id = ""
+# Env: LWID_AUTH__GITHUB__CLIENT_SECRET  ← use env var in production
+client_secret = ""
+
+# ── Google OAuth2 ─────────────────────────────────────────────────────────────
+# Create credentials at: console.cloud.google.com → APIs & Services → Credentials
+# Authorized redirect URI: {base_url}/auth/google/callback
+# Enabled when both client_id and client_secret are non-empty.
+
+[auth.google]
+# Env: LWID_AUTH__GOOGLE__CLIENT_ID
+client_id = ""
+# Env: LWID_AUTH__GOOGLE__CLIENT_SECRET  ← use env var in production
+client_secret = ""
+
+# ── Email magic link ──────────────────────────────────────────────────────────
+# Enabled when smtp_host is non-empty.
+
+[auth.email]
+# Env: LWID_AUTH__EMAIL__SMTP_HOST
+smtp_host = ""
+# Env: LWID_AUTH__EMAIL__SMTP_PORT  (default: 587)
+smtp_port = 587
+# Env: LWID_AUTH__EMAIL__SMTP_USER
+smtp_user = ""
+# Env: LWID_AUTH__EMAIL__SMTP_PASSWORD  ← use env var in production
+smtp_password = ""
+# Env: LWID_AUTH__EMAIL__FROM_ADDRESS
+from_address = "noreply@example.com"
+# How long a magic link is valid, in minutes. Default: 15.
+# Env: (not yet exposed as env var — set in config file)
+magic_link_ttl_minutes = 15

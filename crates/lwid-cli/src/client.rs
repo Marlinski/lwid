@@ -35,6 +35,8 @@ fn extract_server_message(status: u16, body: &str) -> String {
 pub struct Client {
     http: reqwest::Client,
     base_url: String,
+    /// Bearer token for authenticated requests, if the user is logged in.
+    token: Option<String>,
 }
 
 impl Client {
@@ -42,6 +44,16 @@ impl Client {
         Self {
             http: reqwest::Client::new(),
             base_url: base_url.trim_end_matches('/').to_string(),
+            token: crate::login::load_token(),
+        }
+    }
+
+    /// Attach the `Authorization: Bearer <token>` header if a token is saved.
+    fn auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        if let Some(ref tok) = self.token {
+            req.header("Authorization", format!("Bearer {tok}"))
+        } else {
+            req
         }
     }
 
@@ -53,8 +65,7 @@ impl Client {
         store_token: Option<&str>,
     ) -> Result<CreateProjectResponse, ApiError> {
         let resp = self
-            .http
-            .post(format!("{}/api/projects", self.base_url))
+            .auth(self.http.post(format!("{}/api/projects", self.base_url)))
             .json(&CreateProjectRequest {
                 write_pubkey: write_pubkey_b64.to_string(),
                 ttl: ttl.map(|s| s.to_string()),
@@ -76,8 +87,10 @@ impl Client {
     /// GET /api/projects/{id} — get project metadata.
     pub async fn get_project(&self, id: &str) -> Result<ProjectResponse, ApiError> {
         let resp = self
-            .http
-            .get(format!("{}/api/projects/{}", self.base_url, id))
+            .auth(
+                self.http
+                    .get(format!("{}/api/projects/{}", self.base_url, id)),
+            )
             .send()
             .await?;
 
@@ -93,8 +106,7 @@ impl Client {
     /// POST /api/blobs — upload a blob, returns the CID.
     pub async fn upload_blob(&self, data: Vec<u8>) -> Result<String, ApiError> {
         let resp = self
-            .http
-            .post(format!("{}/api/blobs", self.base_url))
+            .auth(self.http.post(format!("{}/api/blobs", self.base_url)))
             .body(data)
             .send()
             .await?;
@@ -112,8 +124,10 @@ impl Client {
     /// HEAD /api/blobs/{cid} — check if blob exists.
     pub async fn blob_exists(&self, cid: &str) -> Result<bool, ApiError> {
         let resp = self
-            .http
-            .head(format!("{}/api/blobs/{}", self.base_url, cid))
+            .auth(
+                self.http
+                    .head(format!("{}/api/blobs/{}", self.base_url, cid)),
+            )
             .send()
             .await?;
 
@@ -123,8 +137,10 @@ impl Client {
     /// GET /api/blobs/{cid} — download a blob.
     pub async fn get_blob(&self, cid: &str) -> Result<Vec<u8>, ApiError> {
         let resp = self
-            .http
-            .get(format!("{}/api/blobs/{}", self.base_url, cid))
+            .auth(
+                self.http
+                    .get(format!("{}/api/blobs/{}", self.base_url, cid)),
+            )
             .send()
             .await?;
 
@@ -145,8 +161,10 @@ impl Client {
         signature_b64: &str,
     ) -> Result<ProjectResponse, ApiError> {
         let resp = self
-            .http
-            .put(format!("{}/api/projects/{}/root", self.base_url, id))
+            .auth(
+                self.http
+                    .put(format!("{}/api/projects/{}/root", self.base_url, id)),
+            )
             .json(&UpdateRootRequest {
                 root_cid: root_cid.to_string(),
                 signature: signature_b64.to_string(),
@@ -176,8 +194,7 @@ impl Client {
             self.base_url, project_id, key
         );
         let resp = self
-            .http
-            .put(&url)
+            .auth(self.http.put(&url))
             .header("X-Store-Token", store_token)
             .header("Content-Type", "application/octet-stream")
             .body(value.to_vec())
@@ -203,8 +220,7 @@ impl Client {
             self.base_url, project_id, key
         );
         let resp = self
-            .http
-            .get(&url)
+            .auth(self.http.get(&url))
             .header("X-Store-Token", store_token)
             .send()
             .await?;
@@ -233,8 +249,7 @@ impl Client {
             self.base_url, project_id, key
         );
         let resp = self
-            .http
-            .delete(&url)
+            .auth(self.http.delete(&url))
             .header("X-Store-Token", store_token)
             .send()
             .await?;
@@ -252,13 +267,9 @@ impl Client {
         project_id: &str,
         store_token: &str,
     ) -> Result<StoreListResponse, ApiError> {
-        let url = format!(
-            "{}/api/projects/{}/store",
-            self.base_url, project_id
-        );
+        let url = format!("{}/api/projects/{}/store", self.base_url, project_id);
         let resp = self
-            .http
-            .get(&url)
+            .auth(self.http.get(&url))
             .header("X-Store-Token", store_token)
             .send()
             .await?;

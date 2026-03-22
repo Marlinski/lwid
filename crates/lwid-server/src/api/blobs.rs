@@ -13,9 +13,10 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use lwid_common::cid::Cid;
+use crate::auth::OptionalUser;
 use crate::error::AppError;
 
-use super::AppState;
+use super::{tier_policy, AppState};
 
 // ---------------------------------------------------------------------------
 // Request / response types
@@ -43,9 +44,11 @@ pub struct UploadResponse {
 /// - `500 Internal Server Error` on store I/O failure.
 pub async fn upload_blob(
     State(state): State<AppState>,
+    user: OptionalUser,
     body: Bytes,
 ) -> Result<Json<UploadResponse>, AppError> {
-    let max = state.config.server.max_blob_size;
+    let policy = tier_policy(&state.config, &user);
+    let max = policy.max_blob_size;
     if body.len() > max {
         return Err(AppError::PayloadTooLarge(format!(
             "blob size {} exceeds maximum of {} bytes",
