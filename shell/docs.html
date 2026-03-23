@@ -79,19 +79,17 @@
     <!-- ================================================================= -->
     <section class="docs__section" id="quotas">
       <h2>Quotas</h2>
-      <p>Limits per account tier. <a href="/">Sign in</a> to unlock higher limits.</p>
+      <p id="quota-signin-hint">Limits per account tier. <a href="/">Sign in</a> to unlock higher limits.</p>
 
       <table class="docs__table quota-table" id="quota-table">
-        <thead>
+        <thead id="quota-thead">
           <tr>
             <th>Limit</th>
             <th class="quota-tier quota-tier--anon">Anonymous</th>
-            <th class="quota-tier quota-tier--free">Signed-in User</th>
-            <th class="quota-tier quota-tier--pro">Pro</th>
           </tr>
         </thead>
         <tbody id="quota-tbody">
-          <tr><td colspan="4" style="text-align:center;color:var(--text-subtle)">Loading&hellip;</td></tr>
+          <tr><td colspan="2" style="text-align:center;color:var(--text-subtle)">Loading&hellip;</td></tr>
         </tbody>
       </table>
     </section>
@@ -311,28 +309,36 @@ lwid push --server https://lookwhatidid.xyz --dir .</code></pre>
 
     async function loadQuotas() {
       const tbody = document.getElementById('quota-tbody');
-      let policy;
+      const thead = document.getElementById('quota-thead');
+      let policy, authEnabled;
       try {
-        // Prefer already-loaded manifest from auth.js; fall back to direct fetch.
         const data = window.lwManifest || await fetch('/api/manifest').then(r => r.json());
         policy = data.policy;
+        authEnabled = data.auth && data.auth.enabled;
       } catch {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-subtle)">Failed to load quota data.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:var(--text-subtle)">Failed to load quota data.</td></tr>';
         return;
       }
 
+      // Build header
+      let headerCols = '<th>Limit</th><th class="quota-tier quota-tier--anon">Anonymous</th>';
+      if (authEnabled) headerCols += '<th class="quota-tier quota-tier--free">Signed-in User</th>';
+      thead.querySelector('tr').innerHTML = headerCols;
+
+      // Show sign-in hint only if auth is available
+      const hint = document.getElementById('quota-signin-hint');
+      if (hint) hint.style.display = authEnabled ? '' : 'none';
+
       const rows = [
-        ['Max project size', fmtBytes(policy.anonymous.max_project_size), fmtBytes(policy.free.max_project_size), fmtBytes(policy.pro.max_project_size)],
-        ['Project TTL',      fmtTtl(policy.anonymous.max_ttl),            fmtTtl(policy.free.max_ttl),            fmtTtl(policy.pro.max_ttl)],
+        ['Max project size', fmtBytes(policy.anonymous.max_project_size), authEnabled ? fmtBytes(policy.free.max_project_size) : null],
+        ['Project TTL',      fmtTtl(policy.anonymous.max_ttl),            authEnabled ? fmtTtl(policy.free.max_ttl)            : null],
       ];
 
-      tbody.innerHTML = rows.map(([label, anon, free, pro]) => `
-        <tr>
-          <td>${label}</td>
-          <td class="quota-tier quota-tier--anon">${anon}</td>
-          <td class="quota-tier quota-tier--free">${free}</td>
-          <td class="quota-tier quota-tier--pro">${pro}</td>
-        </tr>`).join('');
+      tbody.innerHTML = rows.map(([label, anon, free]) => {
+        let cells = `<td>${label}</td><td class="quota-tier quota-tier--anon">${anon}</td>`;
+        if (authEnabled) cells += `<td class="quota-tier quota-tier--free">${free}</td>`;
+        return `<tr>${cells}</tr>`;
+      }).join('');
     }
 
     // Run after DOM is ready; if auth.js has already set lwManifest it'll be used.
