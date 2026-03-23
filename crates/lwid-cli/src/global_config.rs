@@ -13,7 +13,34 @@ use std::path::PathBuf;
 use lwid_common::limits::DEFAULT_SERVER;
 
 fn config_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("lwid").join("config.toml"))
+    // Candidate locations in priority order:
+    //   1. dirs::config_dir() — correct on Windows (%APPDATA%\lwid\config.toml)
+    //                           and on Linux ($XDG_CONFIG_HOME or ~/.config)
+    //   2. ~/.config/lwid/config.toml — explicit fallback for macOS where
+    //      dirs::config_dir() returns ~/Library/Application Support
+    let candidates: Vec<PathBuf> = {
+        let mut v = Vec::new();
+        if let Some(d) = dirs::config_dir() {
+            v.push(d.join("lwid").join("config.toml"));
+        }
+        if let Some(home) = std::env::var_os("HOME") {
+            let xdg = PathBuf::from(home)
+                .join(".config")
+                .join("lwid")
+                .join("config.toml");
+            if !v.contains(&xdg) {
+                v.push(xdg);
+            }
+        }
+        v
+    };
+
+    // Return the first path that exists, or the first candidate as write target.
+    candidates
+        .iter()
+        .find(|p| p.exists())
+        .cloned()
+        .or_else(|| candidates.into_iter().next())
 }
 
 /// Return the default server URL.
@@ -29,7 +56,7 @@ pub fn default_server() -> String {
                 if let Some(rest) = line.strip_prefix("server") {
                     let rest = rest.trim();
                     if let Some(rest) = rest.strip_prefix('=') {
-                        let value = rest.trim().trim_matches('"');
+                        let value = rest.trim().trim_matches('"').trim();
                         if !value.is_empty() {
                             return value.to_owned();
                         }
