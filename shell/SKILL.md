@@ -9,8 +9,14 @@ lwid (LookWhatIDid) is an encrypted, zero-knowledge app-sharing platform. Deploy
 
 ## Installation
 
+**macOS / Linux:**
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Marlinski/lwid/main/install.sh | sh
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/Marlinski/lwid/main/install.ps1 | iex
 ```
 
 ## Publishing

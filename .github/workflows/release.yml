@@ -170,6 +170,26 @@ jobs:
           generate_release_notes: true
           files: artifacts/*
 
+  test-windows-install:
+    name: Test Windows installer
+    needs: [release]
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run install.ps1 for this release
+        env:
+          LWID_VERSION: ${{ github.ref_name }}
+        run: |
+          $env:LWID_VERSION = "${{ github.ref_name }}"
+          ./install.ps1
+
+      - name: Verify lwid runs
+        run: |
+          $exe = Join-Path $env:LOCALAPPDATA 'lwid\lwid.exe'
+          & $exe --version
+
   docker:
     name: Build & Push Docker Image
     needs: [release]
