@@ -1347,7 +1347,7 @@ button:disabled {
 .projects-dropdown__menu {
   position: absolute;
   top: calc(100% + 4px);
-  left: 0;
+  right: 0;
   min-width: 260px;
   max-height: 360px;
   overflow-y: auto;
