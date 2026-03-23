@@ -2,8 +2,11 @@
 
 Encrypted, zero-knowledge app-sharing platform. Pastebin for small web apps, with client-side encryption.
 
+**Ship your app in seconds — give your AI agent the [lwid skill](https://lookwhatidid.xyz/SKILL.md) and let it handle the rest.**
+
 ![lookwhatidid](screenshot.png?raw=true)
 
+**Live**: https://lookwhatidid.xyz  
 **Repo**: https://github.com/Marlinski/lwid
 
 ## How it works
@@ -12,11 +15,21 @@ Content is encrypted client-side with AES-256-GCM before upload. The server only
 
 ## Quick start (CLI)
 
+**macOS / Linux:**
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Marlinski/lwid/main/install.sh | sh
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/Marlinski/lwid/main/install.ps1 | iex
+```
+
+Then push a project:
+```sh
 cd my-project/
-lwid push
-# Returns: https://lookwhatidid.ovh/p/abc123#readkey:writekey
+lwid push --server https://lookwhatidid.xyz
+# Returns: https://lookwhatidid.xyz/p/abc123#readkey:writekey
 ```
 
 ## Quick start (Server)
@@ -37,11 +50,18 @@ The server listens on `0.0.0.0:8080` by default and serves the shell SPA, which 
 
 ## CLI reference
 
-| Command     | Description                                                                 |
-|-------------|-----------------------------------------------------------------------------|
-| `lwid push` | Encrypt and upload a directory to the server. Returns the project URL.      |
-| `lwid pull` | Download and decrypt a project given its URL (including the fragment key).  |
-| `lwid info` | Display metadata for a project (size, blob count) without decrypting.      |
+| Command          | Description                                                                      |
+|------------------|----------------------------------------------------------------------------------|
+| `lwid push`      | Encrypt and upload a directory to the server. Returns the project URL.           |
+| `lwid pull`      | Download and decrypt a project into the current directory (requires `.lwid.json`). |
+| `lwid clone <url>` | Clone a project from a share URL into a new directory.                         |
+| `lwid info`      | Display project ID, server, edit URL, and view-only URL.                         |
+| `lwid kv`        | Get or set a persistent encrypted key-value pair on the project store.           |
+| `lwid blob`      | Get or set a persistent encrypted binary blob on the project store.              |
+| `lwid login`     | Authenticate with the server via browser (OAuth / magic link).                   |
+| `lwid logout`    | Remove the saved authentication token.                                           |
+
+Project config is saved to `.lwid.json` in the project directory — add it to `.gitignore` immediately, it contains your encryption and signing keys.
 
 ## URL scheme
 
@@ -73,7 +93,7 @@ Rust workspace with three crates:
 ```
 lwid-common/   Shared types, crypto (AES-256-GCM, Ed25519), CID utilities
 lwid-server/   Axum HTTP server, blob storage, shell SPA serving
-lwid-cli/      CLI binary (`lwid`), push/pull/info commands
+lwid-cli/      CLI binary (`lwid`), push/pull/clone/store commands
 ```
 
 The shell SPA is vanilla JS served by the Rust server. It intercepts navigation via a Service Worker and renders decrypted project content inside a sandboxed iframe.
@@ -91,3 +111,4 @@ Binaries are written to `target/release/`. The server binary is `lwid-server`, t
 ## License
 
 MIT
+
