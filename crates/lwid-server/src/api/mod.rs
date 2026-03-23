@@ -119,7 +119,6 @@ pub fn router(state: AppState) -> Router {
         )
         // ── Skill files: domain-aware, correct charset ─────────────────
         .route("/SKILL.md", get(skill::get_skill))
-        .route("/SKILL-store.md", get(skill::get_skill_store))
         .with_state(state)
         // ── SPA catch-all for /p/{id} (serves index.html) ─────────────
         .nest_service("/p", spa_fallback)

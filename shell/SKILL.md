@@ -1,11 +1,11 @@
 ---
 name: lwid
-description: Publish HTML/CSS/JS apps to {{SERVER_URL}} using the lwid CLI
+description: Publish HTML/CSS/JS apps to {{SERVER_URL}} and use persistent encrypted storage
 ---
 
-# lwid — Publish and Share Web Apps
+# lwid — Publish, Share, and Store
 
-lwid (LookWhatIDid) is an encrypted, zero-knowledge app-sharing platform. Think pastebin for small web apps. Files are encrypted client-side with AES-256-GCM, stored as content-addressed blobs, and shared via URLs where the decryption key lives in the URL fragment (never sent to the server).
+lwid (LookWhatIDid) is an encrypted, zero-knowledge app-sharing platform. Deploy HTML/CSS/JS apps to {{SERVER_URL}} via the CLI. Apps get a shareable URL where the decryption key lives in the URL fragment — never sent to the server.
 
 ## Installation
 
@@ -15,15 +15,17 @@ curl -fsSL https://raw.githubusercontent.com/Marlinski/lwid/main/install.sh | sh
 
 ## Publishing
 
-### First push (new project)
+### First push
 
 ```sh
 lwid push --server {{SERVER_URL}} --dir .
 ```
 
-This generates an AES-256-GCM read key and an Ed25519 write key, creates a project on the server, encrypts and uploads all files, creates a signed manifest, saves `.lwid.json` to the project directory, and prints the shareable URL.
+Generates AES-256-GCM read + Ed25519 write keys, encrypts and uploads all files, saves `.lwid.json`, prints the shareable URL.
 
-**Add `.lwid.json` to `.gitignore` immediately** — it contains the encryption and signing keys.
+**The server looks for `index.html` as the entry point — your project must have one.**
+
+**Add `.lwid.json` to `.gitignore` immediately** — it contains encryption and signing keys. Losing it means losing write access.
 
 ### Subsequent pushes
 
@@ -31,116 +33,164 @@ This generates an AES-256-GCM read key and an Ed25519 write key, creates a proje
 lwid push
 ```
 
-Reads server and config from `.lwid.json` in the current directory — no `--server` needed.
+Reads config from `.lwid.json`. No `--server` needed.
 
-### Project info
-
-```sh
-lwid info
-```
-
-Prints project ID, server, edit URL, and view-only URL.
-
-### Pulling the latest version
+### Pull, info, clone
 
 ```sh
-lwid pull
-```
-
-Updates local files from the server. Reads server, project ID, and keys from `.lwid.json` in the current directory.
-
-### Cloning a project from a URL
-
-```sh
-lwid clone <share-url> [dir]
-```
-
-Use this when there is no `.lwid.json` yet. Parses the share URL, downloads and decrypts all files into `dir` (default: current directory), and saves `.lwid.json` so subsequent `lwid push` / `lwid pull` work normally.
-
-```sh
-# Clone into a new directory
-lwid clone "{{SERVER_URL}}/p/{id}#{read_key}:{write_key}" my-project
-# Clone into the current directory
-lwid clone "{{SERVER_URL}}/p/{id}#{read_key}"
+lwid pull                                      # update local files from server
+lwid info                                      # print project ID, edit URL, view URL
+lwid clone "<share-url>" [dir]                 # clone from URL when no .lwid.json exists
 ```
 
 ## URL Scheme
 
-- **Edit URL:** `{{SERVER_URL}}/p/{project-id}#{read-key}:{write-key}`
-- **View URL:** `{{SERVER_URL}}/p/{project-id}#{read-key}`
+- **Edit URL:** `{{SERVER_URL}}/p/{id}#{read-key}:{write-key}`
+- **View URL:** `{{SERVER_URL}}/p/{id}#{read-key}`
 
 The fragment (`#...`) is never sent to the server — zero-knowledge by design.
 
-## .lwid.json
+## Constraints
 
-Created automatically by `lwid push`. Contains server URL, project ID, read key, and write key. If this file is lost, the project cannot be updated. Never commit it to version control.
+- All files in the directory are uploaded except hidden files, `node_modules`, and `.lwid.json`.
+- The server never sees plaintext content.
 
 ## Workflow
 
-When a user asks to publish or share their app:
+When a user asks to publish or share an app:
 
-1. Verify the project directory contains an `index.html` (the entry point).
-2. **Assess storage**: if the app uses `localStorage`, has no persistent storage, or stores state that should survive across devices — migrate it to `lwid.store` / `lwid.blobs` before publishing (see the Storage section above).
-3. Run `lwid push --server {{SERVER_URL}} --dir .` from the project directory (first time) or `lwid push` (if `.lwid.json` exists).
-4. Parse the shareable URL from stdout.
-5. Give the user the **edit URL** (includes write key) so they can push updates later.
-6. If they want a view-only link for sharing, run `lwid info` and provide the view URL.
+1. Ensure the project has an `index.html`.
+2. Assess storage — see **Storage** section below. If the app uses `localStorage`, migrate it to `lwid.store` before pushing.
+3. Run `lwid push --server {{SERVER_URL}} --dir .` (first time) or `lwid push` (if `.lwid.json` exists).
+4. Give the user the **edit URL** (includes write key) for future updates.
+5. For a view-only sharing link, run `lwid info` and give the view URL.
 
-## Constraints
+---
 
-- Max project size: 10MB.
-- All files in the directory are uploaded except hidden files, `node_modules`, and `.lwid.json`.
-- The `.lwid.json` file is the only record of the keys — losing it means losing write access.
-- The server never sees plaintext content.
+## Storage — `lwid.store` and `lwid.blobs`
 
-## Storage — Should You Migrate the App?
+Every app deployed to {{SERVER_URL}} gets the `lwid-sdk.js` injected automatically. It provides `window.lwid.store` (JSON key-value) and `window.lwid.blobs` (binary). All data is encrypted client-side — the server never sees plaintext.
 
-**Before publishing, assess the app's storage needs and strongly prefer the lwid store over `localStorage`.**
+**Prefer `lwid.store` over `localStorage`** — `localStorage` is device-local, so state is lost when the link is opened on another device. `lwid.store` is tied to the project URL and shared across all visitors.
 
-### When to migrate (recommended)
+### `lwid.store` — JSON Key-Value
 
-If the app is relatively simple (no backend, no database, no server-side auth) and uses any of the following, **rewrite it to use `lwid.store` / `lwid.blobs` instead**:
-
-| App currently uses | Migrate to |
-|---|---|
-| `localStorage` for settings, scores, state | `lwid.store.get` / `lwid.store.set` |
-| `localStorage` for binary data (base64 images) | `lwid.blobs.get` / `lwid.blobs.set` |
-| No persistent storage at all | Consider adding `lwid.store` — state will survive page reloads and be shared across all visitors |
-| `IndexedDB` for simple key-value data | `lwid.store` / `lwid.blobs` |
-
-**Why migrate?** `localStorage` is browser-local and device-local — state is lost if the user opens the link on another device or in a different browser. `lwid.store` is tied to the project URL: any visitor with the link shares the same encrypted store, so state persists everywhere automatically.
-
-### Migration is simple
-
-Replace `localStorage` calls with `lwid.store` equivalents:
+Values are automatically serialized on write and deserialized on read. **Do not wrap in `JSON.stringify`/`JSON.parse`.**
 
 ```js
-// Before (localStorage)
-localStorage.setItem('score', JSON.stringify(value));
-const value = JSON.parse(localStorage.getItem('score'));
-
-// After (lwid.store) — async, but trivial to wrap
-await lwid.store.set('score', value);
-const value = await lwid.store.get('score');
+await lwid.store.set('key', value)      // value: any JSON-serializable type
+const v = await lwid.store.get('key')   // returns value, or null if not found
+await lwid.store.delete('key')
+const keys = await lwid.store.keys()    // returns string[]
 ```
 
-For binary data (images, files):
+### `lwid.blobs` — Binary Data
+
 ```js
-// Before (base64 in localStorage — wasteful and limited)
-localStorage.setItem('avatar', canvas.toDataURL());
-
-// After (lwid.blobs — efficient, encrypted)
-const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
-await lwid.blobs.set('avatar', await blob.arrayBuffer());
+await lwid.blobs.set('key', arrayBuffer)
+const buf = await lwid.blobs.get('key')   // returns ArrayBuffer | null
+await lwid.blobs.delete('key')
+const keys = await lwid.blobs.list()      // returns string[]
 ```
 
-### When NOT to migrate
+**Note:** `lwid.store` and `lwid.blobs` share one namespace. Use distinct key prefixes (e.g. `kv/settings`, `blob/avatar`) to avoid collisions.
 
-Only skip migration if the app:
-- Requires per-user isolation (lwid store is shared with all link holders)
-- Relies on a real backend / database with authentication
-- Stores data that must stay strictly private to one browser session
+### CLI access
 
-### Full store API
+```sh
+lwid kv mykey "value"        # set
+lwid kv mykey                # get
+lwid blob avatarkey file.png # upload
+lwid blob avatarkey          # download
+```
 
-See [SKILL-store.md]({{SERVER_URL}}/SKILL-store.md) for the complete API reference, limits, and worked examples (guestbook, image gallery).
+---
+
+## Migrating from localStorage
+
+When migrating an existing app from `localStorage` to `lwid.store`, there are two critical differences.
+
+### 1. `get()` returns `null`, not `undefined`
+
+`lwid.store.get()` returns `null` for missing keys — same as `localStorage.getItem()`. The bug happens when code checks `!== undefined` as the fallback guard, because `null !== undefined` is `true`, so the default is silently skipped:
+
+```js
+// BUG — broken with both localStorage and lwid.store
+const raw = localStorage.getItem('settings');
+const s = raw !== undefined ? JSON.parse(raw) : { theme: 'dark' };
+// null !== undefined is true → JSON.parse(null) → null, default never reached
+```
+
+**Fix — use `??` (nullish coalescing):**
+
+```js
+const s = await lwid.store.get('settings') ?? { theme: 'dark' };
+```
+
+### 2. No manual JSON serialization
+
+`lwid.store` auto-serializes. Remove all `JSON.parse`/`JSON.stringify` — wrapping in them will break the value.
+
+```js
+// Before
+localStorage.setItem('scores', JSON.stringify([1, 2, 3]));
+const scores = JSON.parse(localStorage.getItem('scores'));
+
+// After
+await lwid.store.set('scores', [1, 2, 3]);
+const scores = await lwid.store.get('scores');
+```
+
+### Migration cheat sheet
+
+| | localStorage | lwid.store |
+|---|---|---|
+| Write | `localStorage.setItem(k, JSON.stringify(v))` | `await lwid.store.set(k, v)` |
+| Read | `JSON.parse(localStorage.getItem(k))` | `await lwid.store.get(k)` |
+| Read + default | `... \|\| default` | `await lwid.store.get(k) ?? default` |
+| Missing key | `null` | `null` |
+| Missing key check | use `!= null` or `??` — **not** `!== undefined` | same |
+| Delete | `localStorage.removeItem(k)` | `await lwid.store.delete(k)` |
+| List keys | `Object.keys(localStorage)` | `await lwid.store.keys()` |
+| Async | No | Yes — always `await` |
+
+---
+
+## Complete Example: Guestbook
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Guestbook</title>
+</head>
+<body>
+  <h1>Guestbook</h1>
+  <input id="name" placeholder="Your name">
+  <textarea id="message" placeholder="Leave a message" rows="3"></textarea>
+  <button onclick="sign()">Sign</button>
+  <div id="entries"></div>
+  <script>
+    async function loadEntries() {
+      const entries = await lwid.store.get('guestbook') ?? [];
+      document.getElementById('entries').innerHTML = [...entries].reverse().map(e =>
+        `<p><strong>${e.name}</strong>: ${e.message}</p>`
+      ).join('');
+    }
+
+    async function sign() {
+      const name = document.getElementById('name').value.trim();
+      const message = document.getElementById('message').value.trim();
+      if (!name || !message) return;
+      const entries = await lwid.store.get('guestbook') ?? [];
+      entries.push({ name, message, time: Date.now() });
+      await lwid.store.set('guestbook', entries);
+      await loadEntries();
+    }
+
+    loadEntries();
+  </script>
+</body>
+</html>
+```

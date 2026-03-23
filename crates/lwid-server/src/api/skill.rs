@@ -1,4 +1,4 @@
-//! Handlers for /SKILL.md and /SKILL-store.md.
+//! Handler for /SKILL.md.
 //!
 //! Reads the Markdown file from the shell directory, replaces the
 //! `{{SERVER_URL}}` placeholder with `https://<Host>` derived from the
@@ -15,11 +15,6 @@ const PLACEHOLDER: &str = "{{SERVER_URL}}";
 /// Serve `/SKILL.md` with `{{SERVER_URL}}` replaced by the request origin.
 pub async fn get_skill(headers: HeaderMap, State(state): State<AppState>) -> Response {
     serve_skill_file("SKILL.md", &headers, &state).await
-}
-
-/// Serve `/SKILL-store.md` with `{{SERVER_URL}}` replaced by the request origin.
-pub async fn get_skill_store(headers: HeaderMap, State(state): State<AppState>) -> Response {
-    serve_skill_file("SKILL-store.md", &headers, &state).await
 }
 
 async fn serve_skill_file(filename: &str, headers: &HeaderMap, state: &AppState) -> Response {

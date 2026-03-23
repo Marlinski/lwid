@@ -19,7 +19,6 @@
     <nav class="landing__nav">
       <a href="/docs.html" class="landing__nav-link">Docs</a>
       <a href="/SKILL.md" class="landing__nav-link">Skill</a>
-      <a href="/SKILL-store.md" class="landing__nav-link">Store Skill</a>
       <div class="projects-dropdown" id="landing-projects-dropdown">
         <button class="landing__nav-link projects-dropdown__trigger" id="btn-landing-projects" title="My Projects">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1094,6 +1093,13 @@
         return;
       }
 
+      // If the fragment has no write key, check localStorage — the user may have
+      // visited this project before and the write key was stripped from the URL.
+      if (!writeKey) {
+        const saved = getSavedProjects().find(p => p.id === projectId);
+        if (saved?.writeKey) writeKey = saved.writeKey;
+      }
+
       currentProjectId = projectId;
       currentReadKey = readKey;
       currentWriteKey = writeKey;
@@ -1102,6 +1108,12 @@
 
       // Save to My Projects
       saveProject(projectId, readKey, writeKey);
+
+      // Strip the write key from the address bar so copying the URL is safe.
+      // The write key is already persisted in localStorage above.
+      if (writeKey) {
+        history.replaceState(null, '', window.location.pathname + '#' + readKey);
+      }
 
       // Configure toolbar
       $projectIdLabel.textContent = truncateId(projectId);
