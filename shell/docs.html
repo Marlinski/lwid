@@ -109,11 +109,13 @@
 
       <h3 id="cli">CLI</h3>
       <p>Install the <code>lwid</code> CLI:</p>
-      <pre class="docs__code"><code>curl -fsSL https://raw.githubusercontent.com/Marlinski/lwid/main/install.sh | sh</code></pre>
+      <p><strong>macOS / Linux:</strong></p>
+      <pre class="docs__code"><code id="docs-install-sh"></code></pre>
+      <p><strong>Windows (PowerShell):</strong></p>
+      <pre class="docs__code"><code id="docs-install-ps1"></code></pre>
 
       <h4>First push (new project)</h4>
-      <pre class="docs__code"><code>cd my-project/
-lwid push --server https://lookwhatidid.xyz --dir .</code></pre>
+      <pre class="docs__code"><code id="docs-push-cmd"></code></pre>
       <p>This generates keys, creates the project, encrypts and uploads all files,
          and prints the shareable URL. A <code>.lwid.json</code> config file is
          saved in the directory.</p>
@@ -293,6 +295,12 @@ lwid push --server https://lookwhatidid.xyz --dir .</code></pre>
     document.getElementById('docs-home-link').textContent = origin.replace(/^https?:\/\//, '');
     document.getElementById('docs-footer-link').textContent = origin.replace(/^https?:\/\//, '');
     document.getElementById('docs-skill-url').textContent = origin + '/SKILL.md';
+    document.getElementById('docs-install-sh').textContent =
+      `curl -fsSL https://raw.githubusercontent.com/Marlinski/lwid/main/install.sh | DEFAULT_SERVER=${origin} sh`;
+    document.getElementById('docs-install-ps1').textContent =
+      `$env:DEFAULT_SERVER="${origin}"; irm https://raw.githubusercontent.com/Marlinski/lwid/main/install.ps1 | iex`;
+    document.getElementById('docs-push-cmd').textContent =
+      `cd my-project/\nlwid push --server ${origin} --dir .`;
 
     // ── Quota table ─────────────────────────────────────────────────────
     function fmtBytes(n) {
