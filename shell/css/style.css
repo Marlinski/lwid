@@ -1622,3 +1622,25 @@ button:disabled {
   text-transform: uppercase;
   letter-spacing: .05em;
 }
+
+/* ---------------------------------------------------------------------------
+ * Site footer (landing page only)
+ * --------------------------------------------------------------------------- */
+
+.site-footer {
+  border-top: 1px solid var(--border);
+  padding: 1.5rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-subtle);
+}
+.site-footer a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.site-footer a:hover {
+  color: var(--text);
+}
+.site-footer.hidden {
+  display: none;
+}

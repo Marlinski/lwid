@@ -285,6 +285,9 @@
   <footer class="docs-footer">
     <p>
       <a href="/" id="docs-footer-link">lookwhatidid.xyz</a> &mdash;
+      <a href="/docs.html">Docs</a> &mdash;
+      <a href="/terms.html">Terms</a> &mdash;
+      <a id="docs-contact-link" href="#">Contact</a> &mdash;
       <a href="https://github.com/Marlinski/lwid" target="_blank" rel="noopener">GitHub</a> &mdash;
       MIT License
     </p>
@@ -292,9 +295,16 @@
 
   <script>
     const origin = window.location.origin;
-    document.getElementById('docs-home-link').textContent = origin.replace(/^https?:\/\//, '');
-    document.getElementById('docs-footer-link').textContent = origin.replace(/^https?:\/\//, '');
+    const host = origin.replace(/^https?:\/\//, '');
+    const parts = window.location.hostname.split('.');
+    const contact = parts.length >= 2
+      ? `contact@lookwhatidid.${parts.slice(-1)[0]}`
+      : `contact@lookwhatidid.xyz`;
+    document.getElementById('docs-home-link').textContent = host;
+    document.getElementById('docs-footer-link').textContent = host;
     document.getElementById('docs-skill-url').textContent = origin + '/SKILL.md';
+    const contactLink = document.getElementById('docs-contact-link');
+    if (contactLink) { contactLink.textContent = contact; contactLink.href = `mailto:${contact}`; }
     document.getElementById('docs-install-sh').textContent =
       `curl -fsSL https://raw.githubusercontent.com/Marlinski/lwid/main/install.sh | DEFAULT_SERVER=${origin} sh`;
     document.getElementById('docs-install-ps1').textContent =

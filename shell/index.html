@@ -342,6 +342,18 @@
   <!-- Toast -->
   <div id="toast" class="toast" aria-live="polite"></div>
 
+  <!-- Footer (landing only) -->
+  <footer class="site-footer" id="site-footer">
+    <p>
+      <a href="/" id="footer-home-link"></a> &mdash;
+      <a href="/docs.html">Docs</a> &mdash;
+      <a href="/terms.html">Terms</a> &mdash;
+      <a id="footer-contact-link" href="#">Contact</a> &mdash;
+      <a href="https://github.com/Marlinski/lwid" target="_blank" rel="noopener">GitHub</a> &mdash;
+      MIT License
+    </p>
+  </footer>
+
   <div id="auth-modal" class="modal" style="display:none" role="dialog" aria-modal="true" aria-label="Sign in">
     <div class="modal__overlay" onclick="authModal.close()"></div>
     <div class="modal__box">
@@ -438,6 +450,22 @@
     const $errorView     = document.getElementById('error-view');
     const $errorTitle    = document.getElementById('error-title');
     const $errorMessage  = document.getElementById('error-message');
+
+    const $siteFooter    = document.getElementById('site-footer');
+
+    // Populate footer links dynamically
+    {
+      const origin = window.location.origin;
+      const host = origin.replace(/^https?:\/\//, '');
+      const parts = window.location.hostname.split('.');
+      const contact = parts.length >= 2
+        ? `contact@lookwhatidid.${parts.slice(-1)[0]}`
+        : `contact@lookwhatidid.xyz`;
+      const homeLink = document.getElementById('footer-home-link');
+      const contactLink = document.getElementById('footer-contact-link');
+      if (homeLink) { homeLink.textContent = host; homeLink.href = '/'; }
+      if (contactLink) { contactLink.textContent = contact; contactLink.href = `mailto:${contact}`; }
+    }
 
     const $uploadOverlay   = document.getElementById('upload-overlay');
     const $uploadDropzone  = document.getElementById('upload-dropzone');
@@ -964,6 +992,7 @@
       show($landing);
       hide($projectView);
       hide($errorView);
+      show($siteFooter);
 
       // Skill link click-to-copy
       const $skillLink = document.getElementById('skill-link');
@@ -1072,6 +1101,7 @@
       hide($landing);
       show($projectView);
       hide($errorView);
+      hide($siteFooter);
 
       // Parse keys from hash fragment
       const fragment = window.location.hash.replace(/^#/, '');

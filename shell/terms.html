@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>lwid — Terms of Service</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+
+  <header class="docs-nav">
+    <a href="/" class="docs-nav__brand">lwid</a>
+    <span class="docs-nav__sep">/</span>
+    <span class="docs-nav__page">terms</span>
+    <div class="docs-nav__spacer"></div>
+    <a href="/docs.html" class="docs-nav__link">Docs</a>
+    <a href="/" class="docs-nav__link">Home</a>
+  </header>
+
+  <main class="docs">
+
+    <section class="docs__hero">
+      <h1>Terms of Service</h1>
+      <p>Last updated: March 2026</p>
+    </section>
+
+    <section class="docs__section">
+      <h2>1. Acceptance</h2>
+      <p>By using this service you agree to these terms. If you do not agree, do not use the service.</p>
+    </section>
+
+    <section class="docs__section">
+      <h2>2. Description of Service</h2>
+      <p>
+        lwid is an encrypted, zero-knowledge file sharing platform. Files are encrypted client-side before upload.
+        The server stores only opaque encrypted blobs and never has access to your content or encryption keys.
+      </p>
+    </section>
+
+    <section class="docs__section">
+      <h2>3. Acceptable Use</h2>
+      <p>You agree not to use this service to:</p>
+      <ul>
+        <li>Upload, share, or distribute illegal content of any kind.</li>
+        <li>Distribute malware, spyware, or any malicious code.</li>
+        <li>Violate the intellectual property rights of others.</li>
+        <li>Attempt to circumvent technical limits or abuse the service.</li>
+        <li>Use the service for spam or unsolicited communications.</li>
+      </ul>
+    </section>
+
+    <section class="docs__section">
+      <h2>4. Content and Encryption</h2>
+      <p>
+        Because all content is end-to-end encrypted, we cannot access, review, or moderate it.
+        You are solely responsible for the content you upload and share.
+        Do not lose your encryption keys — they cannot be recovered. Losing your keys means permanent loss of access to your project.
+      </p>
+    </section>
+
+    <section class="docs__section">
+      <h2>5. Data Retention</h2>
+      <p>
+        Projects may expire based on the TTL selected at creation time. We reserve the right to remove
+        content that violates these terms or to discontinue the service at any time with reasonable notice.
+      </p>
+    </section>
+
+    <section class="docs__section">
+      <h2>6. Disclaimer of Warranties</h2>
+      <p>
+        The service is provided "as is" without warranty of any kind. We make no guarantees regarding
+        uptime, data durability, or fitness for a particular purpose.
+      </p>
+    </section>
+
+    <section class="docs__section">
+      <h2>7. Limitation of Liability</h2>
+      <p>
+        To the fullest extent permitted by law, we shall not be liable for any indirect, incidental,
+        special, or consequential damages arising from your use of the service.
+      </p>
+    </section>
+
+    <section class="docs__section">
+      <h2>8. Contact</h2>
+      <p>
+        For questions about these terms, contact us at <a id="terms-contact" href="#"></a>.
+      </p>
+    </section>
+
+  </main>
+
+  <footer class="docs-footer">
+    <p>
+      <a href="/" id="terms-footer-link"></a> &mdash;
+      <a href="/docs.html">Docs</a> &mdash;
+      <a href="https://github.com/Marlinski/lwid" target="_blank" rel="noopener">GitHub</a> &mdash;
+      MIT License
+    </p>
+  </footer>
+
+  <script>
+    const origin = window.location.origin;
+    const host = origin.replace(/^https?:\/\//, '');
+    const hostname = window.location.hostname;
+    const parts = hostname.split('.');
+    const contact = parts.length >= 2
+      ? `contact@lookwhatidid.${parts.slice(-1)[0]}`
+      : `contact@lookwhatidid.xyz`;
+    document.getElementById('terms-footer-link').textContent = host;
+    document.getElementById('terms-contact').href = `mailto:${contact}`;
+    document.getElementById('terms-contact').textContent = contact;
+  </script>
+
+</body>
+</html>
