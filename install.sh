@@ -41,6 +41,14 @@ chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 
 printf "\nlwid installed to %s/%s\n" "${INSTALL_DIR}" "${BINARY_NAME}"
 
+# Write default server config if DEFAULT_SERVER is set
+if [ -n "${DEFAULT_SERVER:-}" ]; then
+  CONFIG_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/lwid"
+  mkdir -p "${CONFIG_DIR}"
+  printf "[defaults]\nserver = \"%s\"\n" "${DEFAULT_SERVER}" > "${CONFIG_DIR}/config.toml"
+  printf "Default server set to %s\n" "${DEFAULT_SERVER}"
+fi
+
 # PATH hint
 case ":${PATH}:" in
   *":${INSTALL_DIR}:"*) ;;

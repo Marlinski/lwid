@@ -1,9 +1,9 @@
 use clap::{Parser, Subcommand};
-use lwid_common::limits::DEFAULT_SERVER;
 
 mod client;
 mod clone;
 mod config;
+mod global_config;
 mod login;
 mod pull;
 mod push;
@@ -21,8 +21,8 @@ enum Commands {
     /// Push local files to lookwhatidid (creates project if needed)
     Push {
         /// Server URL override (for development only)
-        #[arg(long, default_value = DEFAULT_SERVER, hide = true)]
-        server: String,
+        #[arg(long, hide = true)]
+        server: Option<String>,
 
         /// Directory to push (default: current directory)
         #[arg(long, default_value = ".")]
@@ -74,8 +74,8 @@ enum Commands {
     /// Authenticate with lookwhatidid via browser
     Login {
         /// Server URL override (for development only)
-        #[arg(long, default_value = DEFAULT_SERVER, hide = true)]
-        server: String,
+        #[arg(long, hide = true)]
+        server: Option<String>,
     },
     /// Remove saved authentication token
     Logout,
@@ -93,6 +93,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ttl,
             paths,
         }) => {
+            let server = server.unwrap_or_else(global_config::default_server);
             push::run(&dir, &server, yes, &paths, Some(&ttl)).await?;
         }
         Some(Commands::Pull) => {
@@ -129,6 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
         Some(Commands::Login { server }) => {
+            let server = server.unwrap_or_else(global_config::default_server);
             login::login(&server).await?;
         }
         Some(Commands::Logout) => {
@@ -136,7 +138,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         None => {
             // Default: push current dir
-            push::run(".", DEFAULT_SERVER, false, &[], Some("7d")).await?;
+            push::run(".", &global_config::default_server(), false, &[], Some("7d")).await?;
         }
     }
 

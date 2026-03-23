@@ -32,4 +32,14 @@ if ($UserPath -notlike "*$InstallDir*") {
 }
 
 Write-Host "`nlwid installed to $InstallPath"
+
+# Write default server config if DEFAULT_SERVER is set
+if ($env:DEFAULT_SERVER -and $env:DEFAULT_SERVER -ne '') {
+    $ConfigDir = Join-Path $env:APPDATA 'lwid'
+    New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
+    $ConfigPath = Join-Path $ConfigDir 'config.toml'
+    "[defaults]`nserver = `"$($env:DEFAULT_SERVER)`"" | Set-Content -Path $ConfigPath -Encoding UTF8
+    Write-Host "Default server set to $($env:DEFAULT_SERVER)"
+}
+
 Write-Host "Run: lwid --help"
