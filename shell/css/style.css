@@ -223,8 +223,7 @@ button:disabled {
 }
 
 .landing__agent-hint {
-  font-size: 0.9rem;
-  color: var(--text-subtle);
+  color: var(--text-muted);
 }
 
 .landing__skill-link {
@@ -741,6 +740,24 @@ button:disabled {
   flex-shrink: 0;
 }
 
+.source-panel__file .source-panel__preview-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: 0 0.25rem;
+  line-height: 1;
+  opacity: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.source-panel__file:hover .source-panel__preview-btn {
+  opacity: 1;
+}
+.source-panel__file .source-panel__preview-btn:hover {
+  color: var(--text);
+}
+
 .source-panel__store-section {
   border-top: 1px solid var(--border);
 }
@@ -807,6 +824,27 @@ button:disabled {
   font-family: var(--font-mono);
   font-size: 0.8rem;
   color: var(--text-muted);
+}
+
+.source-viewer__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.source-viewer__entrypoint {
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  line-height: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.source-viewer__entrypoint:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
 }
 
 .source-viewer__close {
@@ -1349,6 +1387,7 @@ button:disabled {
   top: calc(100% + 4px);
   right: 0;
   min-width: 260px;
+  max-width: min(420px, calc(100vw - 1rem));
   max-height: 360px;
   overflow-y: auto;
   background: var(--bg-raised);
@@ -1358,6 +1397,12 @@ button:disabled {
   z-index: 120;
   padding: 0.25rem;
   animation: dropdown-in 0.12s ease-out;
+}
+
+/* In the toolbar the trigger is on the far left — anchor menu to the left edge instead */
+#toolbar-projects-menu {
+  right: auto;
+  left: 0;
 }
 
 .projects-dropdown__empty {

@@ -4,8 +4,8 @@
  * Orchestrates the full lifecycle: creating projects, pushing new versions,
  * pulling content, and managing version history.
  *
- * Manifests are stored as **plaintext** JSON blobs. File contents are
- * encrypted with AES-256-GCM using the read key.
+ * Manifests store file paths as AES-256-GCM ciphertext (schema version 100).
+ * File contents are encrypted with AES-256-GCM using the read key.
  *
  * Pure ES module, no external dependencies beyond local modules.
  */
@@ -85,8 +85,8 @@ export async function createNewProject(api) {
  * Push a new version of the project's file tree.
  *
  * Encrypts each file, uploads blobs that don't already exist, builds a
- * plaintext manifest, uploads it, then signs the manifest CID and
- * updates the project root.
+ * manifest with encrypted paths (schema version 100), uploads it, then
+ * signs the manifest CID and updates the project root.
  *
  * @param {import('./api.js').ApiClient} api — API client instance
  * @param {string} projectId — project identifier
@@ -114,21 +114,15 @@ export async function pushVersion(api, projectId, readKey, writeKey, files) {
     });
   }
 
-  // 2. Determine version number and parent CID
-  let version = 1;
+  // 2. Determine parent CID
   let parentCid = null;
-
   const project = await api.getProject(projectId);
   if (project.root_cid) {
     parentCid = project.root_cid;
-    // Fetch current manifest (plaintext, no decryption needed)
-    const manifestBlob = await api.getBlob(project.root_cid);
-    const currentManifest = deserializeManifest(new Uint8Array(manifestBlob));
-    version = currentManifest.version + 1;
   }
 
-  // 3. Build, serialize, and upload the new manifest (plaintext)
-  const manifest = createManifest(fileEntries, parentCid, version);
+  // 3. Build, serialize, and upload the new manifest (paths encrypted)
+  const manifest = await createManifest(fileEntries, parentCid, readKey);
   const manifestBytes = serializeManifest(manifest);
   const manifestCid = await computeCid(manifestBytes);
   await api.uploadBlob(manifestBytes);
@@ -139,7 +133,7 @@ export async function pushVersion(api, projectId, readKey, writeKey, files) {
   const signatureBase64 = toStandardBase64(signature);
   await api.updateRoot(projectId, manifestCid, signatureBase64);
 
-  return { manifestCid, version };
+  return { manifestCid, version: manifest.version };
 }
 
 // ---------------------------------------------------------------------------
@@ -149,8 +143,8 @@ export async function pushVersion(api, projectId, readKey, writeKey, files) {
 /**
  * Pull a specific version by its manifest CID.
  *
- * Fetches the plaintext manifest, then fetches and decrypts every
- * file referenced by it.
+ * Fetches the manifest (decrypting paths with the read key), then fetches
+ * and decrypts every file referenced by it.
  *
  * @param {import('./api.js').ApiClient} api — API client instance
  * @param {string} readKey — base64url-encoded AES-256 key
@@ -160,9 +154,9 @@ export async function pushVersion(api, projectId, readKey, writeKey, files) {
  *   - `files` — map from file path to decrypted content
  */
 export async function pullVersion(api, readKey, manifestCid) {
-  // Fetch the manifest (plaintext, no decryption needed)
+  // Fetch the manifest and decrypt paths
   const manifestBlob = await api.getBlob(manifestCid);
-  const manifest = deserializeManifest(new Uint8Array(manifestBlob));
+  const manifest = await deserializeManifest(new Uint8Array(manifestBlob), readKey);
 
   // Fetch and decrypt each file
   /** @type {Map<string, Uint8Array>} */
@@ -204,20 +198,21 @@ export async function pullLatest(api, projectId, readKey) {
  * Retrieve the full version history of a project.
  *
  * Walks the manifest chain from newest to oldest, returning metadata
- * for each version. Manifests are plaintext so no read key is needed
- * for traversal.
+ * for each version. The read key is required to decrypt file paths stored
+ * in schema version >= 100 manifests.
  *
  * @param {import('./api.js').ApiClient} api — API client instance
  * @param {string} projectId — project identifier
+ * @param {string} readKey — base64url-encoded AES-256 key for decrypting paths
  * @returns {Promise<Array<{ version: number, timestamp: string, cid: string }>>}
  *   Array ordered from newest to oldest.
  */
-export async function getVersionHistory(api, projectId) {
+export async function getVersionHistory(api, projectId, readKey) {
   const project = await api.getProject(projectId);
   if (!project.root_cid) {
     return [];
   }
-  return walkVersionChain(project.root_cid, api);
+  return walkVersionChain(project.root_cid, api, readKey);
 }
 
 // ---------------------------------------------------------------------------

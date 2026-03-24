@@ -7,6 +7,7 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Key, Nonce,
 };
+use base64::prelude::*;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use thiserror::Error;
@@ -73,6 +74,23 @@ pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, CryptoError> {
         .map_err(|e| CryptoError::Decrypt(e.to_string()))
 }
 
+/// Encrypt a file path string using AES-256-GCM and return it as a base64url string.
+///
+/// Format: base64url(nonce || ciphertext) — same wire format as file blobs.
+pub fn encrypt_path(key: &[u8; 32], path: &str) -> Result<String, CryptoError> {
+    let encrypted = encrypt(key, path.as_bytes())?;
+    Ok(BASE64_URL_SAFE_NO_PAD.encode(&encrypted))
+}
+
+/// Decrypt a base64url-encoded encrypted path back to a UTF-8 string.
+pub fn decrypt_path(key: &[u8; 32], encoded: &str) -> Result<String, CryptoError> {
+    let bytes = BASE64_URL_SAFE_NO_PAD
+        .decode(encoded)
+        .map_err(|e| CryptoError::Decrypt(format!("base64 decode: {e}")))?;
+    let plaintext = decrypt(key, &bytes)?;
+    String::from_utf8(plaintext).map_err(|e| CryptoError::Decrypt(format!("utf8: {e}")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,5 +132,14 @@ mod tests {
         // But both decrypt to the same plaintext
         assert_eq!(decrypt(&key, &a).unwrap(), plaintext);
         assert_eq!(decrypt(&key, &b).unwrap(), plaintext);
+    }
+
+    #[test]
+    fn encrypt_decrypt_path_roundtrip() {
+        let key = generate_read_key();
+        let path = "src/components/App.tsx";
+        let encoded = encrypt_path(&key, path).expect("encrypt_path");
+        let decoded = decrypt_path(&key, &encoded).expect("decrypt_path");
+        assert_eq!(decoded, path);
     }
 }

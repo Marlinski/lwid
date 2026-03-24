@@ -40,6 +40,8 @@ pub async fn pull_files(
     let manifest_bytes = client.get_blob(&root_cid).await?;
     let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)?;
 
+    let is_legacy = manifest["version"].as_u64().unwrap_or(1) < lwid_common::manifest::SCHEMA_ENCRYPTED_PATHS;
+
     let files = manifest["files"]
         .as_array()
         .ok_or("manifest has no files array")?;
@@ -48,9 +50,15 @@ pub async fn pull_files(
 
     // 3. Download and decrypt each file
     for file_entry in files {
-        let path = file_entry["path"]
+        let raw_path = file_entry["path"]
             .as_str()
             .ok_or("file entry missing path")?;
+        let path = if is_legacy {
+            raw_path.to_string()
+        } else {
+            crypto::decrypt_path(read_key, raw_path)
+                .map_err(|e| format!("failed to decrypt path: {e}"))?
+        };
         let cid = file_entry["cid"]
             .as_str()
             .ok_or("file entry missing cid")?;
@@ -58,7 +66,7 @@ pub async fn pull_files(
         let encrypted_content = client.get_blob(cid).await?;
         let content = crypto::decrypt(read_key, &encrypted_content)?;
 
-        let file_path = dest.join(path);
+        let file_path = dest.join(&path);
         if let Some(parent) = file_path.parent() {
             std::fs::create_dir_all(parent)?;
         }

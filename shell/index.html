@@ -49,9 +49,9 @@
     </nav>
     <h1 class="landing__title">lookwhatidid</h1>
     <p class="landing__subtitle">
-      Share your vibe-coded static site with the world<br>
+      Deploy your app in seconds, get a secure link, share it.<br>
       <span class="landing__agent-hint">
-        or just ask your agent to do it for you
+        Ask your agent to read this skill and deploy for you:
         <span class="landing__skill-link" id="skill-link" title="Click to copy skill URL"></span>
       </span>
     </p>
@@ -293,7 +293,10 @@
         <div id="source-viewer" class="source-viewer hidden">
           <div class="source-viewer__header">
             <span id="source-viewer-path" class="source-viewer__path"></span>
-            <button id="btn-close-viewer" class="source-viewer__close" title="Back to preview">&times;</button>
+            <div class="source-viewer__actions">
+              <button id="btn-set-entrypoint" class="source-viewer__entrypoint hidden" title="Set as entry point">Set as entry point</button>
+              <button id="btn-close-viewer" class="source-viewer__close" title="Back to preview">&times;</button>
+            </div>
           </div>
           <pre id="source-viewer-code" class="source-viewer__code"></pre>
           <img id="source-viewer-img" class="source-viewer__img hidden" alt="Image preview">
@@ -373,7 +376,6 @@
     import { decodeKeys, deriveStoreToken, encodeKeys, encrypt, decrypt, fromBase64Url, generateReadKey, generateWriteKeyPair, sign, toBase64Url } from '/js/crypto.js';
     import {
       pushVersion,
-      pullLatest,
       pullVersion,
       getVersionHistory,
       buildProjectUrl,
@@ -441,6 +443,7 @@
     const $sourceViewerCode = document.getElementById('source-viewer-code');
     const $sourceViewerImg  = document.getElementById('source-viewer-img');
     const $btnCloseViewer   = document.getElementById('btn-close-viewer');
+    const $btnSetEntrypoint = document.getElementById('btn-set-entrypoint');
 
     // History
     const $historyPanel  = document.getElementById('history-panel');
@@ -484,8 +487,9 @@
     let currentProjectId = null;
     let currentReadKey   = null;
     let currentWriteKey  = null;
-    let currentManifest  = null;
-    let currentExpiresAt = null;
+    let currentManifest    = null;
+    let currentManifestCid = null;
+    let currentExpiresAt   = null;
     /** @type {Map<string, Uint8Array>|null} */
     let currentFiles     = null;
     /** @type {File[]} */
@@ -779,13 +783,53 @@
     }
 
     /**
+     * Resolve the entry point for a project's files.
+     * Priority: index.html > saved entry in store > first .html file > first viewable file > 'index.html'
+     */
+    async function resolveEntryPoint(files, manifestCid) {
+      // 1. index.html always wins
+      if (files.has('index.html')) return 'index.html';
+
+      // 2. Check saved entry point in store (only if store is available)
+      if (currentStoreToken && manifestCid) {
+        try {
+          const key = `entry:${manifestCid}`;
+          const serverKey = await obfuscateKey(key);
+          const encrypted = await api.getStoreValue(currentProjectId, serverKey, currentStoreToken);
+          if (encrypted) {
+            const plain = await decrypt(currentReadKey, encrypted);
+            const saved = new TextDecoder().decode(plain);
+            if (files.has(saved)) return saved;
+          }
+        } catch { /* ignore store errors */ }
+      }
+
+      // 3. First .html file alphabetically
+      const paths = Array.from(files.keys()).sort();
+      const firstHtml = paths.find(p => p.endsWith('.html'));
+      if (firstHtml) return firstHtml;
+
+      // 4. First viewable file (text or image)
+      const firstViewable = paths.find(p => {
+        const mime = guessMimeType(p);
+        return mime.startsWith('text/') || mime.startsWith('image/') ||
+               mime === 'application/javascript' || mime === 'application/json' ||
+               mime === 'application/xml';
+      });
+      if (firstViewable) return firstViewable;
+
+      // 5. Fallback
+      return 'index.html';
+    }
+
+    /**
      * Send decrypted files to the Service Worker and load the sandbox iframe.
      *
      * Uses MessageChannel so the SW can acknowledge that files are cached
      * before we point the iframe at /sandbox/. This eliminates the race
      * condition where the iframe fires fetch before the SW has the files.
      */
-    async function sendFilesToSW(files) {
+    async function sendFilesToSW(files, entryPoint) {
       const sw = navigator.serviceWorker.controller;
       if (!sw) {
         throw new Error('Service Worker not controlling page — try refreshing.');
@@ -818,7 +862,7 @@
       });
 
       // Point the iframe at the sandbox path — SW will intercept and serve
-      $sandboxFrame.src = '/sandbox/index.html';
+      $sandboxFrame.src = '/sandbox/' + entryPoint;
     }
 
     // -----------------------------------------------------------------------
@@ -1020,7 +1064,9 @@
         $dropzone.classList.remove('dropzone--active');
         const files = Array.from(e.dataTransfer.files);
         if (files.length > 0) {
-          stagedFiles = files;
+          const merged = new Map(stagedFiles.map(f => [f.name, f]));
+          for (const f of files) merged.set(f.name, f);
+          stagedFiles = Array.from(merged.values());
           renderFileList(stagedFiles, $fileList);
           show($btnCreate);
           show($ttlSelector);
@@ -1031,7 +1077,9 @@
       $fileInput.addEventListener('change', () => {
         const files = Array.from($fileInput.files);
         if (files.length > 0) {
-          stagedFiles = files;
+          const merged = new Map(stagedFiles.map(f => [f.name, f]));
+          for (const f of files) merged.set(f.name, f);
+          stagedFiles = Array.from(merged.values());
           renderFileList(stagedFiles, $fileList);
           show($btnCreate);
           show($ttlSelector);
@@ -1285,6 +1333,24 @@
 
       // --- Source viewer ---
       $btnCloseViewer.addEventListener('click', closeSourceViewer);
+      $btnSetEntrypoint.addEventListener('click', async () => {
+        const path = $sourceViewerPath.textContent;
+        if (!path || !currentManifestCid || !currentWriteKey || !currentStoreToken) return;
+        try {
+          const key = `entry:${currentManifestCid}`;
+          const serverKey = await obfuscateKey(key);
+          const plain = new TextEncoder().encode(path);
+          const encrypted = await encrypt(currentReadKey, plain);
+          await api.putStoreValue(currentProjectId, serverKey, encrypted, currentStoreToken);
+          // Reload iframe to the new entry point
+          $sandboxFrame.src = '/sandbox/' + path;
+          closeSourceViewer();
+          showToast('Entry point updated.');
+        } catch (err) {
+          console.error('Failed to set entry point:', err);
+          showToast(`Error: ${err.message}`);
+        }
+      });
 
       // --- History ---
       $btnHistory.addEventListener('click', () => {
@@ -1362,6 +1428,18 @@
           <span class="source-panel__file-name" title="${path}">${path}</span>
           <span class="source-panel__file-size">${formatBytes(size)}</span>
         `;
+        if (path.endsWith('.html')) {
+          const $eye = document.createElement('button');
+          $eye.className = 'source-panel__preview-btn';
+          $eye.title = 'Preview in iframe';
+          $eye.textContent = '⊙';
+          $eye.addEventListener('click', (e) => {
+            e.stopPropagation(); // don't also open the source viewer
+            $sandboxFrame.src = '/sandbox/' + path;
+            closeSourceViewer();
+          });
+          li.appendChild($eye);
+        }
         li.addEventListener('click', () => openSourceViewer(path));
         $sourceTree.appendChild(li);
       }
@@ -1552,6 +1630,14 @@
         hide($sourceViewerImg);
       }
 
+      // Show "Set as entry point" button only for authors viewing HTML files
+      const isHtml = path.endsWith('.html');
+      if (currentWriteKey && currentManifestCid && isHtml) {
+        show($btnSetEntrypoint);
+      } else {
+        hide($btnSetEntrypoint);
+      }
+
       show($sourceViewer);
       hide($sandboxFrame);
     }
@@ -1580,8 +1666,16 @@
         let result;
         if (manifestCid) {
           result = await pullVersion(api, currentReadKey, manifestCid);
+          currentManifestCid = manifestCid;
         } else {
-          result = await pullLatest(api, currentProjectId, currentReadKey);
+          const project = await api.getProject(currentProjectId);
+          if (!project.root_cid) {
+            hide($loadingOverlay);
+            showToast('This project has no published versions yet.');
+            return;
+          }
+          currentManifestCid = project.root_cid;
+          result = await pullVersion(api, currentReadKey, project.root_cid);
         }
 
         if (!result) {
@@ -1599,24 +1693,14 @@
         // Load store entries (non-blocking — don't await)
         loadStoreEntries();
 
-        // Send files to Service Worker and load sandbox iframe
-        await sendFilesToSW(result.files);
+        // Resolve entry point and send files to Service Worker
+        const entryPoint = await resolveEntryPoint(result.files, currentManifestCid);
+        await sendFilesToSW(result.files, entryPoint);
 
-        // If no index.html, open source panel and show first text file
-        const hasIndex = result.files.has('index.html');
-        if (!hasIndex) {
+        // If entry point is not an HTML file, open source panel and show its contents
+        if (!entryPoint.endsWith('.html')) {
           $sourcePanel.classList.add('source-panel--open');
-          // Find first viewable (non-binary) file
-          const paths = Array.from(result.files.keys()).sort();
-          const firstViewable = paths.find(p => {
-            const mime = guessMimeType(p);
-            return mime.startsWith('text/') || mime.startsWith('image/') ||
-                   mime === 'application/javascript' || mime === 'application/json' ||
-                   mime === 'application/xml';
-          });
-          if (firstViewable) {
-            openSourceViewer(firstViewable);
-          }
+          openSourceViewer(entryPoint);
         }
 
         hide($loadingOverlay);
@@ -1656,7 +1740,7 @@
       $historyList.innerHTML = '<li style="padding:1rem;color:var(--text-muted)">Loading...</li>';
 
       try {
-        const versions = await getVersionHistory(api, currentProjectId);
+        const versions = await getVersionHistory(api, currentProjectId, currentReadKey);
 
         $historyList.innerHTML = '';
         for (let i = 0; i < versions.length; i++) {
@@ -1666,7 +1750,7 @@
           const displayVersion = versions.length - i;
           const li = document.createElement('li');
           li.className = 'history-panel__item';
-          if (currentManifest && currentManifest.version === v.version) {
+          if (currentManifestCid && currentManifestCid === v.cid) {
             li.classList.add('history-panel__item--active');
           }
 
@@ -1678,7 +1762,7 @@
               <span class="history-panel__version">v${displayVersion}</span>
               <span class="history-panel__time">${timeStr}</span>
             </div>
-            ${currentWriteKey && currentManifest && currentManifest.version !== v.version
+            ${currentWriteKey && currentManifestCid && currentManifestCid !== v.cid
               ? '<button class="history-panel__restore">Restore</button>'
               : ''}
           `;
@@ -1752,7 +1836,9 @@
         $uploadDropzone.classList.remove('dropzone--active');
         const files = Array.from(e.dataTransfer.files);
         if (files.length > 0) {
-          uploadStagedFiles = files;
+          const merged = new Map(uploadStagedFiles.map(f => [f.name, f]));
+          for (const f of files) merged.set(f.name, f);
+          uploadStagedFiles = Array.from(merged.values());
           renderFileList(uploadStagedFiles, $uploadFileList);
           $btnUploadPush.disabled = false;
         }
@@ -1761,7 +1847,9 @@
       $uploadFileInput.addEventListener('change', () => {
         const files = Array.from($uploadFileInput.files);
         if (files.length > 0) {
-          uploadStagedFiles = files;
+          const merged = new Map(uploadStagedFiles.map(f => [f.name, f]));
+          for (const f of files) merged.set(f.name, f);
+          uploadStagedFiles = Array.from(merged.values());
           renderFileList(uploadStagedFiles, $uploadFileList);
           $btnUploadPush.disabled = false;
         }

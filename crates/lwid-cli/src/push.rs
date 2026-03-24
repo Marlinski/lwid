@@ -7,6 +7,7 @@ use ed25519_dalek::{Signer, SigningKey};
 use lwid_common::cid::Cid;
 use lwid_common::crypto;
 use lwid_common::limits::{self, MAX_BLOB_SIZE, MAX_PROJECT_SIZE};
+use lwid_common::manifest::SCHEMA_ENCRYPTED_PATHS;
 
 use crate::client::Client;
 use crate::config::{self, ProjectConfig};
@@ -236,8 +237,9 @@ pub async fn run(
             eprintln!("  skip (exists): {}", f.path);
         }
 
+        let encrypted_path = crypto::encrypt_path(&read_key, &f.path)?;
         manifest_files.push(serde_json::json!({
-            "path": f.path,
+            "path": encrypted_path,
             "cid": cid.to_string(),
             "size": f.content.len(),
         }));
@@ -254,13 +256,14 @@ pub async fn run(
             &client,
             parent_cid.as_deref().unwrap(),
             manifest_files,
+            &read_key,
         )
         .await?
     } else {
         manifest_files
     };
 
-    let version = if parent_cid.is_some() { 0 } else { 1 };
+    let version = SCHEMA_ENCRYPTED_PATHS;
 
     let manifest = serde_json::json!({
         "version": version,
@@ -305,36 +308,56 @@ pub async fn run(
 /// Files in `new_files` replace any existing entry with the same path. Files
 /// in the previous manifest that are not in `new_files` are preserved.
 ///
-/// The parent manifest is plaintext JSON — no decryption needed.
+/// Handles both legacy (plaintext path) and schema-v1 (encrypted path) manifests.
 async fn merge_with_existing(
     client: &Client,
     parent_cid: &str,
     new_files: Vec<serde_json::Value>,
+    read_key: &[u8; 32],
 ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
     let manifest_bytes = client.get_blob(parent_cid).await?;
     let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)?;
 
+    // Determine if the existing manifest uses encrypted paths
+    let is_legacy = manifest["version"].as_u64().unwrap_or(1) < SCHEMA_ENCRYPTED_PATHS;
+
     let mut merged: Vec<serde_json::Value> = Vec::new();
 
-    // Collect new file paths for quick lookup
-    let new_paths: std::collections::HashSet<&str> = new_files
+    // new_files already have encrypted paths (just produced by the push loop).
+    // Collect the *plaintext* paths of new files for dedup lookup.
+    let new_plaintext_paths: std::collections::HashSet<String> = new_files
         .iter()
         .filter_map(|f| f["path"].as_str())
+        .filter_map(|enc| crypto::decrypt_path(read_key, enc).ok())
         .collect();
 
-    // Keep existing files that aren't being replaced
+    // Keep existing files whose plaintext path is not being replaced.
+    // Re-encrypt their paths to schema-v1 format regardless of the old format.
     if let Some(existing) = manifest["files"].as_array() {
         for entry in existing {
-            if let Some(path) = entry["path"].as_str() {
-                if !new_paths.contains(path) {
-                    merged.push(entry.clone());
+            if let Some(raw_path) = entry["path"].as_str() {
+                let plaintext_path = if is_legacy {
+                    raw_path.to_string()
+                } else {
+                    match crypto::decrypt_path(read_key, raw_path) {
+                        Ok(p) => p,
+                        Err(_) => continue, // skip unreadable entries
+                    }
+                };
+                if !new_plaintext_paths.contains(&plaintext_path) {
+                    // Re-emit with encrypted path (schema-v1)
+                    let encrypted_path = crypto::encrypt_path(read_key, &plaintext_path)?;
+                    let mut updated = entry.clone();
+                    updated["path"] = serde_json::Value::String(encrypted_path);
+                    merged.push(updated);
                 }
             }
         }
     }
 
-    // Add all new files
+    // Add all new files (already have encrypted paths)
     merged.extend(new_files);
+    // Sort by encrypted path string (order doesn't matter semantically, just consistent)
     merged.sort_by(|a, b| {
         let pa = a["path"].as_str().unwrap_or("");
         let pb = b["path"].as_str().unwrap_or("");

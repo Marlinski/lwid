@@ -2,15 +2,35 @@
 //!
 //! A manifest describes one version (snapshot) of a project's file tree.
 //! Manifests are stored as **plaintext** JSON blobs so the server can inspect
-//! metadata (file paths, sizes, blob CIDs) while actual file contents remain
-//! encrypted.
+//! metadata (sizes, blob CIDs) while file contents and paths remain encrypted.
+//!
+//! # Schema versions
+//!
+//! The `version` field doubles as a schema discriminator:
+//!
+//! - `version < 100` — **legacy**: file `path` is stored as plaintext.
+//! - `version >= 100` — **schema v1** ([`SCHEMA_ENCRYPTED_PATHS`]): file `path`
+//!   is AES-256-GCM encrypted with the project's read key, then base64url-encoded.
+//!   The push counter (how many times the project has been pushed) is no longer
+//!   tracked in the manifest — use the position in the `parent_cid` chain instead.
 
 use serde::{Deserialize, Serialize};
+
+/// Schema version where file paths are AES-256-GCM encrypted.
+///
+/// Any manifest with `version >= SCHEMA_ENCRYPTED_PATHS` stores its
+/// `FileEntry.path` fields as base64url-encoded ciphertext (IV || ciphertext)
+/// encrypted with the project read key.
+pub const SCHEMA_ENCRYPTED_PATHS: u64 = 100;
 
 /// A single file entry inside a manifest.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FileEntry {
-    /// Relative path within the project (e.g. `"src/index.html"`).
+    /// Relative path within the project.
+    ///
+    /// For legacy manifests (`version < 100`) this is plaintext.
+    /// For schema-v1 manifests (`version >= 100`) this is a base64url-encoded
+    /// AES-256-GCM ciphertext of the plaintext path.
     pub path: String,
     /// CID of the encrypted blob that stores this file's content.
     pub cid: String,
@@ -21,7 +41,10 @@ pub struct FileEntry {
 /// A project manifest — a snapshot of the file tree at a specific version.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Manifest {
-    /// 1-based version number.
+    /// Schema version discriminator (see module docs).
+    ///
+    /// Values < 100 are legacy (plaintext paths).
+    /// Values >= 100 use encrypted paths ([`SCHEMA_ENCRYPTED_PATHS`]).
     pub version: u64,
     /// CID of the parent (previous) manifest, or `None` for the first version.
     pub parent_cid: Option<String>,
@@ -29,6 +52,13 @@ pub struct Manifest {
     pub timestamp: String,
     /// The files included in this version.
     pub files: Vec<FileEntry>,
+}
+
+impl Manifest {
+    /// Returns `true` if this manifest uses the legacy plaintext-path format.
+    pub fn is_legacy(&self) -> bool {
+        self.version < SCHEMA_ENCRYPTED_PATHS
+    }
 }
 
 impl Manifest {
