@@ -7,6 +7,7 @@ mod global_config;
 mod login;
 mod pull;
 mod push;
+mod secrets;
 mod store;
 
 #[derive(Parser)]
@@ -31,6 +32,10 @@ enum Commands {
         /// Skip confirmation prompt on first push
         #[arg(short = 'y', long = "yes")]
         yes: bool,
+
+        /// Force push even if secrets are detected
+        #[arg(short = 'f', long = "force")]
+        force: bool,
 
         /// Time-to-live for new projects: 1h, 1d, 7d, 30d, never (default: 7d)
         #[arg(long, default_value = "7d")]
@@ -90,11 +95,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             server,
             dir,
             yes,
+            force,
             ttl,
             paths,
         }) => {
             let server = server.unwrap_or_else(global_config::default_server);
-            push::run(&dir, &server, yes, &paths, Some(&ttl)).await?;
+            push::run(&dir, &server, yes, force, &paths, Some(&ttl)).await?;
         }
         Some(Commands::Pull) => {
             pull::run(".").await?;
@@ -138,7 +144,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         None => {
             // Default: push current dir
-            push::run(".", &global_config::default_server(), false, &[], Some("7d")).await?;
+            push::run(".", &global_config::default_server(), false, false, &[], Some("7d")).await?;
         }
     }
 

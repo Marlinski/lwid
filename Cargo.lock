@@ -1741,6 +1741,7 @@ dependencies = [
  "lwid-common",
  "open",
  "rand_core 0.6.4",
+ "regex",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

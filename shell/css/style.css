@@ -1689,3 +1689,135 @@ button:disabled {
 .site-footer.hidden {
   display: none;
 }
+
+/* ── Secret Detection Modal ──────────────────────────────────────────── */
+
+.secrets-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.secrets-modal.hidden {
+  display: none;
+}
+
+.secrets-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.secrets-modal__box {
+  position: relative;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 1.5rem;
+  max-width: 480px;
+  width: calc(100vw - 2rem);
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+  z-index: 1;
+}
+
+.secrets-modal__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 0.4rem;
+}
+
+.secrets-modal__subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+.secrets-modal__list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.secrets-modal__file {
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.secrets-modal__file-path {
+  font-family: var(--font-mono);
+  color: var(--accent);
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.secrets-modal__finding {
+  color: var(--text-muted);
+  padding-left: 0.75rem;
+  display: block;
+  line-height: 1.6;
+}
+
+.secrets-modal__finding::before {
+  content: '• ';
+}
+
+.secrets-modal__finding-loc {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-subtle);
+  margin-right: 0.25rem;
+}
+
+.secrets-modal__finding-value {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+}
+
+.secrets-modal__actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+
+.secrets-modal__btn {
+  font-size: 0.85rem;
+  padding: 0.4rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.secrets-modal__btn--cancel {
+  background: none;
+  color: var(--text-muted);
+}
+
+.secrets-modal__btn--cancel:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.secrets-modal__btn--confirm {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.secrets-modal__btn--confirm:hover {
+  background: var(--accent);
+  color: #fff;
+}

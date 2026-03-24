@@ -342,6 +342,20 @@
     </div>
   </div>
 
+  <!-- Secret detection warning modal -->
+  <div id="secrets-modal" class="secrets-modal hidden" role="dialog" aria-modal="true" aria-labelledby="secrets-modal-title">
+    <div class="secrets-modal__backdrop"></div>
+    <div class="secrets-modal__box">
+      <h2 class="secrets-modal__title" id="secrets-modal-title">Possible secrets detected</h2>
+      <p class="secrets-modal__subtitle">The following files may contain sensitive credentials. Your files are end-to-end encrypted, but review before sharing the link.</p>
+      <ul class="secrets-modal__list" id="secrets-modal-list"></ul>
+      <div class="secrets-modal__actions">
+        <button id="btn-secrets-cancel" class="secrets-modal__btn secrets-modal__btn--cancel">Cancel</button>
+        <button id="btn-secrets-confirm" class="secrets-modal__btn secrets-modal__btn--confirm">Deploy anyway</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div id="toast" class="toast" aria-live="polite"></div>
 
@@ -380,6 +394,7 @@
       getVersionHistory,
       buildProjectUrl,
     } from '/js/project.js';
+    import { scanFiles } from '/js/detect-secrets.js';
 
     // -----------------------------------------------------------------------
     // DOM references
@@ -478,6 +493,11 @@
     const $btnUploadPush   = document.getElementById('btn-upload-push');
 
     const $toast = document.getElementById('toast');
+
+    const $secretsModal       = document.getElementById('secrets-modal');
+    const $secretsModalList   = document.getElementById('secrets-modal-list');
+    const $btnSecretsCancel   = document.getElementById('btn-secrets-cancel');
+    const $btnSecretsConfirm  = document.getElementById('btn-secrets-confirm');
 
     // -----------------------------------------------------------------------
     // State
@@ -645,6 +665,41 @@
       $toast.textContent = msg;
       $toast.classList.add('toast--visible');
       setTimeout(() => $toast.classList.remove('toast--visible'), duration);
+    }
+
+    /**
+     * Show the secrets warning modal and return a Promise that resolves to
+     * true (user confirmed "Deploy anyway") or false (user cancelled).
+     *
+     * @param {{ path: string, findings: { id: string, description: string }[] }[]} results
+     * @returns {Promise<boolean>}
+     */
+     function showSecretsWarning(results) {
+       $secretsModalList.innerHTML = results.map(({ path, findings }) => `
+         <li class="secrets-modal__file">
+           <span class="secrets-modal__file-path">${path}</span>
+           ${findings.map(f => `<span class="secrets-modal__finding"><span class="secrets-modal__finding-loc">line ${f.line}</span> <code class="secrets-modal__finding-value">${f.preview}</code></span>`).join('')}
+         </li>`).join('');
+
+      show($secretsModal);
+
+      return new Promise((resolve) => {
+        function onConfirm() {
+          cleanup();
+          resolve(true);
+        }
+        function onCancel() {
+          cleanup();
+          resolve(false);
+        }
+        function cleanup() {
+          hide($secretsModal);
+          $btnSecretsConfirm.removeEventListener('click', onConfirm);
+          $btnSecretsCancel.removeEventListener('click', onCancel);
+        }
+        $btnSecretsConfirm.addEventListener('click', onConfirm);
+        $btnSecretsCancel.addEventListener('click', onCancel);
+      });
     }
 
     function setStatus(msg) {
@@ -1110,6 +1165,13 @@
       try {
         // 1. Read all files
         const fileData = await Promise.all(stagedFiles.map(readFile));
+
+        // Scan for secrets before uploading
+        const secretResults = scanFiles(fileData.map(f => ({ path: f.path, bytes: f.content })));
+        if (secretResults.length > 0) {
+          const confirmed = await showSecretsWarning(secretResults);
+          if (!confirmed) return;
+        }
 
         setStatus('Generating keys and registering project...');
 
@@ -1884,6 +1946,13 @@
           } else {
             fileData.push(nf);
           }
+        }
+
+        // Scan for secrets before uploading
+        const secretResults = scanFiles(newFiles.map(f => ({ path: f.path, bytes: f.content })));
+        if (secretResults.length > 0) {
+          const confirmed = await showSecretsWarning(secretResults);
+          if (!confirmed) return;
         }
 
         await pushVersion(api, currentProjectId, currentReadKey, currentWriteKey, fileData);

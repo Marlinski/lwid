@@ -166,6 +166,7 @@ pub async fn run(
     dir: &str,
     server: &str,
     yes: bool,
+    force: bool,
     paths: &[String],
     ttl: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -199,6 +200,31 @@ pub async fn run(
 
     // Validate sizes (even on subsequent pushes)
     validate_sizes(&files)?;
+
+    // Scan for secrets unless --force is given
+    if !force {
+        let scan_input: Vec<(String, Vec<u8>)> = files
+            .iter()
+            .map(|f| (f.path.clone(), f.content.clone()))
+            .collect();
+        let findings = crate::secrets::scan_files(&scan_input);
+        if !findings.is_empty() {
+            eprintln!("\nwarning: possible secrets detected in files to be uploaded:");
+            // Group by file
+            let mut by_file: std::collections::BTreeMap<&str, Vec<(usize, &str, &str)>> = Default::default();
+            for f in &findings {
+                by_file.entry(&f.path).or_default().push((f.line, f.description, &f.preview));
+            }
+            for (path, descs) in &by_file {
+                eprintln!("  {}", path);
+                for (line, desc, preview) in descs {
+                    eprintln!("    \u{2022} line {}: {}: {}", line, desc, preview);
+                }
+            }
+            eprintln!("\nuse -f / --force to push anyway.\n");
+            return Err("secrets detected — aborting push (use -f to force)".into());
+        }
+    }
 
     // 3. Load or create config
     let cfg = match config::load(dir) {

@@ -72,6 +72,7 @@ pub fn default_server() -> String {
 ///
 /// Called by tests; not used by the CLI itself (the installer writes this).
 #[cfg(test)]
+#[allow(dead_code)]
 pub fn save_default_server(server: &str) -> std::io::Result<()> {
     let path = config_path().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::NotFound, "cannot determine config dir")
