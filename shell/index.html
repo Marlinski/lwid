@@ -884,13 +884,17 @@
      * before we point the iframe at /sandbox/. This eliminates the race
      * condition where the iframe fires fetch before the SW has the files.
      */
-    async function sendFilesToSW(files, entryPoint) {
+    // Post the decrypted files to the Service Worker's cache and await its
+    // acknowledgment. Shared by the initial load and by re-hydration (when the
+    // SW was terminated while idle and lost its in-memory cache). The file
+    // buffers are structured-cloned (only the port is transferred), so `files`
+    // stays intact and can be re-sent any number of times.
+    async function postFilesToSW(files) {
       const sw = navigator.serviceWorker.controller;
       if (!sw) {
         throw new Error('Service Worker not controlling page — try refreshing.');
       }
 
-      // Build the payload for the SW
       const payload = [];
       for (const [path, content] of files) {
         payload.push({
@@ -900,7 +904,6 @@
         });
       }
 
-      // Send files via MessageChannel and wait for acknowledgment
       await new Promise((resolve, reject) => {
         const channel = new MessageChannel();
         channel.port1.onmessage = (event) => {
@@ -915,9 +918,36 @@
         // Timeout after 5 seconds
         setTimeout(() => reject(new Error('SW file cache timeout')), 5000);
       });
+    }
 
+    /**
+     * Send decrypted files to the Service Worker and load the sandbox iframe.
+     *
+     * Uses MessageChannel so the SW can acknowledge that files are cached
+     * before we point the iframe at /sandbox/. This eliminates the race
+     * condition where the iframe fires fetch before the SW has the files.
+     */
+    async function sendFilesToSW(files, entryPoint) {
+      await postFilesToSW(files);
       // Point the iframe at the sandbox path — SW will intercept and serve
       $sandboxFrame.src = '/sandbox/' + entryPoint;
+    }
+
+    // Re-hydration: the SW's cache is in-memory and is wiped when the browser
+    // terminates an idle SW. When that happens, a later /sandbox/ request finds
+    // an empty cache and asks us (REQUEST_FILES) to re-send the files we still
+    // hold decrypted in `currentFiles`. We re-post them without touching the
+    // iframe, so intra-app navigation keeps working across SW restarts.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', async (event) => {
+        if (event.data?.type === 'REQUEST_FILES' && currentFiles) {
+          try {
+            await postFilesToSW(currentFiles);
+          } catch (_) {
+            /* SW will fall back to a 404; the user can reload to recover */
+          }
+        }
+      });
     }
 
     // -----------------------------------------------------------------------
