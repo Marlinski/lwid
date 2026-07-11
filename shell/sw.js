@@ -17,12 +17,31 @@
  * Fetch interception:
  *   Requests whose URL path starts with /sandbox/ are served from cache.
  *   Everything else falls through to the network untouched.
+ *
+ * Re-hydration:
+ *   The file cache is in-memory, so it is wiped whenever the browser
+ *   terminates this (idle) Service Worker. On a subsequent /sandbox/ request
+ *   the cache is empty and every navigation would 404 until the shell page is
+ *   reloaded. To avoid that, an empty-cache miss asks a live shell client to
+ *   re-send its (already-decrypted, in-memory) files via SET_FILES, then the
+ *   request is retried — so intra-app navigation keeps working across SW
+ *   restarts without ever persisting plaintext to disk.
  */
 
 // ---------------------------------------------------------------------------
 // In-memory file cache: path -> { content: Uint8Array, mimeType: string }
 // ---------------------------------------------------------------------------
 const fileCache = new Map();
+
+// Pending re-hydration request (shared so concurrent misses coalesce).
+let hydratePromise = null;
+let hydrateResolve = null;
+
+function finishHydration() {
+  if (hydrateResolve) hydrateResolve();
+  hydratePromise = null;
+  hydrateResolve = null;
+}
 
 // ---------------------------------------------------------------------------
 // MIME type helper
@@ -69,6 +88,8 @@ self.addEventListener('message', (event) => {
     if (event.ports && event.ports[0]) {
       event.ports[0].postMessage({ type: 'FILES_READY' });
     }
+    // Unblock any /sandbox/ request that was waiting on re-hydration.
+    finishHydration();
   } else if (type === 'CLEAR_FILES') {
     fileCache.clear();
   }
@@ -88,7 +109,36 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(handleSandboxRequest(url));
 });
 
-function handleSandboxRequest(url) {
+/**
+ * Ask a live shell client to re-send its decrypted files (SET_FILES). Called
+ * when the cache is empty because the SW was terminated and restarted. Resolves
+ * once files arrive (via finishHydration) or after a short timeout. Concurrent
+ * callers share the same in-flight request.
+ */
+function requestHydration() {
+  if (hydratePromise) return hydratePromise;
+  hydratePromise = new Promise((resolve) => { hydrateResolve = resolve; });
+  self.clients
+    .matchAll({ type: 'window', includeUncontrolled: true })
+    .then((clients) => {
+      // The shell (holder of the decrypted files) lives outside /sandbox/;
+      // the sandboxed app iframe cannot re-hydrate, so skip it.
+      const shells = clients.filter(
+        (c) => !new URL(c.url).pathname.startsWith('/sandbox/'),
+      );
+      if (shells.length === 0) {
+        finishHydration(); // nobody to ask — fail fast to a 404
+        return;
+      }
+      for (const c of shells) c.postMessage({ type: 'REQUEST_FILES' });
+    })
+    .catch(() => finishHydration());
+  // Safety net: never hang a request forever.
+  setTimeout(finishHydration, 5000);
+  return hydratePromise;
+}
+
+async function handleSandboxRequest(url) {
   // Strip the /sandbox/ prefix to derive the file path
   let path = url.pathname.slice('/sandbox/'.length);
 
@@ -97,7 +147,15 @@ function handleSandboxRequest(url) {
     path += 'index.html';
   }
 
-  const entry = fileCache.get(path);
+  let entry = fileCache.get(path);
+
+  // Empty cache ⇒ the SW was almost certainly restarted after going idle.
+  // Ask the shell to re-send the files, then retry once. (A non-empty cache
+  // that simply lacks this path is a genuine 404 — don't re-hydrate.)
+  if (!entry && fileCache.size === 0) {
+    await requestHydration();
+    entry = fileCache.get(path);
+  }
 
   if (entry) {
     // Inject lwid-sdk.js into HTML responses
