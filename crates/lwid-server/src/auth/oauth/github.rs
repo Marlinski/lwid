@@ -159,7 +159,7 @@ pub async fn callback(
     // Upsert user and create a session.
     let provider_id = gh_user.id.to_string();
     let user = match db::upsert_user(
-        &state.db,
+        state.db_pool(),
         "github",
         &provider_id,
         gh_user.email.as_deref(),
@@ -175,7 +175,7 @@ pub async fn callback(
     };
 
     let ttl = state.config.auth.session_ttl_days() as u32;
-    let session = match db::create_session(&state.db, &user.id, "web", ttl).await {
+    let session = match db::create_session(state.db_pool(), &user.id, "web", ttl).await {
         Ok(s) => s,
         Err(e) => {
             tracing::error!("create_session error: {e}");

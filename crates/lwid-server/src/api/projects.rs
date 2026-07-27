@@ -158,7 +158,7 @@ pub async fn create_project(
             let all_ids = state.projects.list().map_err(|e| {
                 AppError::Internal(format!("failed to list projects: {e}"))
             })?;
-            let count = db::count_live_projects(&state.db, &u.id, &all_ids)
+            let count = db::count_live_projects(state.db_pool(), &u.id, &all_ids)
                 .await
                 .map_err(|e| AppError::Internal(format!("failed to count projects: {e}")))?;
             if count >= policy.max_projects {
@@ -175,7 +175,7 @@ pub async fn create_project(
 
     // Record ownership if the user is logged in.
     if let Some(ref u) = user.0 {
-        if let Err(e) = db::set_project_owner(&state.db, &project.id, &u.id).await {
+        if let Err(e) = db::set_project_owner(state.db_pool(), &project.id, &u.id).await {
             tracing::warn!(project_id = %project.id, error = %e, "failed to record project owner");
         }
     }
