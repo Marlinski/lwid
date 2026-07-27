@@ -49,12 +49,12 @@ pub async fn logout(
     // If we have a session cookie token, delete it from the DB.
     if let Some(cookie) = jar.get(SESSION_COOKIE) {
         let token = cookie.value().to_owned();
-        if let Err(e) = db::delete_session(&state.db, &token).await {
+        if let Err(e) = db::delete_session(state.db_pool(), &token).await {
             tracing::warn!("delete_session error: {e}");
         }
     } else if let Some(u) = user.0 {
         // Fallback: delete all sessions for this user (e.g. Bearer token auth).
-        if let Err(e) = db::delete_all_sessions(&state.db, &u.id).await {
+        if let Err(e) = db::delete_all_sessions(state.db_pool(), &u.id).await {
             tracing::warn!("delete_all_sessions error: {e}");
         }
     }
@@ -158,7 +158,7 @@ pub async fn cli_callback(
     };
 
     let ttl = state.config.auth.session_ttl_days() as u32;
-    let session = match db::create_session(&state.db, &u.id, "cli", ttl).await {
+    let session = match db::create_session(state.db_pool(), &u.id, "cli", ttl).await {
         Ok(s) => s,
         Err(e) => {
             tracing::error!("cli create_session error: {e}");

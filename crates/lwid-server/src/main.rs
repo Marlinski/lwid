@@ -35,9 +35,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let project_store = FsProjectStore::new(config.storage.data_dir.join("projects"))?;
     let kv_store = FsKvStore::new(config.storage.data_dir.join("store"))?;
 
-    // Initialize the SQLite database pool.
-    let db_path = config.storage.resolved_db_path();
-    let pool = db::init_pool(&db_path).await?;
+    // Initialize the SQLite database pool — only when authentication is
+    // enabled. With no auth provider configured there are no users, sessions,
+    // or ownership records, so the server runs fully stateless (no relational
+    // store, no persistent volume required).
+    let pool = if config.auth.any_provider_enabled() {
+        let db_path = config.storage.resolved_db_path();
+        info!("auth enabled — initializing SQLite at {}", db_path.display());
+        Some(Arc::new(db::init_pool(&db_path).await?))
+    } else {
+        info!("auth disabled (no provider configured) — running stateless, SQLite not initialized");
+        None
+    };
 
     // Derive the cookie signing key from the session secret (zero-padded to 64 bytes).
     let cookie_key = cookie_key_from_secret(&config.auth.session_secret_bytes());
@@ -47,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         projects: Arc::new(project_store),
         kv: Arc::new(kv_store),
         config: config.clone(),
-        db: Arc::new(pool),
+        db: pool,
         cookie_key,
         oauth_states: Arc::new(Mutex::new(HashMap::new())),
         magic_tokens: Arc::new(Mutex::new(HashMap::new())),
@@ -60,8 +69,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // before the application-level check in the blob upload handler.
     let body_limit = config.server.max_blob_size + 4096;
 
-    let app = api::router(state.clone())
-        .merge(auth::router(state.clone()))
+    // Mount the auth routes only when a provider is enabled; otherwise they
+    // would depend on a DB pool that does not exist.
+    let mut app = api::router(state.clone());
+    if config.auth.any_provider_enabled() {
+        app = app.merge(auth::router(state.clone()));
+    }
+    let app = app
         .layer(cors)
         .layer(DefaultBodyLimit::max(body_limit));
 

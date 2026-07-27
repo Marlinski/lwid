@@ -152,7 +152,7 @@ pub async fn callback(
     };
 
     let user = match db::upsert_user(
-        &state.db,
+        state.db_pool(),
         "google",
         &google_user.id,
         google_user.email.as_deref(),
@@ -168,7 +168,7 @@ pub async fn callback(
     };
 
     let ttl = state.config.auth.session_ttl_days() as u32;
-    let session = match db::create_session(&state.db, &user.id, "web", ttl).await {
+    let session = match db::create_session(state.db_pool(), &user.id, "web", ttl).await {
         Ok(s) => s,
         Err(e) => {
             tracing::error!("create_session error: {e}");

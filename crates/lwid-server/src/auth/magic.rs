@@ -107,7 +107,7 @@ pub async fn verify_magic_link(
 
     let email = &entry.user_email;
 
-    let user = match db::upsert_user(&state.db, "email", email, Some(email), None).await {
+    let user = match db::upsert_user(state.db_pool(), "email", email, Some(email), None).await {
         Ok(u) => u,
         Err(e) => {
             tracing::error!("upsert_user error: {e}");
@@ -116,7 +116,7 @@ pub async fn verify_magic_link(
     };
 
     let ttl = state.config.auth.session_ttl_days() as u32;
-    let session = match db::create_session(&state.db, &user.id, "web", ttl).await {
+    let session = match db::create_session(state.db_pool(), &user.id, "web", ttl).await {
         Ok(s) => s,
         Err(e) => {
             tracing::error!("create_session error: {e}");

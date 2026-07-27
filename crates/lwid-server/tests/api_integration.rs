@@ -57,7 +57,7 @@ async fn test_server() -> (TestServer, TempDir) {
         projects: Arc::new(project_store),
         kv: Arc::new(kv_store),
         config,
-        db: Arc::new(pool),
+        db: Some(Arc::new(pool)),
         cookie_key,
         oauth_states: Arc::new(Mutex::new(HashMap::new())),
         magic_tokens: Arc::new(Mutex::new(HashMap::new())),

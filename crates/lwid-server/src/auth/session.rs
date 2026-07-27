@@ -42,11 +42,16 @@ impl FromRequestParts<AppState> for OptionalUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
+        // Authentication disabled (no DB pool) ⇒ every request is anonymous.
+        let Some(db) = state.db.as_deref() else {
+            return Ok(OptionalUser(None));
+        };
+
         // 1. Try private cookie.
         let jar = PrivateCookieJar::from_headers(&parts.headers, state.cookie_key.clone());
         if let Some(cookie) = jar.get(SESSION_COOKIE) {
             let token = cookie.value().to_owned();
-            match db::get_session(&state.db, &token).await {
+            match db::get_session(db, &token).await {
                 Ok(Some(user)) => return Ok(OptionalUser(Some(user))),
                 Ok(None) => {}
                 Err(e) => {
@@ -60,7 +65,7 @@ impl FromRequestParts<AppState> for OptionalUser {
             if let Ok(value) = auth_header.to_str() {
                 if let Some(token) = value.strip_prefix("Bearer ") {
                     let token = token.trim().to_owned();
-                    match db::get_session(&state.db, &token).await {
+                    match db::get_session(db, &token).await {
                         Ok(Some(user)) => return Ok(OptionalUser(Some(user))),
                         Ok(None) => {}
                         Err(e) => {

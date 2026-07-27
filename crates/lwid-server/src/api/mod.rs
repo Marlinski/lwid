@@ -39,13 +39,33 @@ pub struct AppState {
     pub kv: Arc<dyn KvStore>,
     pub config: Config,
     /// SQLite connection pool (users, sessions, project ownership).
-    pub db: Arc<sqlx::SqlitePool>,
+    ///
+    /// `None` when authentication is disabled (no provider configured): the
+    /// server then runs fully stateless with no relational store and no need
+    /// for a persistent volume. See [`AppState::db_pool`].
+    pub db: Option<Arc<sqlx::SqlitePool>>,
     /// Private-cookie signing key derived from `config.auth.session_secret_bytes()`.
     pub cookie_key: Key,
     /// In-flight OAuth2 PKCE verifiers, keyed by CSRF state token.
     pub oauth_states: Arc<Mutex<HashMap<String, String>>>,
     /// In-flight magic-link tokens.
     pub magic_tokens: Arc<Mutex<HashMap<String, MagicTokenEntry>>>,
+}
+
+impl AppState {
+    /// Return the SQLite pool, asserting that authentication is enabled.
+    ///
+    /// This is safe to call from two kinds of call sites:
+    /// - `/auth/*` handlers, which are only mounted when a provider is enabled;
+    /// - code paths guarded by `OptionalUser` being `Some`, since a user can
+    ///   only be resolved when the pool exists.
+    ///
+    /// It panics only on a programming error (using the pool while auth is off).
+    pub(crate) fn db_pool(&self) -> &sqlx::SqlitePool {
+        self.db
+            .as_deref()
+            .expect("db pool must exist when authentication is enabled")
+    }
 }
 
 // `PrivateCookieJar` (and `SignedCookieJar`) require `Key: FromRef<S>`.
