@@ -72,15 +72,59 @@ pub struct Config {
     pub auth: AuthConfig,
 }
 
+/// Which backend holds blobs, project metadata and the KV store.
+///
+/// Defaults to [`StorageBackend::Fs`]: S3 is used only when the config or
+/// environment asks for it explicitly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StorageBackend {
+    /// Local filesystem under `storage.data_dir` (default).
+    #[default]
+    Fs,
+    /// S3-compatible object storage, configured under `[storage.s3]`.
+    S3,
+}
+
 /// Storage-related settings.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct StorageConfig {
+    /// Which backend to use. `"fs"` (default) or `"s3"`.
+    pub backend: StorageBackend,
     /// Directory where blobs and project metadata are stored.
+    /// Used by the `fs` backend, and always used for the SQLite database.
     pub data_dir: PathBuf,
     /// Path to the SQLite database file.
     /// Defaults to `{data_dir}/lwid.db` if not set.
     pub db_path: Option<PathBuf>,
+    /// Settings for the `s3` backend. Ignored unless `backend = "s3"`.
+    pub s3: S3Config,
+}
+
+/// Connection settings for an S3-compatible endpoint.
+///
+/// Every field is optional here so the section can be omitted entirely when
+/// running on the filesystem; [`StorageConfig::s3_settings`] validates that
+/// the required ones are present before the S3 backend is constructed.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct S3Config {
+    /// Endpoint URL, e.g. `https://s3.gra.io.cloud.ovh.net`.
+    pub endpoint: Option<String>,
+    /// Region name, e.g. `gra`.
+    pub region: Option<String>,
+    /// Bucket holding all lwid data.
+    pub bucket: Option<String>,
+    /// Optional key prefix inside the bucket.
+    pub prefix: Option<String>,
+    /// Access key. Falls back to `AWS_ACCESS_KEY_ID`.
+    pub access_key_id: Option<String>,
+    /// Secret key. Falls back to `AWS_SECRET_ACCESS_KEY`.
+    pub secret_access_key: Option<String>,
+    /// Path-style addressing (`endpoint/bucket/key`). Defaults to `true`,
+    /// which is what most S3-compatible providers expect.
+    pub force_path_style: Option<bool>,
 }
 
 /// HTTP server settings.
@@ -193,8 +237,10 @@ impl Default for Config {
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
+            backend: StorageBackend::Fs,
             data_dir: PathBuf::from(DEFAULT_DATA_DIR),
             db_path: None,
+            s3: S3Config::default(),
         }
     }
 }
@@ -258,6 +304,49 @@ impl StorageConfig {
         self.db_path
             .clone()
             .unwrap_or_else(|| self.data_dir.join("lwid.db"))
+    }
+
+    /// Validate and materialise the S3 settings.
+    ///
+    /// Only meaningful when `backend = "s3"`. Credentials fall back to the
+    /// conventional `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` variables so
+    /// a bucket secret can be mounted without lwid-specific naming.
+    #[cfg(feature = "s3")]
+    pub fn s3_settings(&self) -> Result<lwid_common::s3::S3Settings, ConfigError> {
+        let s3 = &self.s3;
+
+        let required = |value: &Option<String>, name: &str| -> Result<String, ConfigError> {
+            value
+                .as_deref()
+                .filter(|v| !v.trim().is_empty())
+                .map(str::to_owned)
+                .ok_or_else(|| {
+                    ConfigError::Missing(format!(
+                        "storage.{name} is required when storage.backend = \"s3\""
+                    ))
+                })
+        };
+
+        let access_key_id = s3
+            .access_key_id
+            .clone()
+            .or_else(|| std::env::var("AWS_ACCESS_KEY_ID").ok());
+        let secret_access_key = s3
+            .secret_access_key
+            .clone()
+            .or_else(|| std::env::var("AWS_SECRET_ACCESS_KEY").ok());
+
+        Ok(lwid_common::s3::S3Settings {
+            endpoint: required(&s3.endpoint, "s3.endpoint")?,
+            region: required(&s3.region, "s3.region")?,
+            bucket: required(&s3.bucket, "s3.bucket")?,
+            prefix: s3.prefix.clone().unwrap_or_default(),
+            access_key_id: required(&access_key_id, "s3.access_key_id")?,
+            secret_access_key: required(&secret_access_key, "s3.secret_access_key")?,
+            // Path-style is the safe default: most S3-compatible providers
+            // (and bucket names with dots) do not work virtual-host style.
+            force_path_style: s3.force_path_style.unwrap_or(true),
+        })
     }
 }
 
@@ -355,6 +444,43 @@ impl Config {
         }
         if let Ok(val) = std::env::var("LWID_STORAGE__DB_PATH") {
             self.storage.db_path = Some(PathBuf::from(val));
+        }
+        if let Ok(val) = std::env::var("LWID_STORAGE__BACKEND") {
+            self.storage.backend = match val.trim().to_ascii_lowercase().as_str() {
+                "fs" => StorageBackend::Fs,
+                "s3" => StorageBackend::S3,
+                other => {
+                    return Err(ConfigError::EnvVar {
+                        key: "LWID_STORAGE__BACKEND",
+                        reason: format!("expected \"fs\" or \"s3\", got \"{other}\""),
+                    })
+                }
+            };
+        }
+        if let Ok(val) = std::env::var("LWID_STORAGE__S3__ENDPOINT") {
+            self.storage.s3.endpoint = Some(val);
+        }
+        if let Ok(val) = std::env::var("LWID_STORAGE__S3__REGION") {
+            self.storage.s3.region = Some(val);
+        }
+        if let Ok(val) = std::env::var("LWID_STORAGE__S3__BUCKET") {
+            self.storage.s3.bucket = Some(val);
+        }
+        if let Ok(val) = std::env::var("LWID_STORAGE__S3__PREFIX") {
+            self.storage.s3.prefix = Some(val);
+        }
+        if let Ok(val) = std::env::var("LWID_STORAGE__S3__ACCESS_KEY_ID") {
+            self.storage.s3.access_key_id = Some(val);
+        }
+        if let Ok(val) = std::env::var("LWID_STORAGE__S3__SECRET_ACCESS_KEY") {
+            self.storage.s3.secret_access_key = Some(val);
+        }
+        if let Ok(val) = std::env::var("LWID_STORAGE__S3__FORCE_PATH_STYLE") {
+            self.storage.s3.force_path_style =
+                Some(val.parse::<bool>().map_err(|e| ConfigError::EnvVar {
+                    key: "LWID_STORAGE__S3__FORCE_PATH_STYLE",
+                    reason: e.to_string(),
+                })?);
         }
 
         if let Ok(val) = std::env::var("LWID_SERVER__LISTEN") {
@@ -535,5 +661,95 @@ mod tests {
     fn auth_no_providers_enabled_by_default() {
         let cfg = Config::default();
         assert!(!cfg.auth.any_provider_enabled());
+    }
+
+    // ── Storage backend selection ───────────────────────────────────────
+
+    #[test]
+    fn storage_backend_defaults_to_fs() {
+        assert_eq!(Config::default().storage.backend, StorageBackend::Fs);
+    }
+
+    #[test]
+    fn config_without_storage_section_uses_fs() {
+        let cfg: Config = toml::from_str("").expect("empty config should parse");
+        assert_eq!(cfg.storage.backend, StorageBackend::Fs);
+    }
+
+    #[test]
+    fn s3_section_alone_does_not_switch_backend() {
+        // Declaring the bucket is not the same as asking for it: the backend
+        // stays on the filesystem until `backend` says otherwise.
+        let cfg: Config = toml::from_str(
+            r#"
+            [storage.s3]
+            endpoint = "https://s3.example.com"
+            bucket = "lwid"
+            "#,
+        )
+        .expect("should parse");
+        assert_eq!(cfg.storage.backend, StorageBackend::Fs);
+        assert_eq!(cfg.storage.s3.bucket.as_deref(), Some("lwid"));
+    }
+
+    #[test]
+    fn backend_s3_is_explicit_opt_in() {
+        let cfg: Config = toml::from_str(
+            r#"
+            [storage]
+            backend = "s3"
+            "#,
+        )
+        .expect("should parse");
+        assert_eq!(cfg.storage.backend, StorageBackend::S3);
+    }
+
+    #[cfg(feature = "s3")]
+    #[test]
+    fn s3_settings_reject_incomplete_config() {
+        let cfg: Config = toml::from_str(
+            r#"
+            [storage]
+            backend = "s3"
+
+            [storage.s3]
+            endpoint = "https://s3.example.com"
+            "#,
+        )
+        .expect("should parse");
+
+        let err = cfg
+            .storage
+            .s3_settings()
+            .expect_err("missing region/bucket must be rejected");
+        assert!(
+            matches!(err, ConfigError::Missing(ref m) if m.contains("s3.region")),
+            "expected a missing-region error, got: {err}",
+        );
+    }
+
+    #[cfg(feature = "s3")]
+    #[test]
+    fn s3_settings_complete_config_resolves() {
+        let cfg: Config = toml::from_str(
+            r#"
+            [storage]
+            backend = "s3"
+
+            [storage.s3]
+            endpoint = "https://s3.gra.io.cloud.ovh.net"
+            region = "gra"
+            bucket = "lwid"
+            prefix = "/data/"
+            access_key_id = "ak"
+            secret_access_key = "sk"
+            "#,
+        )
+        .expect("should parse");
+
+        let settings = cfg.storage.s3_settings().expect("should resolve");
+        assert_eq!(settings.bucket, "lwid");
+        assert_eq!(settings.normalized_prefix(), "data/");
+        assert!(settings.force_path_style, "path style should default to true");
     }
 }

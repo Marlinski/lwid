@@ -103,6 +103,16 @@ impl Cid {
         let shard2 = &s[2..4];
         PathBuf::from(shard1).join(shard2).join(s)
     }
+
+    /// Return the same sharded layout as [`Cid::to_path`], but as an
+    /// object-storage key with literal `/` separators.
+    ///
+    /// Keeping the two layouts identical means a filesystem blob tree can be
+    /// copied into a bucket verbatim (and back) with no key rewriting.
+    pub fn to_key(&self) -> String {
+        let s = self.as_str();
+        format!("{}/{}/{}", &s[..2], &s[2..4], s)
+    }
 }
 
 // Serde: serialize/deserialize as the base32lower string
@@ -167,6 +177,16 @@ mod tests {
         let s = cid.as_str();
         let expected = PathBuf::from(&s[..2]).join(&s[2..4]).join(s);
         assert_eq!(path, expected);
+    }
+
+    #[test]
+    fn to_key_matches_to_path_layout() {
+        let cid = Cid::from_bytes(b"shard me");
+        let expected = cid.to_path().to_string_lossy().replace(
+            std::path::MAIN_SEPARATOR,
+            "/",
+        );
+        assert_eq!(cid.to_key(), expected);
     }
 
     #[test]

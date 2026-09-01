@@ -5,5 +5,7 @@ pub mod kv;
 pub mod limits;
 pub mod manifest;
 pub mod project;
+#[cfg(feature = "s3")]
+pub mod s3;
 pub mod store;
 pub mod wire;
