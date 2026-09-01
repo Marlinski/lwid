@@ -73,7 +73,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if config.auth.any_provider_enabled() {
         app = app.merge(auth::router(state.clone()));
     }
+    // Legacy hostnames answer with a 301 to the canonical one. Applied
+    // outermost so it runs before routing — a redirect must not depend on the
+    // path existing.
+    if let Some(ref canonical) = config.server.canonical_host {
+        if !config.server.redirect_hosts.is_empty() {
+            info!(
+                "redirecting {:?} -> https://{}",
+                config.server.redirect_hosts, canonical,
+            );
+        }
+    }
+
     let app = app
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            lwid_server::redirect::canonical_host,
+        ))
         .layer(cors)
         .layer(DefaultBodyLimit::max(body_limit));
 

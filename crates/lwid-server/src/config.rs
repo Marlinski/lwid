@@ -146,6 +146,20 @@ pub struct ServerConfig {
     /// Public base URL of the server (used for OAuth redirect URIs and magic links).
     /// E.g. `https://lookwhatidid.xyz`. Defaults to `http://localhost:8080`.
     pub base_url: String,
+
+    /// The one hostname this server should be reached by, e.g.
+    /// `lookwhatidid.ovhcloud.tools`. Only meaningful together with
+    /// [`ServerConfig::redirect_hosts`].
+    pub canonical_host: Option<String>,
+
+    /// Legacy hostnames that should be permanently redirected to
+    /// [`ServerConfig::canonical_host`], preserving path and query.
+    ///
+    /// Deliberately an explicit list rather than "anything that is not the
+    /// canonical host": the server is also reached by pod IP for health
+    /// probes and by its in-cluster service name, and neither should be
+    /// answered with a redirect.
+    pub redirect_hosts: Vec<String>,
 }
 
 // ── Policy / quota tiers ────────────────────────────────────────────────────
@@ -253,6 +267,8 @@ impl Default for ServerConfig {
             cors_origins: vec!["*".to_owned()],
             shell_dir: PathBuf::from(DEFAULT_SHELL_DIR),
             base_url: "http://localhost:8080".to_owned(),
+            canonical_host: None,
+            redirect_hosts: Vec::new(),
         }
     }
 }
@@ -504,6 +520,17 @@ impl Config {
         }
         if let Ok(val) = std::env::var("LWID_SERVER__BASE_URL") {
             self.server.base_url = val;
+        }
+        if let Ok(val) = std::env::var("LWID_SERVER__CANONICAL_HOST") {
+            let val = val.trim().to_owned();
+            self.server.canonical_host = if val.is_empty() { None } else { Some(val) };
+        }
+        if let Ok(val) = std::env::var("LWID_SERVER__REDIRECT_HOSTS") {
+            self.server.redirect_hosts = val
+                .split(',')
+                .map(|s| s.trim().to_owned())
+                .filter(|s| !s.is_empty())
+                .collect();
         }
 
         // Policy tier overrides
