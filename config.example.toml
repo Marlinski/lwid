@@ -10,16 +10,62 @@
 # ── Storage ───────────────────────────────────────────────────────────────────
 
 [storage]
+# Which backend holds blobs, project metadata and the KV store.
+#   "fs" (default) — local filesystem under data_dir
+#   "s3"           — S3-compatible object storage, configured below
+# The filesystem is used unless this explicitly says "s3".
+# Env: LWID_STORAGE__BACKEND
+backend = "fs"
+
 # Directory where blobs, project metadata and the KV store are kept.
-# On Kubernetes this should be a JuiceFS or PV mount.
+# Used by the "fs" backend. Also holds the SQLite database in both backends
+# (see below) — with the "s3" backend and no auth provider configured, the
+# server keeps no local state at all and needs no volume.
 # Env: LWID_STORAGE__DATA_DIR
 data_dir = "/data"
 
 # Path to the SQLite database file.
 # Defaults to {data_dir}/lwid.db if not set.
 # Override to place the DB on a separate volume from blob storage.
+#
+# SQLite holds ONLY auth state (users, sessions, project ownership) and is
+# opened only when an auth provider is configured. It cannot live on S3, so a
+# deployment that wants pure object storage must run without authentication.
 # Env: LWID_STORAGE__DB_PATH
 # db_path = "/data-db/lwid.db"
+
+# ── S3 backend ────────────────────────────────────────────────────────────────
+# Only read when backend = "s3" above. The bucket layout mirrors the on-disk
+# layout exactly, so a data_dir can be copied into a bucket verbatim:
+#
+#   {prefix}blobs/ab/cd/<cid>       content-addressed blobs
+#   {prefix}projects/<id>.json      project metadata
+#   {prefix}store/<id>/<key>        per-project KV store
+#
+# [storage.s3]
+# Env: LWID_STORAGE__S3__ENDPOINT
+# endpoint = "https://s3.gra.io.cloud.ovh.net"
+#
+# Env: LWID_STORAGE__S3__REGION
+# region = "gra"
+#
+# Env: LWID_STORAGE__S3__BUCKET
+# bucket = "lwid"
+#
+# Optional key prefix inside the bucket (default: none).
+# Env: LWID_STORAGE__S3__PREFIX
+# prefix = ""
+#
+# Credentials. Prefer environment variables over this file.
+# These also fall back to the standard AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.
+# Env: LWID_STORAGE__S3__ACCESS_KEY_ID / LWID_STORAGE__S3__SECRET_ACCESS_KEY
+# access_key_id = "..."
+# secret_access_key = "..."
+#
+# Path-style addressing (endpoint/bucket/key). Defaults to true, which is what
+# most S3-compatible providers expect. Set false for virtual-host style.
+# Env: LWID_STORAGE__S3__FORCE_PATH_STYLE
+# force_path_style = true
 
 # ── Server ────────────────────────────────────────────────────────────────────
 

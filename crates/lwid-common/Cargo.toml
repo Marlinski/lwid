@@ -2,6 +2,7 @@
 name = "lwid-common"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.93"
 description = "Shared domain types for lookwhatidid"
 
 [dependencies]
@@ -25,7 +26,17 @@ nanoid = "0.4"
 thiserror = "2"
 async-trait = "0.1"
 
+# S3 backend (optional — see the `s3` feature)
+aws-sdk-s3 = { version = "1", optional = true }
+
+[features]
+default = []
+# Direct-to-object-storage backends. Off by default so the CLI, which only
+# needs the shared domain types, does not pull in the AWS SDK.
+s3 = ["dep:aws-sdk-s3"]
+
 [dev-dependencies]
 tempfile = "3"
 rand_core = { version = "0.6", features = ["getrandom"] }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
+futures = "0.3"

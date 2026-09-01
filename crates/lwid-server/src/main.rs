@@ -10,12 +10,12 @@ use tracing::info;
 use lwid_server::api::{self, AppState};
 use lwid_server::auth;
 use lwid_server::auth::session::cookie_key_from_secret;
-use lwid_server::config::{CliArgs, Config};
+use lwid_server::config::{CliArgs, Config, StorageBackend};
 use lwid_server::db;
 use lwid_server::reaper;
-use lwid_common::kv::FsKvStore;
-use lwid_common::project::FsProjectStore;
-use lwid_common::store::FsBlobStore;
+use lwid_common::kv::{FsKvStore, KvStore};
+use lwid_common::project::{FsProjectStore, ProjectStore};
+use lwid_common::store::{BlobStore, FsBlobStore};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -31,9 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = CliArgs::parse();
     let config = Config::load(&cli)?;
 
-    let blob_store = FsBlobStore::new(config.storage.data_dir.join("blobs"))?;
-    let project_store = FsProjectStore::new(config.storage.data_dir.join("projects"))?;
-    let kv_store = FsKvStore::new(config.storage.data_dir.join("store"))?;
+    let (blob_store, project_store, kv_store) = build_stores(&config)?;
 
     // Initialize the SQLite database pool — only when authentication is
     // enabled. With no auth provider configured there are no users, sessions,
@@ -52,9 +50,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cookie_key = cookie_key_from_secret(&config.auth.session_secret_bytes());
 
     let state = AppState {
-        blobs: Arc::new(blob_store),
-        projects: Arc::new(project_store),
-        kv: Arc::new(kv_store),
+        blobs: blob_store,
+        projects: project_store,
+        kv: kv_store,
         config: config.clone(),
         db: pool,
         cookie_key,
@@ -89,6 +87,59 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+/// Construct the three storage backends according to `storage.backend`.
+///
+/// Defaults to the filesystem; S3 is used only when explicitly selected, and
+/// then every object lives in the bucket — no persistent volume is needed
+/// unless authentication is enabled (SQLite still wants a real file).
+type Stores = (Arc<dyn BlobStore>, Arc<dyn ProjectStore>, Arc<dyn KvStore>);
+
+fn build_stores(config: &Config) -> Result<Stores, Box<dyn std::error::Error>> {
+    match config.storage.backend {
+        StorageBackend::Fs => {
+            let dir = &config.storage.data_dir;
+            info!("storage backend: fs ({})", dir.display());
+            Ok((
+                Arc::new(FsBlobStore::new(dir.join("blobs"))?),
+                Arc::new(FsProjectStore::new(dir.join("projects"))?),
+                Arc::new(FsKvStore::new(dir.join("store"))?),
+            ))
+        }
+
+        #[cfg(feature = "s3")]
+        StorageBackend::S3 => {
+            use lwid_common::s3::{client, S3BlobStore, S3KvStore, S3ProjectStore};
+
+            let settings = config.storage.s3_settings()?;
+            let prefix = settings.normalized_prefix();
+            info!(
+                "storage backend: s3 (endpoint={}, bucket={}, prefix={:?}, path_style={})",
+                settings.endpoint, settings.bucket, prefix, settings.force_path_style,
+            );
+
+            let client = client(&settings);
+            Ok((
+                Arc::new(S3BlobStore::new(
+                    client.clone(),
+                    settings.bucket.clone(),
+                    prefix.clone(),
+                )),
+                Arc::new(S3ProjectStore::new(
+                    client.clone(),
+                    settings.bucket.clone(),
+                    prefix.clone(),
+                )),
+                Arc::new(S3KvStore::new(client, settings.bucket, prefix)),
+            ))
+        }
+
+        #[cfg(not(feature = "s3"))]
+        StorageBackend::S3 => Err(
+            "storage.backend = \"s3\" but this binary was built without the `s3` feature".into(),
+        ),
+    }
 }
 
 /// Build CORS middleware from the configured origins list.

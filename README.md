@@ -81,10 +81,70 @@ Environment variables use the `LWID_` prefix.
 | Option          | Env var                       | Default          | Description                          |
 |-----------------|-------------------------------|------------------|--------------------------------------|
 | `listen`        | `LWID_SERVER__LISTEN`         | `0.0.0.0:8080`   | Address and port to bind             |
-| `data_dir`      | `LWID_STORAGE__DATA_DIR`      | `./data`          | Directory for blob and project data  |
+| `backend`       | `LWID_STORAGE__BACKEND`       | `fs`              | Storage backend: `fs` or `s3`        |
+| `data_dir`      | `LWID_STORAGE__DATA_DIR`      | `./data`          | Directory for blob and project data (`fs` backend) |
 | `max_blob_size` | `LWID_SERVER__MAX_BLOB_SIZE`  | `10485760` (10MB) | Maximum size of a single blob upload |
 | `cors_origins`  | `LWID_SERVER__CORS_ORIGINS`   | `*`               | Allowed CORS origins (comma-separated) |
 | `shell_dir`     | `LWID_SERVER__SHELL_DIR`      | `./shell`         | Path to the shell SPA directory      |
+
+### S3 backend
+
+The server can store everything directly in an S3-compatible bucket instead of
+on disk — no mounted filesystem, no metadata service, no persistent volume.
+The filesystem is used unless `backend` explicitly says `s3`.
+
+```toml
+[storage]
+backend = "s3"
+
+[storage.s3]
+endpoint = "https://s3.gra.io.cloud.ovh.net"
+region   = "gra"
+bucket   = "lwid"
+prefix   = ""      # optional key prefix
+```
+
+| Option              | Env var                                | Default | Description                        |
+|---------------------|----------------------------------------|---------|------------------------------------|
+| `endpoint`          | `LWID_STORAGE__S3__ENDPOINT`           | —       | S3 endpoint URL (required)         |
+| `region`            | `LWID_STORAGE__S3__REGION`             | —       | Region name (required)             |
+| `bucket`            | `LWID_STORAGE__S3__BUCKET`             | —       | Bucket name (required)             |
+| `prefix`            | `LWID_STORAGE__S3__PREFIX`             | none    | Key prefix inside the bucket       |
+| `access_key_id`     | `LWID_STORAGE__S3__ACCESS_KEY_ID`      | —       | Falls back to `AWS_ACCESS_KEY_ID`  |
+| `secret_access_key` | `LWID_STORAGE__S3__SECRET_ACCESS_KEY`  | —       | Falls back to `AWS_SECRET_ACCESS_KEY` |
+| `force_path_style`  | `LWID_STORAGE__S3__FORCE_PATH_STYLE`   | `true`  | Path-style addressing              |
+
+The bucket layout mirrors the on-disk layout exactly, so a `data_dir` can be
+copied into a bucket verbatim — and back:
+
+```
+{prefix}blobs/ab/cd/<cid>       content-addressed blobs (immutable)
+{prefix}projects/<id>.json      project metadata
+{prefix}store/<id>/<key>        per-project KV store
+```
+
+**Migrating an existing deployment.** Copy the data directory into the bucket
+while the old storage is still mounted, then flip the backend:
+
+```sh
+aws s3 sync /path/to/data s3://lwid/ --endpoint-url https://s3.gra.io.cloud.ovh.net
+```
+
+If the current storage is JuiceFS, note that its bucket does *not* hold your
+files as plain objects — it chunks them, with the metadata living in Redis. You
+must copy out through a live JuiceFS mount, and the Redis instance holding that
+metadata must be intact when you do.
+
+**Authentication requires a filesystem.** SQLite (users, sessions, project
+ownership) cannot live on S3. With no auth provider configured the server runs
+fully stateless and needs no volume at all; enabling auth means keeping a small
+volume for `lwid.db`.
+
+Building without the S3 backend (drops the AWS SDK dependency):
+
+```sh
+cargo build --release -p lwid-server --no-default-features
+```
 
 ## Architecture
 

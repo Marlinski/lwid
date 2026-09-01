@@ -8,6 +8,12 @@ description = "LookWhatIDid HTTP server"
 name = "lwid-server"
 path = "src/main.rs"
 
+[features]
+# S3 backend is compiled in by default; the running server still uses the
+# filesystem unless storage.backend = "s3" selects it.
+default = ["s3"]
+s3 = ["lwid-common/s3"]
+
 [dependencies]
 lwid-common = { path = "../lwid-common" }
 
