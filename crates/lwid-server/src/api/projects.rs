@@ -75,7 +75,7 @@ fn project_to_response(project: &Project) -> wire::ProjectResponse {
 /// If the manifest has a `parent_cid`, we walk the chain and accumulate CIDs
 /// from every ancestor manifest as well. This ensures the project's `blob_cids`
 /// set covers the entire history.
-fn collect_all_blob_cids(
+async fn collect_all_blob_cids(
     state: &AppState,
     manifest_cid: &str,
     manifest: &Manifest,
@@ -96,7 +96,7 @@ fn collect_all_blob_cids(
         cids.insert(pcid_str.clone());
 
         let pcid = Cid::from_string(pcid_str)?;
-        let data = state.blobs.get(&pcid).map_err(|e| {
+        let data = state.blobs.get(&pcid).await.map_err(|e| {
             AppError::Internal(format!("failed to read parent manifest {pcid_str}: {e}"))
         })?;
 
@@ -155,7 +155,7 @@ pub async fn create_project(
     // Enforce max_projects quota (if limited and user is logged in).
     if policy.max_projects > 0 {
         if let Some(ref u) = user.0 {
-            let all_ids = state.projects.list().map_err(|e| {
+            let all_ids = state.projects.list().await.map_err(|e| {
                 AppError::Internal(format!("failed to list projects: {e}"))
             })?;
             let count = db::count_live_projects(state.db_pool(), &u.id, &all_ids)
@@ -171,7 +171,10 @@ pub async fn create_project(
     }
 
     let created_with = req.client_version.unwrap_or_else(|| env!("LWID_VERSION").to_string());
-    let project = state.projects.create(&pubkey, expires_at, req.store_token, Some(created_with.clone()))?;
+    let project = state
+        .projects
+        .create(&pubkey, expires_at, req.store_token, Some(created_with.clone()))
+        .await?;
 
     // Record ownership if the user is logged in.
     if let Some(ref u) = user.0 {
@@ -208,7 +211,7 @@ pub async fn get_project(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<wire::ProjectResponse>, AppError> {
-    let project = state.projects.get(&id)?;
+    let project = state.projects.get(&id).await?;
     Ok(Json(project_to_response(&project)))
 }
 
@@ -238,7 +241,7 @@ pub async fn update_root(
     let policy = tier_policy(&state.config, &user);
 
     // Fetch the project to obtain the write pubkey.
-    let project = state.projects.get(&id)?;
+    let project = state.projects.get(&id).await?;
 
     // Decode the signature from base64.
     let signature_bytes = BASE64_STANDARD
@@ -256,7 +259,7 @@ pub async fn update_root(
     let cid = Cid::from_string(&req.root_cid)?;
 
     // Fetch the manifest blob and parse it.
-    let manifest_data = state.blobs.get(&cid).map_err(|e| {
+    let manifest_data = state.blobs.get(&cid).await.map_err(|e| {
         AppError::BadRequest(format!("manifest blob not found for CID {}: {e}", req.root_cid))
     })?;
 
@@ -274,10 +277,10 @@ pub async fn update_root(
     }
 
     // Collect all blob CIDs (files + manifests across the version chain).
-    let blob_cids = collect_all_blob_cids(&state, &req.root_cid, &manifest)?;
+    let blob_cids = collect_all_blob_cids(&state, &req.root_cid, &manifest).await?;
 
     // Persist the update.
-    let updated = state.projects.update_root(&id, cid, blob_cids)?;
+    let updated = state.projects.update_root(&id, cid, blob_cids).await?;
 
     info!(
         project_id = %id,
@@ -323,7 +326,7 @@ pub async fn extend_ttl(
     let effective_ttl = clamp_ttl(&body.ttl, &policy.max_ttl).to_owned();
 
     // Fetch the project to obtain the write pubkey.
-    let project = state.projects.get(&id)?;
+    let project = state.projects.get(&id).await?;
 
     // Decode the signature from base64.
     let signature_bytes = BASE64_STANDARD
@@ -342,7 +345,7 @@ pub async fn extend_ttl(
         parse_ttl(&effective_ttl, Utc::now()).map_err(|e| AppError::BadRequest(e.to_string()))?;
 
     // Persist the updated expiry.
-    let updated = state.projects.update_expiry(&id, expires_at)?;
+    let updated = state.projects.update_expiry(&id, expires_at).await?;
 
     info!(
         project_id = %id,
@@ -371,7 +374,7 @@ pub async fn delete_project(
     Json(body): Json<wire::DeleteProjectRequest>,
 ) -> Result<StatusCode, AppError> {
     // Fetch the project to obtain the write pubkey.
-    let project = state.projects.get(&id)?;
+    let project = state.projects.get(&id).await?;
 
     // Decode the signature from base64.
     let signature_bytes = BASE64_STANDARD
@@ -386,10 +389,10 @@ pub async fn delete_project(
     )?;
 
     // Delete the project.
-    state.projects.delete(&id)?;
+    state.projects.delete(&id).await?;
 
     // Clean up store KV entries for this project.
-    if let Err(e) = state.kv.delete_all(&id) {
+    if let Err(e) = state.kv.delete_all(&id).await {
         tracing::warn!(project_id = %id, error = %e, "failed to clean up store entries");
     }
 

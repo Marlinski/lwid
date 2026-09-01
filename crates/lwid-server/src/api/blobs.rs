@@ -57,7 +57,7 @@ pub async fn upload_blob(
         )));
     }
 
-    let cid = state.blobs.put(&body)?;
+    let cid = state.blobs.put(&body).await?;
 
     Ok(Json(UploadResponse {
         cid: cid.to_string(),
@@ -80,7 +80,7 @@ pub async fn get_blob(
     Path(cid_str): Path<String>,
 ) -> Result<Response, AppError> {
     let cid = Cid::from_string(&cid_str)?;
-    let data = state.blobs.get(&cid)?;
+    let data = state.blobs.get(&cid).await?;
 
     let response = (
         [
@@ -108,7 +108,7 @@ pub async fn head_blob(
 ) -> Result<StatusCode, AppError> {
     let cid = Cid::from_string(&cid_str)?;
 
-    if state.blobs.exists(&cid)? {
+    if state.blobs.exists(&cid).await? {
         Ok(StatusCode::OK)
     } else {
         Err(AppError::NotFound(format!("blob not found: {cid_str}")))

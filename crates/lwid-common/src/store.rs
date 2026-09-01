@@ -9,6 +9,7 @@
 use std::fs;
 use std::path::PathBuf;
 
+use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::cid::Cid;
@@ -36,25 +37,26 @@ pub enum StoreError {
 /// A content-addressed blob store.
 ///
 /// Implementations must be safe to share across threads.
+#[async_trait]
 pub trait BlobStore: Send + Sync {
     /// Store `data` and return its [`Cid`].
     ///
     /// The operation is **idempotent**: storing the same bytes twice must
     /// succeed and return the same CID without duplicating data.
-    fn put(&self, data: &[u8]) -> Result<Cid, StoreError>;
+    async fn put(&self, data: &[u8]) -> Result<Cid, StoreError>;
 
     /// Retrieve the raw bytes associated with `cid`.
     ///
     /// Returns [`StoreError::NotFound`] if no blob with that CID exists.
-    fn get(&self, cid: &Cid) -> Result<Vec<u8>, StoreError>;
+    async fn get(&self, cid: &Cid) -> Result<Vec<u8>, StoreError>;
 
     /// Check whether a blob with the given `cid` is present in the store.
-    fn exists(&self, cid: &Cid) -> Result<bool, StoreError>;
+    async fn exists(&self, cid: &Cid) -> Result<bool, StoreError>;
 
     /// Delete a blob by its [`Cid`].
     ///
     /// Returns [`StoreError::NotFound`] if the blob does not exist.
-    fn delete(&self, cid: &Cid) -> Result<(), StoreError>;
+    async fn delete(&self, cid: &Cid) -> Result<(), StoreError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,8 +87,9 @@ impl FsBlobStore {
     }
 }
 
+#[async_trait]
 impl BlobStore for FsBlobStore {
-    fn put(&self, data: &[u8]) -> Result<Cid, StoreError> {
+    async fn put(&self, data: &[u8]) -> Result<Cid, StoreError> {
         let cid = Cid::from_bytes(data);
         let path = self.blob_path(&cid);
 
@@ -104,7 +107,7 @@ impl BlobStore for FsBlobStore {
         Ok(cid)
     }
 
-    fn get(&self, cid: &Cid) -> Result<Vec<u8>, StoreError> {
+    async fn get(&self, cid: &Cid) -> Result<Vec<u8>, StoreError> {
         let path = self.blob_path(cid);
 
         if !path.exists() {
@@ -116,12 +119,12 @@ impl BlobStore for FsBlobStore {
         Ok(fs::read(&path)?)
     }
 
-    fn exists(&self, cid: &Cid) -> Result<bool, StoreError> {
+    async fn exists(&self, cid: &Cid) -> Result<bool, StoreError> {
         let path = self.blob_path(cid);
         Ok(path.exists())
     }
 
-    fn delete(&self, cid: &Cid) -> Result<(), StoreError> {
+    async fn delete(&self, cid: &Cid) -> Result<(), StoreError> {
         let path = self.blob_path(cid);
 
         if !path.exists() {
@@ -152,24 +155,24 @@ mod tests {
         (store, dir)
     }
 
-    #[test]
-    fn put_get_roundtrip() {
+    #[tokio::test]
+    async fn put_get_roundtrip() {
         let (store, _dir) = tmp_store();
         let data = b"hello, content-addressed world!";
 
-        let cid = store.put(data).expect("put should succeed");
-        let retrieved = store.get(&cid).expect("get should succeed");
+        let cid = store.put(data).await.expect("put should succeed");
+        let retrieved = store.get(&cid).await.expect("get should succeed");
 
         assert_eq!(retrieved, data, "retrieved bytes must match original data");
     }
 
-    #[test]
-    fn idempotent_put() {
+    #[tokio::test]
+    async fn idempotent_put() {
         let (store, _dir) = tmp_store();
         let data = b"idempotent payload";
 
-        let cid1 = store.put(data).expect("first put");
-        let cid2 = store.put(data).expect("second put");
+        let cid1 = store.put(data).await.expect("first put");
+        let cid2 = store.put(data).await.expect("second put");
 
         assert_eq!(
             cid1, cid2,
@@ -177,17 +180,18 @@ mod tests {
         );
 
         // The file should still contain the original data.
-        let retrieved = store.get(&cid1).expect("get after double put");
+        let retrieved = store.get(&cid1).await.expect("get after double put");
         assert_eq!(retrieved, data);
     }
 
-    #[test]
-    fn get_nonexistent_returns_not_found() {
+    #[tokio::test]
+    async fn get_nonexistent_returns_not_found() {
         let (store, _dir) = tmp_store();
         let cid = Cid::from_bytes(b"data that was never stored");
 
         let err = store
             .get(&cid)
+            .await
             .expect_err("get should fail for missing CID");
 
         match err {
@@ -198,26 +202,26 @@ mod tests {
         }
     }
 
-    #[test]
-    fn exists_returns_true_after_put() {
+    #[tokio::test]
+    async fn exists_returns_true_after_put() {
         let (store, _dir) = tmp_store();
         let data = b"existence check";
 
-        let cid = store.put(data).expect("put should succeed");
+        let cid = store.put(data).await.expect("put should succeed");
 
         assert!(
-            store.exists(&cid).expect("exists should succeed"),
+            store.exists(&cid).await.expect("exists should succeed"),
             "exists must return true for a stored blob",
         );
     }
 
-    #[test]
-    fn exists_returns_false_for_missing() {
+    #[tokio::test]
+    async fn exists_returns_false_for_missing() {
         let (store, _dir) = tmp_store();
         let cid = Cid::from_bytes(b"never stored");
 
         assert!(
-            !store.exists(&cid).expect("exists should succeed"),
+            !store.exists(&cid).await.expect("exists should succeed"),
             "exists must return false for a missing blob",
         );
     }

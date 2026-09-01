@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -102,10 +103,11 @@ impl Project {
 /// Storage backend for [`Project`] metadata.
 ///
 /// Implementations must be safe to share across threads.
+#[async_trait]
 pub trait ProjectStore: Send + Sync {
     /// Create a new project with the given Ed25519 public key, optional
     /// expiry time, optional store authentication token, and optional client version.
-    fn create(
+    async fn create(
         &self,
         write_pubkey: &[u8],
         expires_at: Option<DateTime<Utc>>,
@@ -116,13 +118,13 @@ pub trait ProjectStore: Send + Sync {
     /// Retrieve a project by its identifier.
     ///
     /// Returns [`ProjectError::NotFound`] if no project with `id` exists.
-    fn get(&self, id: &str) -> Result<Project, ProjectError>;
+    async fn get(&self, id: &str) -> Result<Project, ProjectError>;
 
     /// Update the root CID of an existing project, along with the set of
     /// blob CIDs it references.
     ///
     /// The `updated_at` timestamp is refreshed automatically.
-    fn update_root(
+    async fn update_root(
         &self,
         id: &str,
         root_cid: Cid,
@@ -130,19 +132,19 @@ pub trait ProjectStore: Send + Sync {
     ) -> Result<Project, ProjectError>;
 
     /// Delete a project by its identifier. Returns the deleted project.
-    fn delete(&self, id: &str) -> Result<Project, ProjectError>;
+    async fn delete(&self, id: &str) -> Result<Project, ProjectError>;
 
     /// Update the expiry timestamp of an existing project.
     ///
     /// The `updated_at` timestamp is refreshed automatically.
-    fn update_expiry(
+    async fn update_expiry(
         &self,
         id: &str,
         expires_at: Option<DateTime<Utc>>,
     ) -> Result<Project, ProjectError>;
 
     /// List the identifiers of all known projects.
-    fn list(&self) -> Result<Vec<String>, ProjectError>;
+    async fn list(&self) -> Result<Vec<String>, ProjectError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,8 +180,9 @@ impl FsProjectStore {
     }
 }
 
+#[async_trait]
 impl ProjectStore for FsProjectStore {
-    fn create(
+    async fn create(
         &self,
         write_pubkey: &[u8],
         expires_at: Option<DateTime<Utc>>,
@@ -208,7 +211,7 @@ impl ProjectStore for FsProjectStore {
         Ok(project)
     }
 
-    fn get(&self, id: &str) -> Result<Project, ProjectError> {
+    async fn get(&self, id: &str) -> Result<Project, ProjectError> {
         let path = self.project_path(id);
 
         if !path.exists() {
@@ -220,13 +223,13 @@ impl ProjectStore for FsProjectStore {
         Ok(project)
     }
 
-    fn update_root(
+    async fn update_root(
         &self,
         id: &str,
         root_cid: Cid,
         blob_cids: BTreeSet<String>,
     ) -> Result<Project, ProjectError> {
-        let mut project = self.get(id)?;
+        let mut project = self.get(id).await?;
 
         project.root_cid = Some(root_cid);
         project.blob_cids = blob_cids;
@@ -239,19 +242,19 @@ impl ProjectStore for FsProjectStore {
         Ok(project)
     }
 
-    fn delete(&self, id: &str) -> Result<Project, ProjectError> {
-        let project = self.get(id)?;
+    async fn delete(&self, id: &str) -> Result<Project, ProjectError> {
+        let project = self.get(id).await?;
         let path = self.project_path(id);
         fs::remove_file(&path)?;
         Ok(project)
     }
 
-    fn update_expiry(
+    async fn update_expiry(
         &self,
         id: &str,
         expires_at: Option<DateTime<Utc>>,
     ) -> Result<Project, ProjectError> {
-        let mut project = self.get(id)?;
+        let mut project = self.get(id).await?;
 
         project.expires_at = expires_at;
         project.updated_at = Utc::now();
@@ -263,7 +266,7 @@ impl ProjectStore for FsProjectStore {
         Ok(project)
     }
 
-    fn list(&self) -> Result<Vec<String>, ProjectError> {
+    async fn list(&self) -> Result<Vec<String>, ProjectError> {
         self.ensure_dir()?;
         let mut ids = Vec::new();
 
@@ -304,13 +307,14 @@ mod tests {
         vec![0xAB; 32]
     }
 
-    #[test]
-    fn create_then_get_roundtrip() {
+    #[tokio::test]
+    async fn create_then_get_roundtrip() {
         let (store, _dir) = tmp_store();
         let pubkey = test_pubkey();
 
         let created = store
             .create(&pubkey, None, None, None)
+            .await
             .expect("create should succeed");
 
         assert_eq!(created.id.len(), 12, "project ID should be 12 characters");
@@ -322,7 +326,7 @@ mod tests {
         assert!(created.expires_at.is_none());
         assert!(created.blob_cids.is_empty());
 
-        let fetched = store.get(&created.id).expect("get should succeed");
+        let fetched = store.get(&created.id).await.expect("get should succeed");
 
         assert_eq!(fetched.id, created.id);
         assert_eq!(fetched.root_cid, created.root_cid);
@@ -331,14 +335,15 @@ mod tests {
         assert_eq!(fetched.updated_at, created.updated_at);
     }
 
-    #[test]
-    fn create_with_expiry() {
+    #[tokio::test]
+    async fn create_with_expiry() {
         let (store, _dir) = tmp_store();
         let pubkey = test_pubkey();
         let expires = Utc::now() + chrono::Duration::hours(1);
 
         let created = store
             .create(&pubkey, Some(expires), None, None)
+            .await
             .expect("create should succeed");
 
         assert_eq!(created.expires_at, Some(expires));
@@ -349,12 +354,13 @@ mod tests {
         assert!(created.is_expired(future));
     }
 
-    #[test]
-    fn get_nonexistent_returns_not_found() {
+    #[tokio::test]
+    async fn get_nonexistent_returns_not_found() {
         let (store, _dir) = tmp_store();
 
         let err = store
             .get("does-not-exist")
+            .await
             .expect_err("get should fail for missing project");
 
         match err {
@@ -365,13 +371,14 @@ mod tests {
         }
     }
 
-    #[test]
-    fn update_root_works_and_updates_timestamp() {
+    #[tokio::test]
+    async fn update_root_works_and_updates_timestamp() {
         let (store, _dir) = tmp_store();
         let pubkey = test_pubkey();
 
         let created = store
             .create(&pubkey, None, None, None)
+            .await
             .expect("create should succeed");
         assert!(created.root_cid.is_none());
 
@@ -381,6 +388,7 @@ mod tests {
             .collect();
         let updated = store
             .update_root(&created.id, cid.clone(), blobs.clone())
+            .await
             .expect("update_root should succeed");
 
         assert_eq!(updated.root_cid.as_ref(), Some(&cid));
@@ -394,38 +402,40 @@ mod tests {
         );
 
         // Verify persistence.
-        let fetched = store.get(&created.id).expect("get after update");
+        let fetched = store.get(&created.id).await.expect("get after update");
         assert_eq!(fetched.root_cid.as_ref(), Some(&cid));
         assert_eq!(fetched.blob_cids, blobs);
     }
 
-    #[test]
-    fn delete_removes_project() {
+    #[tokio::test]
+    async fn delete_removes_project() {
         let (store, _dir) = tmp_store();
         let pubkey = test_pubkey();
 
         let created = store
             .create(&pubkey, None, None, None)
+            .await
             .expect("create should succeed");
-        let deleted = store.delete(&created.id).expect("delete should succeed");
+        let deleted = store.delete(&created.id).await.expect("delete should succeed");
         assert_eq!(deleted.id, created.id);
 
         let err = store
             .get(&created.id)
+            .await
             .expect_err("get after delete should fail");
         assert!(matches!(err, ProjectError::NotFound { .. }));
     }
 
-    #[test]
-    fn list_returns_created_projects() {
+    #[tokio::test]
+    async fn list_returns_created_projects() {
         let (store, _dir) = tmp_store();
         let pubkey = test_pubkey();
 
-        let p1 = store.create(&pubkey, None, None, None).expect("create p1");
-        let p2 = store.create(&pubkey, None, None, None).expect("create p2");
-        let p3 = store.create(&pubkey, None, None, None).expect("create p3");
+        let p1 = store.create(&pubkey, None, None, None).await.expect("create p1");
+        let p2 = store.create(&pubkey, None, None, None).await.expect("create p2");
+        let p3 = store.create(&pubkey, None, None, None).await.expect("create p3");
 
-        let mut ids = store.list().expect("list should succeed");
+        let mut ids = store.list().await.expect("list should succeed");
         ids.sort();
 
         let mut expected = vec![p1.id, p2.id, p3.id];

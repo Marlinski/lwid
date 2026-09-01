@@ -100,7 +100,7 @@ pub async fn put_value(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<StatusCode, AppError> {
-    let project = state.projects.get(&id)?;
+    let project = state.projects.get(&id).await?;
     verify_store_token(&headers, &project.store_token)?;
 
     if body.len() > MAX_STORE_VALUE_SIZE {
@@ -113,7 +113,7 @@ pub async fn put_value(
 
     // Enforce per-tier total store quota.
     let policy = tier_policy(&state.config, &user);
-    let entries = state.kv.list_keys_with_sizes(&id)?;
+    let entries = state.kv.list_keys_with_sizes(&id).await?;
     let current_total: u64 = entries.iter().map(|(_, s)| *s).sum();
     if current_total + body.len() as u64 > policy.max_store_total as u64 {
         return Err(AppError::PayloadTooLarge(format!(
@@ -122,7 +122,7 @@ pub async fn put_value(
         )));
     }
 
-    state.kv.put(&id, &key, &body)?;
+    state.kv.put(&id, &key, &body).await?;
 
     info!(
         project_id = %id,
@@ -142,10 +142,10 @@ pub async fn get_value(
     Path((id, key)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
-    let project = state.projects.get(&id)?;
+    let project = state.projects.get(&id).await?;
     verify_store_token(&headers, &project.store_token)?;
 
-    let data = state.kv.get(&id, &key)?;
+    let data = state.kv.get(&id, &key).await?;
 
     let response = (
         [(CONTENT_TYPE, "application/octet-stream")],
@@ -162,10 +162,10 @@ pub async fn delete_value(
     Path((id, key)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<StatusCode, AppError> {
-    let project = state.projects.get(&id)?;
+    let project = state.projects.get(&id).await?;
     verify_store_token(&headers, &project.store_token)?;
 
-    state.kv.delete(&id, &key)?;
+    state.kv.delete(&id, &key).await?;
 
     info!(
         project_id = %id,
@@ -182,10 +182,10 @@ pub async fn list_keys(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<wire::StoreListResponse>, AppError> {
-    let project = state.projects.get(&id)?;
+    let project = state.projects.get(&id).await?;
     verify_store_token(&headers, &project.store_token)?;
 
-    let entries = state.kv.list_keys_with_sizes(&id)?;
+    let entries = state.kv.list_keys_with_sizes(&id).await?;
     let total_size: u64 = entries.iter().map(|(_, s)| *s).sum();
     let keys = entries
         .into_iter()

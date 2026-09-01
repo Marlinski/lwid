@@ -29,7 +29,7 @@ pub fn spawn(projects: Arc<dyn ProjectStore>, blobs: Arc<dyn BlobStore>, kv: Arc
         info!("reaper started (sweep interval: {}s)", SWEEP_INTERVAL.as_secs());
         loop {
             tokio::time::sleep(SWEEP_INTERVAL).await;
-            sweep(&*projects, &*blobs, &*kv);
+            sweep(&*projects, &*blobs, &*kv).await;
         }
     });
 }
@@ -39,8 +39,8 @@ pub fn spawn(projects: Arc<dyn ProjectStore>, blobs: Arc<dyn BlobStore>, kv: Arc
 /// Lists all projects, identifies expired ones, collects the set of blob CIDs
 /// owned by *live* projects, then deletes each expired project and any of its
 /// blobs that are not referenced by a live project.
-fn sweep(projects: &dyn ProjectStore, blobs: &dyn BlobStore, kv: &dyn KvStore) {
-    let ids = match projects.list() {
+async fn sweep(projects: &dyn ProjectStore, blobs: &dyn BlobStore, kv: &dyn KvStore) {
+    let ids = match projects.list().await {
         Ok(ids) => ids,
         Err(e) => {
             error!("reaper: failed to list projects: {e}");
@@ -59,7 +59,7 @@ fn sweep(projects: &dyn ProjectStore, blobs: &dyn BlobStore, kv: &dyn KvStore) {
     let mut live_blob_cids: BTreeSet<String> = BTreeSet::new();
 
     for id in &ids {
-        match projects.get(id) {
+        match projects.get(id).await {
             Ok(project) => {
                 if project.is_expired(now) {
                     expired_ids.push(id.clone());
@@ -81,7 +81,7 @@ fn sweep(projects: &dyn ProjectStore, blobs: &dyn BlobStore, kv: &dyn KvStore) {
 
     // Second pass: delete each expired project and its exclusive blobs.
     for id in &expired_ids {
-        match projects.delete(id) {
+        match projects.delete(id).await {
             Ok(project) => {
                 let mut deleted_blobs = 0u64;
                 let mut kept_blobs = 0u64;
@@ -93,7 +93,7 @@ fn sweep(projects: &dyn ProjectStore, blobs: &dyn BlobStore, kv: &dyn KvStore) {
                     }
 
                     if let Ok(cid) = Cid::from_string(cid_str) {
-                        if let Err(e) = blobs.delete(&cid) {
+                        if let Err(e) = blobs.delete(&cid).await {
                             warn!("reaper: failed to delete blob {cid_str}: {e}");
                         } else {
                             deleted_blobs += 1;
@@ -102,7 +102,7 @@ fn sweep(projects: &dyn ProjectStore, blobs: &dyn BlobStore, kv: &dyn KvStore) {
                 }
 
                 // Clean up KV store data for this project.
-                match kv.delete_all(id) {
+                match kv.delete_all(id).await {
                     Ok(()) => {
                         info!(project_id = %id, "reaper: cleaned up store data");
                     }
