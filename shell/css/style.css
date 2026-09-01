@@ -20,6 +20,8 @@
   --danger:      #f85149;
   --danger-dim:  rgba(248, 81, 73, 0.12);
   --green:       #3fb950;
+  --amber:       #d29922;
+  --amber-dim:   rgba(210, 153, 34, 0.14);
   --text:        #e6edf3;
   --text-muted:  #7d8590;
   --text-subtle: #484f58;
@@ -1466,6 +1468,32 @@ button:disabled {
 .projects-dropdown__badge--read {
   color: var(--text-subtle);
   background: rgba(72, 79, 88, 0.25);
+}
+
+/* Remaining lifetime, shown between the id and the access badge. Colour
+   escalates only as the deadline approaches, so a glance finds what is
+   about to go. */
+.projects-dropdown__life {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  background: rgba(72, 79, 88, 0.25);
+  font-variant-numeric: tabular-nums;
+}
+
+.projects-dropdown__life--soon {
+  color: var(--amber);
+  background: var(--amber-dim);
+}
+
+.projects-dropdown__life--permanent {
+  color: var(--text-subtle);
+  background: transparent;
+  opacity: 0.7;
 }
 
 .projects-dropdown__remove {
