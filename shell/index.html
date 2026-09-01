@@ -395,6 +395,7 @@
       buildProjectUrl,
     } from '/js/project.js';
     import { scanFiles } from '/js/detect-secrets.js';
+    import { GONE, selectVisibleProjects } from '/js/projects.js';
 
     // -----------------------------------------------------------------------
     // DOM references
@@ -545,21 +546,74 @@
       localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
     }
 
+    // The browser stores only ids and keys; the timestamps live on the server.
+    // Cache what we learn so the menu can render instantly on the next open,
+    // then refresh in the background.
+    const PROJECT_META_KEY = 'lwid_project_meta';
+
+    function loadProjectMeta() {
+      try { return JSON.parse(localStorage.getItem(PROJECT_META_KEY) || '{}'); }
+      catch { return {}; }
+    }
+
+    let projectMeta = loadProjectMeta();
+
+    function saveProjectMeta() {
+      try { localStorage.setItem(PROJECT_META_KEY, JSON.stringify(projectMeta)); }
+      catch { /* quota or private mode — the cache is an optimisation only */ }
+    }
+
+    /**
+     * Fetch creation/expiry for each saved project.
+     *
+     * A 404 is durable: the project is gone for good, so it is recorded as
+     * such and later removed from storage. Any other failure is left alone —
+     * a flaky network must not make someone's projects disappear.
+     */
+    async function refreshProjectMeta(ids) {
+      await Promise.all(ids.map(async (id) => {
+        try {
+          const p = await api.getProject(id);
+          projectMeta[id] = { created_at: p.created_at, expires_at: p.expires_at ?? null };
+        } catch (err) {
+          if (err && err.status === 404) projectMeta[id] = GONE;
+        }
+      }));
+      // Forget cache entries for projects no longer in the list.
+      const keep = new Set(getSavedProjects().map(p => p.id));
+      for (const id of Object.keys(projectMeta)) if (!keep.has(id)) delete projectMeta[id];
+      saveProjectMeta();
+    }
+
     /** Render project list into a dropdown menu element. */
     function renderProjectsMenu($menu) {
-      const projects = getSavedProjects();
-      if (projects.length === 0) {
+      const saved = getSavedProjects();
+      if (saved.length === 0) {
         $menu.innerHTML = '<div class="projects-dropdown__empty">No saved projects</div>';
         return;
       }
-      $menu.innerHTML = projects.map(p => {
+
+      const { visible, drop } = selectVisibleProjects(saved, projectMeta, Date.now());
+      // Projects the server no longer has are unrecoverable — stop keeping them.
+      drop.forEach(removeSavedProject);
+
+      if (visible.length === 0) {
+        $menu.innerHTML = '<div class="projects-dropdown__empty">No live projects</div>';
+        return;
+      }
+
+      $menu.innerHTML = visible.map(p => {
         const access = p.writeKey ? 'edit' : 'read';
         const accessClass = p.writeKey ? 'projects-dropdown__badge--edit' : 'projects-dropdown__badge--read';
         const fragment = p.writeKey ? encodeKeys(p.readKey, p.writeKey) : p.readKey;
         const href = `/p/${p.id}#${fragment}`;
         const isCurrent = p.id === currentProjectId;
+        const life = p.lifetime
+          ? `<span class="projects-dropdown__life projects-dropdown__life--${p.lifetime.tone}">${p.lifetime.label}</span>`
+          : '';
         return `<a href="${href}" class="projects-dropdown__item${isCurrent ? ' projects-dropdown__item--active' : ''}" data-project-id="${p.id}">
           <span class="projects-dropdown__id">${truncateId(p.id)}</span>
+          ${life}
           <span class="projects-dropdown__badge ${accessClass}">${access}</span>
           <button class="projects-dropdown__remove" data-remove-id="${p.id}" title="Remove from list">&times;</button>
         </a>`;
@@ -582,8 +636,12 @@
         const wasOpen = !$menu.classList.contains('hidden');
         closeAllProjectsMenus();
         if (!wasOpen) {
-          renderProjectsMenu($menu);
+          renderProjectsMenu($menu);          // instant, from cache
           $menu.classList.remove('hidden');
+          // Then refresh lifetimes and re-render, so expired entries drop out.
+          refreshProjectMeta(getSavedProjects().map(p => p.id))
+            .then(() => { if (!$menu.classList.contains('hidden')) renderProjectsMenu($menu); })
+            .catch(() => { /* keep showing the cached list */ });
         }
       });
     }
