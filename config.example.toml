@@ -79,6 +79,18 @@ listen = "0.0.0.0:8080"
 # Env: LWID_SERVER__BASE_URL
 base_url = "https://example.com"
 
+# The single hostname this server should be reached by. Requests arriving on
+# any host listed in redirect_hosts are answered with a 301 to this one,
+# preserving path and query. Leave unset to serve every hostname alike.
+# Env: LWID_SERVER__CANONICAL_HOST
+# canonical_host = "example.com"
+
+# Legacy hostnames to redirect to canonical_host (comma-separated in the env
+# var). An explicit list rather than "everything else", so health probes on the
+# pod IP and in-cluster service names are still served normally.
+# Env: LWID_SERVER__REDIRECT_HOSTS
+# redirect_hosts = ["old.example.com"]
+
 # Maximum size of a single blob upload in bytes (default: 10 MB).
 # This is a hard axum body limit applied before any per-tier policy.
 # Env: LWID_SERVER__MAX_BLOB_SIZE
