@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Notebook</title>
+  <link rel="stylesheet" href="/sandbox/__shared__/viewer.css">
+  <link rel="stylesheet" href="/sandbox/__viewer__/notebook.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css" media="(prefers-color-scheme: light)">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.7/purify.min.js"></script>
+  <script src="/sandbox/__shared__/viewer-ui.js"></script>
+  <script src="/sandbox/__shared__/viewer-host.js"></script>
+  <script src="/sandbox/__shared__/md.js"></script>
+</head>
+<body>
+  <div class="v-app nb-app">
+    <div class="v-bar">
+      <span class="v-bar__title" id="title">Notebook</span>
+      <select class="nb-file-select" id="file-select" hidden></select>
+      <span class="v-bar__spacer"></span>
+      <span class="nb-status nb-status--uninitialized" id="status" title="Python kernel status">
+        <span class="nb-status__dot"></span><span id="status-text">no kernel</span>
+      </span>
+      <button class="v-btn" id="run-all" data-act="run-all" title="Run every cell">▶▶ Run all</button>
+      <button class="v-btn" id="stop" hidden title="Stop execution">■ Stop</button>
+      <button class="v-btn" id="restart" title="Restart the kernel">⟳ Restart</button>
+      <button class="v-btn" id="clear" title="Clear all outputs">Clear</button>
+      <span class="v-bar__badge" id="read-only" hidden>read-only</span>
+      <button class="v-btn v-btn--primary" id="save" hidden title="Publish a new version">Save .ipynb</button>
+    </div>
+    <div class="nb-scroll" id="scroll">
+      <div class="nb-doc" id="doc">
+        <div class="v-empty"><span class="v-spinner"></span></div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="/sandbox/__viewer__/notebook.js"></script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+.nb-app { display: flex; flex-direction: column; height: 100%; }
+
+/* ── Toolbar ────────────────────────────────────────────────────────────── */
+
+.nb-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--v-text-soft);
+}
+.nb-status__dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--v-text-muted);
+}
+.nb-status--idle   .nb-status__dot { background: var(--v-ok); }
+.nb-status--loading .nb-status__dot,
+.nb-status--busy   .nb-status__dot { background: #d29922; animation: nb-pulse 1s ease-in-out infinite; }
+.nb-status--dead   .nb-status__dot { background: var(--v-danger); }
+@keyframes nb-pulse { 50% { opacity: 0.3; } }
+
+.nb-file-select {
+  font: inherit; font-size: 12px;
+  background: var(--v-bg); color: var(--v-text);
+  border: 1px solid var(--v-border-strong); border-radius: 6px;
+  padding: 4px 6px;
+}
+
+/* ── Notebook body ──────────────────────────────────────────────────────── */
+
+.nb-scroll { flex: 1 1 auto; overflow-y: auto; }
+.nb-doc { max-width: 920px; margin: 0 auto; padding: 20px 16px 160px; }
+
+.nb-cell {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 8px;
+  margin: 6px 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+.nb-cell:hover { border-color: var(--v-border); }
+.nb-cell--running { border-color: #d29922; }
+
+.nb-gutter {
+  font-family: var(--v-mono);
+  font-size: 11px;
+  color: var(--v-text-muted);
+  text-align: right;
+  padding-top: 10px;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.nb-gutter__run {
+  border: none; background: none; cursor: pointer;
+  color: var(--v-text-muted); font-size: 14px; padding: 0; line-height: 1;
+  opacity: 0; transition: opacity 0.1s;
+}
+.nb-cell:hover .nb-gutter__run { opacity: 1; }
+.nb-gutter__run:hover { color: var(--v-accent); }
+
+.nb-body { min-width: 0; }
+
+/* Code input */
+.nb-input {
+  background: var(--v-bg-soft);
+  border: 1px solid var(--v-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.nb-input pre, .nb-input textarea {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: var(--v-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  tab-size: 4;
+}
+.nb-input pre { overflow-x: auto; }
+.nb-input textarea {
+  display: block; width: 100%;
+  border: none; outline: none; resize: none;
+  background: transparent; color: var(--v-text);
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.nb-input--focus { border-color: var(--v-accent); }
+
+/* Markdown cell */
+.nb-md { padding: 4px 2px; }
+.nb-md > *:first-child { margin-top: 0.2em; }
+.nb-md pre {
+  background: var(--v-bg-soft); border: 1px solid var(--v-border);
+  border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-size: 12.5px;
+}
+.nb-md code { background: var(--v-bg-inset); padding: 0.12em 0.35em; border-radius: 4px; font-size: 0.88em; }
+.nb-md pre code { background: none; padding: 0; }
+.nb-md img { max-width: 100%; }
+.nb-md table { border-collapse: collapse; }
+.nb-md th, .nb-md td { border: 1px solid var(--v-border); padding: 4px 10px; }
+.nb-md--editing { cursor: text; }
+
+.nb-raw {
+  white-space: pre-wrap;
+  font-family: var(--v-mono);
+  font-size: 12.5px;
+  color: var(--v-text-soft);
+  padding: 8px 12px;
+  border-left: 2px solid var(--v-border-strong);
+}
+
+/* Outputs */
+.nb-outputs { margin-top: 4px; }
+.nb-out {
+  font-size: 12.5px;
+  padding: 6px 12px;
+  overflow-x: auto;
+}
+.nb-out pre { margin: 0; font-family: var(--v-mono); white-space: pre-wrap; word-break: break-word; }
+.nb-out--stderr { background: rgba(248, 81, 73, 0.08); }
+.nb-out--error pre { color: var(--v-danger); }
+.nb-out img { max-width: 100%; background: #fff; border-radius: 4px; }
+.nb-out table { border-collapse: collapse; }
+.nb-out th, .nb-out td { border: 1px solid var(--v-border); padding: 3px 8px; text-align: right; }
+.nb-out .nb-out__html :is(h1,h2,h3) { font-size: 1.1em; margin: 0.4em 0; }
+
+.nb-pkg-note {
+  font-size: 11px; color: var(--v-text-muted);
+  padding: 2px 12px;
+}
+
+@media (max-width: 640px) {
+  .nb-cell { grid-template-columns: 34px 1fr; gap: 4px; }
+  .nb-gutter { font-size: 10px; }
+}
