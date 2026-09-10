@@ -154,9 +154,33 @@ Rust workspace with three crates:
 lwid-common/   Shared types, crypto (AES-256-GCM, Ed25519), CID utilities
 lwid-server/   Axum HTTP server, blob storage, shell SPA serving
 lwid-cli/      CLI binary (`lwid`), push/pull/clone/store commands
+shell/         Vanilla-JS SPA + Service Worker
+shell/viewers/ Per-file-type viewers (notebook, docs, file browser)
 ```
 
 The shell SPA is vanilla JS served by the Rust server. It intercepts navigation via a Service Worker and renders decrypted project content inside a sandboxed iframe.
+
+### Viewers
+
+A project without an `index.html` is opened through a **viewer** — a small
+front-end shim picked from the file types (`shell/js/viewers.js`):
+
+| Files | Viewer |
+|-------|--------|
+| any `.html` | none — the site renders as-is |
+| `*.ipynb` | notebook viewer — renders cells + saved outputs, and runs Python in-browser via a Pyodide Web Worker |
+| `*.md` | docs viewer — sidebar (honours `SUMMARY.md`), relative links, per-page TOC |
+| anything else | a browsable file listing |
+
+Viewer bundles live in `shell/viewers/` and are served to the sandbox by the
+Service Worker under reserved `/sandbox/__viewer__/` and `/sandbox/__shared__/`
+prefixes; the project's own files stay at their real paths. Editable links can
+publish a new version straight from the viewer. Notebook run-state is kept in
+the encrypted project store, so a shared link shows the last execution.
+
+Viewers pull a few libraries from CDN at runtime (markdown-it, highlight.js,
+DOMPurify from cdnjs/jsDelivr; Pyodide from jsDelivr) — the same CDN reliance
+the shell already has for syntax highlighting.
 
 ## Building from source
 

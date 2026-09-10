@@ -61,6 +61,21 @@ The fragment (`#...`) is never sent to the server — zero-knowledge by design.
 - All files in the directory are uploaded except hidden files, `node_modules`, and `.lwid.json`.
 - The server never sees plaintext content.
 
+## Viewers (non-website projects)
+
+If a project has **no `index.html`**, the shell picks a viewer from the file types:
+
+- **`*.ipynb`** → notebook viewer. Renders cells and their saved outputs; a
+  "Run all" button starts an in-browser Python kernel (Pyodide) so cells
+  execute for real (numpy / pandas / matplotlib work). With an edit link,
+  cells are editable and "Save .ipynb" publishes a new version.
+- **`*.md`** → docs viewer. Sidebar navigation (honours `SUMMARY.md` /
+  `_sidebar.md`), relative links between docs, per-page table of contents,
+  and inline editing on edit links.
+- **anything else** → a browsable file listing with syntax highlighting.
+
+So `lwid push` on a folder of notebooks or Markdown Just Works — no `index.html` needed.
+
 ## Workflow
 
 When a user asks to publish or share an app:
