@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Files</title>
+  <link rel="stylesheet" href="/sandbox/__shared__/viewer.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css" media="(prefers-color-scheme: light)">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+  <script src="/sandbox/__shared__/viewer-ui.js"></script>
+  <script src="/sandbox/__shared__/viewer-host.js"></script>
+  <style>
+    .fb-main { padding: 0; }
+    .fb-file-head {
+      position: sticky; top: 0;
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px;
+      background: var(--v-bg-soft);
+      border-bottom: 1px solid var(--v-border);
+      font-size: 12px; color: var(--v-text-soft);
+    }
+    .fb-file-head strong { color: var(--v-text); font-size: 13px; }
+    .fb-content { padding: 0; }
+    .fb-content pre {
+      margin: 0; padding: 16px;
+      font-size: 12.5px; line-height: 1.55;
+      overflow-x: auto;
+      tab-size: 2;
+    }
+    .fb-content pre code { background: none; padding: 0; }
+    .fb-content .fb-image-wrap { padding: 24px; text-align: center; }
+    .fb-content img { max-width: 100%; border: 1px solid var(--v-border); border-radius: 6px; background:
+      repeating-conic-gradient(var(--v-bg-inset) 0% 25%, transparent 0% 50%) 50% / 16px 16px; }
+    .fb-lineno { color: var(--v-text-muted); user-select: none; }
+    .fb-nav__size { margin-left: auto; font-size: 11px; color: var(--v-text-muted); }
+    .fb-dir { padding: 12px 14px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--v-text-muted); }
+  </style>
+</head>
+<body>
+  <div class="v-app">
+    <div class="v-bar">
+      <button class="v-btn v-btn--ghost" id="menu-toggle" title="Toggle file list" aria-label="Toggle file list">☰</button>
+      <span class="v-bar__title" id="title">Files</span>
+      <span class="v-bar__spacer"></span>
+      <span class="v-bar__badge" id="count"></span>
+      <button class="v-btn" id="download" hidden>Download</button>
+    </div>
+    <div class="v-body">
+      <nav class="v-sidebar" id="sidebar" aria-label="Files"></nav>
+      <main class="v-main fb-main" id="main">
+        <div class="v-empty">Select a file to preview.</div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module">
+    const { toast, escapeHtml, formatBytes } = window.LwidUI;
+    const $sidebar = document.getElementById('sidebar');
+    const $main = document.getElementById('main');
+    const $count = document.getElementById('count');
+    const $download = document.getElementById('download');
+    const $menuToggle = document.getElementById('menu-toggle');
+
+    const TEXT_EXT = /\.(txt|md|markdown|json|jsonl|ndjson|csv|tsv|log|ya?ml|toml|ini|cfg|conf|env|xml|svg|html?|css|scss|less|js|mjs|cjs|jsx|ts|tsx|py|rb|go|rs|c|h|cpp|hpp|cc|java|kt|swift|php|sh|bash|zsh|fish|sql|lua|r|jl|pl|dockerfile|makefile|gitignore|lock)$/i;
+    const HL_LANG = {
+      js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript',
+      ts: 'typescript', tsx: 'typescript', py: 'python', rb: 'ruby', rs: 'rust',
+      go: 'go', c: 'c', h: 'c', cpp: 'cpp', hpp: 'cpp', cc: 'cpp', java: 'java',
+      kt: 'kotlin', swift: 'swift', php: 'php', sh: 'bash', bash: 'bash', zsh: 'bash',
+      sql: 'sql', lua: 'lua', r: 'r', yml: 'yaml', yaml: 'yaml', toml: 'ini',
+      ini: 'ini', json: 'json', jsonl: 'json', xml: 'xml', html: 'xml', htm: 'xml',
+      svg: 'xml', css: 'css', scss: 'scss', less: 'less', md: 'markdown',
+      markdown: 'markdown', dockerfile: 'dockerfile', makefile: 'makefile',
+    };
+
+    function ext(path) {
+      const base = path.split('/').pop();
+      if (!base.includes('.')) return base.toLowerCase();
+      return base.split('.').pop().toLowerCase();
+    }
+
+    let files = [];
+    let active = null;
+
+    function render() {
+      $sidebar.innerHTML = '';
+      const groups = new Map();
+      for (const f of files) {
+        const dir = f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')) : '';
+        if (!groups.has(dir)) groups.set(dir, []);
+        groups.get(dir).push(f);
+      }
+      for (const dir of [...groups.keys()].sort()) {
+        if (dir) {
+          const h = document.createElement('div');
+          h.className = 'fb-dir';
+          h.textContent = dir + '/';
+          $sidebar.appendChild(h);
+        }
+        for (const f of groups.get(dir)) {
+          const btn = document.createElement('button');
+          btn.className = 'v-nav__item' + (f.path === active ? ' v-nav__item--active' : '');
+          btn.innerHTML = `<span>${escapeHtml(f.path.split('/').pop())}</span><span class="fb-nav__size">${formatBytes(f.size)}</span>`;
+          btn.addEventListener('click', () => open(f.path));
+          $sidebar.appendChild(btn);
+        }
+      }
+    }
+
+    async function open(path) {
+      active = path;
+      render();
+      if (window.matchMedia('(max-width: 720px)').matches) $sidebar.hidden = true;
+      const f = files.find((x) => x.path === path);
+      $main.innerHTML = `<div class="fb-file-head"><strong>${escapeHtml(path)}</strong><span>${formatBytes(f.size)}</span></div><div class="fb-content"><div class="v-empty"><span class="v-spinner"></span></div></div>`;
+      const $content = $main.querySelector('.fb-content');
+      $download.hidden = false;
+      $download.onclick = () => downloadFile(path);
+
+      const e = ext(path);
+      const isImage = /^(png|jpe?g|gif|webp|svg|ico|avif|bmp)$/.test(e);
+      try {
+        if (isImage) {
+          const bytes = await window.LwidHost.readBytes(path);
+          const mime = f.mimeType && f.mimeType.startsWith('image/') ? f.mimeType : 'image/' + (e === 'jpg' ? 'jpeg' : e);
+          const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+          $content.innerHTML = `<div class="fb-image-wrap"><img alt="${escapeHtml(path)}" src="${url}"></div>`;
+          return;
+        }
+        if (f.size > 2 * 1024 * 1024 || (!TEXT_EXT.test(path) && !/text\//.test(f.mimeType || ''))) {
+          $content.innerHTML = `<div class="v-empty">Binary file — ${formatBytes(f.size)}.<br><br><button class="v-btn" id="dl">Download</button></div>`;
+          $content.querySelector('#dl').onclick = () => downloadFile(path);
+          return;
+        }
+        const text = await window.LwidHost.readText(path);
+        const lang = HL_LANG[e];
+        let highlighted;
+        if (window.hljs && lang && window.hljs.getLanguage(lang)) {
+          highlighted = window.hljs.highlight(text, { language: lang }).value;
+        } else if (window.hljs) {
+          highlighted = window.hljs.highlightAuto(text).value;
+        } else {
+          highlighted = escapeHtml(text);
+        }
+        $content.innerHTML = `<pre class="hljs"><code>${highlighted}</code></pre>`;
+      } catch (err) {
+        $content.innerHTML = `<div class="v-empty">Could not read this file.<br>${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function downloadFile(path) {
+      const bytes = await window.LwidHost.readBytes(path);
+      const url = URL.createObjectURL(new Blob([bytes]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = path.split('/').pop();
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    $menuToggle.addEventListener('click', () => { $sidebar.hidden = !$sidebar.hidden; });
+
+    (async () => {
+      try {
+        files = await window.LwidHost.files();
+      } catch (err) {
+        $main.innerHTML = `<div class="v-empty">Failed to load project files.<br>${escapeHtml(err.message)}</div>`;
+        return;
+      }
+      $count.textContent = `${files.length} file${files.length === 1 ? '' : 's'}`;
+      render();
+
+      // Auto-open a sensible default: a readme, else the first text file.
+      const readme = files.find((f) => /readme/i.test(f.path.split('/').pop()));
+      const firstText = files.find((f) => TEXT_EXT.test(f.path));
+      const first = readme || firstText || files[0];
+      if (first) open(first.path);
+    })();
+  </script>
+</body>
+</html>

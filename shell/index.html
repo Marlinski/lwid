@@ -396,6 +396,7 @@
     } from '/js/project.js';
     import { scanFiles } from '/js/detect-secrets.js';
     import { GONE, selectVisibleProjects } from '/js/projects.js';
+    import { detectViewer } from '/js/viewers.js';
 
     // -----------------------------------------------------------------------
     // DOM references
@@ -513,6 +514,8 @@
     let currentExpiresAt   = null;
     /** @type {Map<string, Uint8Array>|null} */
     let currentFiles     = null;
+    /** Active viewer shim id (see js/viewers.js), or null for a plain site. */
+    let currentViewer    = null;
     /** @type {File[]} */
     let stagedFiles      = [];
     /** @type {File[]} */
@@ -796,7 +799,9 @@
         '.html': 'text/html',
         '.css': 'text/css',
         '.js': 'application/javascript',
+        '.mjs': 'application/javascript',
         '.json': 'application/json',
+        '.ipynb': 'application/json',
         '.svg': 'image/svg+xml',
         '.png': 'image/png',
         '.jpg': 'image/jpeg',
@@ -806,8 +811,10 @@
         '.ico': 'image/x-icon',
         '.txt': 'text/plain',
         '.md': 'text/markdown',
+        '.markdown': 'text/markdown',
         '.xml': 'application/xml',
         '.csv': 'text/csv',
+        '.py': 'text/x-python',
       };
       return map[ext] || 'application/octet-stream';
     }
@@ -947,7 +954,7 @@
     // SW was terminated while idle and lost its in-memory cache). The file
     // buffers are structured-cloned (only the port is transferred), so `files`
     // stays intact and can be re-sent any number of times.
-    async function postFilesToSW(files) {
+    async function postFilesToSW(files, viewer = currentViewer) {
       const sw = navigator.serviceWorker.controller;
       if (!sw) {
         throw new Error('Service Worker not controlling page — try refreshing.');
@@ -971,7 +978,10 @@
             reject(new Error('Unexpected SW response'));
           }
         };
-        sw.postMessage({ type: 'SET_FILES', files: payload }, [channel.port2]);
+        sw.postMessage(
+          { type: 'SET_FILES', files: payload, viewer: viewer || null, canEdit: !!currentWriteKey },
+          [channel.port2],
+        );
 
         // Timeout after 5 seconds
         setTimeout(() => reject(new Error('SW file cache timeout')), 5000);
@@ -985,10 +995,11 @@
      * before we point the iframe at /sandbox/. This eliminates the race
      * condition where the iframe fires fetch before the SW has the files.
      */
-    async function sendFilesToSW(files, entryPoint) {
-      await postFilesToSW(files);
-      // Point the iframe at the sandbox path — SW will intercept and serve
-      $sandboxFrame.src = '/sandbox/' + entryPoint;
+    async function sendFilesToSW(files, entryPoint, viewer = null) {
+      await postFilesToSW(files, viewer);
+      // Point the iframe at the sandbox path — SW will intercept and serve.
+      // With a viewer active, the root serves the viewer's own index.html.
+      $sandboxFrame.src = viewer ? '/sandbox/' : '/sandbox/' + entryPoint;
     }
 
     // Re-hydration: the SW's cache is in-memory and is wiped when the browser
@@ -1000,7 +1011,7 @@
       navigator.serviceWorker.addEventListener('message', async (event) => {
         if (event.data?.type === 'REQUEST_FILES' && currentFiles) {
           try {
-            await postFilesToSW(currentFiles);
+            await postFilesToSW(currentFiles, currentViewer);
           } catch (_) {
             /* SW will fall back to a 404; the user can reload to recover */
           }
@@ -1147,6 +1158,43 @@
           case 'LWID_BLOB_LIST': {
             const idx = await loadKeyIndex();
             reply(idx);
+            break;
+          }
+          case 'LWID_HOST_SAVE': {
+            // A viewer (js/viewers.js) asking the shell to publish a new
+            // version. Replies with LWID_HOST_RESULT so it never collides
+            // with the LWID_RESULT store protocol in lwid-sdk.js.
+            const hostReply = (value) =>
+              $sandboxFrame.contentWindow.postMessage({ type: 'LWID_HOST_RESULT', id, value }, '*');
+            const hostError = (err) =>
+              $sandboxFrame.contentWindow.postMessage(
+                { type: 'LWID_HOST_RESULT', id, error: err instanceof Error ? err.message : String(err) }, '*');
+            try {
+              if (!currentWriteKey) throw new Error('read-only link — no write key');
+              const changed = (msg.files || []).map((f) => ({
+                path: f.path,
+                content: new Uint8Array(f.content),
+              }));
+              const merged = [];
+              if (currentFiles) for (const [p, c] of currentFiles) merged.push({ path: p, content: c });
+              for (const nf of changed) {
+                const i = merged.findIndex((f) => f.path === nf.path);
+                if (i >= 0) merged[i] = nf; else merged.push(nf);
+              }
+              const { manifestCid } = await pushVersion(
+                api, currentProjectId, currentReadKey, currentWriteKey, merged,
+              );
+              currentManifestCid = manifestCid;
+              currentFiles = new Map(merged.map((f) => [f.path, f.content]));
+              buildSourceTree(currentFiles);
+              // Refresh the SW cache so the viewer's next /sandbox/ read sees
+              // the version it just published.
+              await postFilesToSW(currentFiles, currentViewer);
+              hostReply({ manifestCid });
+            } catch (err) {
+              console.error('Viewer save failed:', err);
+              hostError(err);
+            }
             break;
           }
           default:
@@ -1843,14 +1891,23 @@
         // Load store entries (non-blocking — don't await)
         loadStoreEntries();
 
-        // Resolve entry point and send files to Service Worker
-        const entryPoint = await resolveEntryPoint(result.files, currentManifestCid);
-        await sendFilesToSW(result.files, entryPoint);
+        // Pick a viewer shim for non-website projects (notebooks, docs, data
+        // folders). detectViewer() returns null whenever the project ships any
+        // HTML of its own, so plain sites are unaffected.
+        currentViewer = detectViewer(result.files.keys());
 
-        // If entry point is not an HTML file, open source panel and show its contents
-        if (!entryPoint.endsWith('.html')) {
-          $sourcePanel.classList.add('source-panel--open');
-          openSourceViewer(entryPoint);
+        if (currentViewer) {
+          await sendFilesToSW(result.files, null, currentViewer);
+        } else {
+          // Resolve entry point and send files to Service Worker
+          const entryPoint = await resolveEntryPoint(result.files, currentManifestCid);
+          await sendFilesToSW(result.files, entryPoint, null);
+
+          // If entry point is not an HTML file, open source panel and show its contents
+          if (!entryPoint.endsWith('.html')) {
+            $sourcePanel.classList.add('source-panel--open');
+            openSourceViewer(entryPoint);
+          }
         }
 
         hide($loadingOverlay);
