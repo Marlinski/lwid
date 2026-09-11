@@ -27,6 +27,14 @@ const $helpModal = $('help-modal');
 const enc = (p) => p.split('/').map(encodeURIComponent).join('/');
 const STORE_PREFIX = 'viewer:notebook:';
 
+// Small inline icon set for cell chrome — outline style, stroke/fill
+// currentColor so each just follows whatever color its button is styled
+// with (including hover/danger states) without extra markup.
+const ICON_PLAY = '<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.3v11.4a.6.6 0 0 0 .92.5l9-5.7a.6.6 0 0 0 0-1l-9-5.7a.6.6 0 0 0-.92.5z"/></svg>';
+const ICON_TRASH = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M4.5 4.5l.6 8.3a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.3"/></svg>';
+const ICON_CHEVRON = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>';
+const ICON_KEBAB = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="8" cy="13" r="1.3"/></svg>';
+
 function hashString(s) {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
@@ -100,8 +108,12 @@ function syncToolbar() {
   if (state.canEdit) {
     items.push({
       kind: 'button', id: 'save',
-      label: state.saving ? 'Saving…' : (state.dirty ? 'Save .ipynb •' : 'Save .ipynb'),
-      variant: 'primary', disabled: state.saving, title: 'Publish a new version',
+      label: state.saving ? 'Saving…' : 'Save .ipynb',
+      // Grey/plain once there's nothing new to publish — matches the saved
+      // file. The flowing-gradient CTA (same one as the homepage's quick
+      // starts) only lights up while there's something to save.
+      variant: state.saving ? undefined : (state.dirty ? 'cta' : undefined),
+      disabled: state.saving, title: state.dirty ? 'Publish a new version' : 'Nothing new to save',
     });
   }
 
@@ -324,29 +336,11 @@ function renderCellControls(cell) {
   addMd.textContent = '+M';
   addMd.addEventListener('click', () => insertCell(cell, 'markdown'));
 
-  // Native confirm() doesn't fire in this sandbox (no allow-modals), so
-  // deleting arms on the first click and only commits on a second one
-  // within a couple of seconds — no blocking dialog needed.
   const del = document.createElement('button');
   del.className = 'nb-gutter__ctrl nb-gutter__ctrl--danger';
   del.title = 'Delete this cell';
-  del.textContent = '×';
-  let armTimer = null;
-  const disarm = () => {
-    clearTimeout(armTimer);
-    armTimer = null;
-    del.textContent = '×';
-    del.title = 'Delete this cell';
-    del.classList.remove('nb-gutter__ctrl--armed');
-  };
-  del.addEventListener('click', () => {
-    if (armTimer) { disarm(); deleteCell(cell); return; }
-    del.textContent = '✓';
-    del.title = 'Click again to delete';
-    del.classList.add('nb-gutter__ctrl--armed');
-    armTimer = setTimeout(disarm, 2500);
-  });
-  del.addEventListener('blur', disarm);
+  del.innerHTML = ICON_TRASH;
+  del.addEventListener('click', () => deleteCell(cell));
 
   box.append(addCode, addMd, del);
   return box;
@@ -384,18 +378,19 @@ function renderCell(cell) {
     const label = document.createElement('span');
     label.className = 'nb-gutter__label';
     label.textContent = `In [${cell.execCount ?? ' '}]:`;
-    const run = document.createElement('button');
-    run.className = 'nb-gutter__run';
-    run.title = 'Run this cell';
-    run.textContent = '▶';
-    run.addEventListener('click', () => runCell(cell));
-    gutter.append(run, label);
+    gutter.appendChild(label);
 
-    body.appendChild(renderCodeInput(cell));
-    const outs = document.createElement('div');
-    outs.className = 'nb-outputs';
-    body.appendChild(outs);
-    cell._outsEl = outs;
+    // One card holds code + output, divided by a line — not two boxes.
+    const box = document.createElement('div');
+    box.className = 'nb-box';
+    cell._boxEl = box;
+    box.appendChild(renderCodeInput(cell));
+    body.appendChild(box);
+
+    // Lazily built by renderOutputs()/ensureOutputsSection() — absent from
+    // the DOM entirely while there's nothing to show.
+    cell._outputsSectionEl = null;
+    cell._outputsBodyEl = null;
     renderOutputs(cell);
   } else if (cell.type === 'markdown') {
     const md = document.createElement('div');
@@ -431,8 +426,15 @@ function renderCell(cell) {
 }
 
 function renderCodeInput(cell) {
-  const wrap = document.createElement('div');
-  wrap.className = 'nb-input';
+  const row = document.createElement('div');
+  row.className = 'nb-code-row';
+
+  const runBtn = document.createElement('button');
+  runBtn.className = 'nb-run-btn';
+  runBtn.title = 'Run this cell';
+  runBtn.innerHTML = ICON_PLAY;
+  runBtn.addEventListener('click', () => runCell(cell));
+  row.appendChild(runBtn);
 
   if (state.canEdit) {
     const ta = document.createElement('textarea');
@@ -441,8 +443,8 @@ function renderCodeInput(cell) {
     ta.rows = Math.max(1, cell.source.split('\n').length);
     const grow = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
     ta.addEventListener('input', () => { cell.source = ta.value; grow(); });
-    ta.addEventListener('focus', () => wrap.classList.add('nb-input--focus'));
-    ta.addEventListener('blur', () => wrap.classList.remove('nb-input--focus'));
+    ta.addEventListener('focus', () => cell._boxEl && cell._boxEl.classList.add('nb-box--focus'));
+    ta.addEventListener('blur', () => cell._boxEl && cell._boxEl.classList.remove('nb-box--focus'));
     ta.addEventListener('keydown', async (e) => {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
@@ -469,7 +471,7 @@ function renderCodeInput(cell) {
         selectCell(cell);
       }
     });
-    wrap.appendChild(ta);
+    row.appendChild(ta);
     requestAnimationFrame(grow);
     cell._inputEl = ta;
   } else {
@@ -483,9 +485,9 @@ function renderCodeInput(cell) {
     }
     pre.className = 'nb-code hljs';
     pre.appendChild(code);
-    wrap.appendChild(pre);
+    row.appendChild(pre);
   }
-  return wrap;
+  return row;
 }
 
 function currentSource(cell) {
@@ -566,14 +568,139 @@ function editMarkdown(cell) {
 }
 
 // ── Outputs ──────────────────────────────────────────────────────────────
+// A cell with no output shows no output section at all — no empty card
+// below the code. The section (divider, collapse toggle, "⋯" menu) is only
+// ever built the first time there's something to put in it.
 
 function renderOutputs(cell) {
-  const host = cell._outsEl;
-  if (!host) return;
-  host.innerHTML = '';
-  for (const out of cell.outputs || []) {
-    host.appendChild(renderOutput(out));
+  const outputs = cell.outputs || [];
+  if (outputs.length === 0) {
+    if (cell._outputsSectionEl) {
+      cell._outputsSectionEl.remove();
+      cell._outputsSectionEl = null;
+      cell._outputsBodyEl = null;
+    }
+    return;
   }
+  const host = ensureOutputsSection(cell);
+  host.innerHTML = '';
+  for (const out of outputs) host.appendChild(renderOutput(out));
+}
+
+/** Build (once) the collapsible output section — bar + body — and return its
+ * body element, ready to receive content. Idempotent: reuses what's there. */
+function ensureOutputsSection(cell) {
+  if (cell._outputsBodyEl) return cell._outputsBodyEl;
+
+  // A 2-column row, same column widths as .nb-code-row above the divider —
+  // the collapse chevron lines up under the play button, and the output
+  // content lines up under the code.
+  const section = document.createElement('div');
+  section.className = 'nb-outputs';
+
+  const row = document.createElement('div');
+  row.className = 'nb-outputs__row';
+
+  const collapseBtn = document.createElement('button');
+  collapseBtn.className = 'nb-outputs__collapse';
+  collapseBtn.title = 'Hide output';
+  collapseBtn.innerHTML = ICON_CHEVRON;
+  collapseBtn.addEventListener('click', () => {
+    const collapsed = section.classList.toggle('nb-outputs--collapsed');
+    collapseBtn.title = collapsed ? 'Show output' : 'Hide output';
+  });
+
+  const content = document.createElement('div');
+  content.className = 'nb-outputs__content';
+
+  const bar = document.createElement('div');
+  bar.className = 'nb-outputs__bar';
+  const spacer = document.createElement('span');
+  spacer.className = 'nb-outputs__spacer';
+  bar.append(spacer, renderOutputsMenu(cell));
+
+  const body = document.createElement('div');
+  body.className = 'nb-outputs__body';
+
+  content.append(bar, body);
+  row.append(collapseBtn, content);
+  section.appendChild(row);
+  cell._boxEl.appendChild(section);
+  cell._outputsSectionEl = section;
+  cell._outputsBodyEl = body;
+  return body;
+}
+
+/** The "⋯" menu in front of the output: copy it as text, or clear it. */
+function renderOutputsMenu(cell) {
+  const wrap = document.createElement('div');
+  wrap.className = 'nb-outputs__menu-wrap';
+
+  const btn = document.createElement('button');
+  btn.className = 'nb-outputs__menu-btn';
+  btn.title = 'Output actions';
+  btn.innerHTML = ICON_KEBAB;
+
+  const menu = document.createElement('div');
+  menu.className = 'nb-outputs__menu';
+  menu.hidden = true;
+
+  // This menu's own document (the sandboxed iframe) is what a click here
+  // bubbles through, so a plain outside-click listener works — unlike menus
+  // rendered in the parent shell, which need the cross-frame blur trick.
+  const onOutsideClick = (e) => { if (!wrap.contains(e.target)) closeMenu(); };
+  const closeMenu = () => { menu.hidden = true; document.removeEventListener('click', onOutsideClick); };
+  const openMenu = () => { menu.hidden = false; document.addEventListener('click', onOutsideClick); };
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (menu.hidden) openMenu(); else closeMenu();
+  });
+
+  const copyBtn = document.createElement('button');
+  copyBtn.textContent = 'Copy output';
+  copyBtn.addEventListener('click', async () => {
+    closeMenu();
+    const text = (cell.outputs || []).map(outputToText).filter(Boolean).join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Output copied');
+    } catch (_) {
+      toast('Could not copy output');
+    }
+  });
+
+  const clearBtn = document.createElement('button');
+  clearBtn.textContent = 'Clear output';
+  clearBtn.addEventListener('click', () => {
+    closeMenu();
+    cell.outputs = [];
+    cell.execCount = null;
+    renderOutputs(cell);
+    updateGutter(cell);
+    markDirty();
+    persist();
+  });
+
+  menu.append(copyBtn, clearBtn);
+  wrap.append(btn, menu);
+  return wrap;
+}
+
+/** Plain-text rendering of one output, for the "Copy output" action. */
+function outputToText(out) {
+  if (out.output_type === 'stream') return stripAnsi(out.text);
+  if (out.output_type === 'error') {
+    return (out.traceback && out.traceback.length)
+      ? out.traceback.map(stripAnsi).join('\n')
+      : `${out.ename}: ${out.evalue}`;
+  }
+  const data = out.data || {};
+  if (data['text/plain'] !== undefined) return stripAnsi(joinMaybe(data['text/plain']));
+  if (data['application/json'] !== undefined) return JSON.stringify(data['application/json'], null, 2);
+  if (data['text/html']) return '[HTML output]';
+  if (data['image/png'] || data['image/jpeg']) return '[image output]';
+  if (data['image/svg+xml']) return '[svg output]';
+  return '';
 }
 
 function renderOutput(out) {
@@ -675,7 +802,7 @@ async function runCell(cell) {
         const note = document.createElement('div');
         note.className = 'nb-pkg-note';
         note.textContent = 'loaded ' + names.join(', ');
-        cell._outsEl.prepend(note);
+        ensureOutputsSection(cell).prepend(note);
       },
     });
     cell.execCount = failed ? cell.execCount : execCount;

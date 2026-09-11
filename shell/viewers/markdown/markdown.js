@@ -33,6 +33,7 @@ const state = {
   title: 'Docs',
   canEdit: false,
   editing: false,
+  editDirty: false, // has the editor's textarea diverged from the saved raw?
   saving: false,
   raw: '',
 };
@@ -48,7 +49,14 @@ function syncToolbar() {
   const items = [];
   if (state.canEdit) {
     if (state.editing) {
-      items.push({ kind: 'button', id: 'save', label: state.saving ? 'Saving…' : 'Save', variant: 'primary', disabled: state.saving });
+      items.push({
+        kind: 'button', id: 'save',
+        label: state.saving ? 'Saving…' : 'Save',
+        // Grey/plain until the text actually differs from what's saved —
+        // then the same flowing-gradient CTA as the homepage's quick starts.
+        variant: state.saving ? undefined : (state.editDirty ? 'cta' : undefined),
+        disabled: state.saving,
+      });
       items.push({ kind: 'button', id: 'cancel', label: 'Cancel', disabled: state.saving });
     } else {
       items.push({ kind: 'button', id: 'edit', label: 'Edit', title: 'Edit this document' });
@@ -272,6 +280,7 @@ function onScroll() {
 
 function enterEdit() {
   state.editing = true;
+  state.editDirty = false;
   syncToolbar();
 
   $main.innerHTML = `
@@ -284,7 +293,11 @@ function enterEdit() {
   const $src = $('md-src');
   const $preview = $('md-preview');
   $src.value = state.raw;
-  const update = () => { $preview.innerHTML = Md.render($src.value).html; };
+  const update = () => {
+    $preview.innerHTML = Md.render($src.value).html;
+    const dirty = $src.value !== state.raw;
+    if (dirty !== state.editDirty) { state.editDirty = dirty; syncToolbar(); }
+  };
   update();
   $src.addEventListener('input', update);
   $src.addEventListener('keydown', (e) => {

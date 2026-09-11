@@ -14,15 +14,20 @@
   display: grid;
   grid-template-columns: 64px 1fr;
   gap: 8px;
-  margin: 6px 0;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  margin: 10px 0;
 }
-.nb-cell:hover { border-color: var(--v-border); }
-.nb-cell--running { border-color: #d29922; }
 /* "Command mode" selection — click a cell, or press Escape while editing it,
-   to select it; then b/a insert, d d deletes, Enter edits, ↑/↓ move. */
-.nb-cell--selected { border-color: var(--v-accent); }
+   to select it; then b/a insert, d d deletes, Enter edits, ↑/↓ move. An
+   outline (not a border) so highlighting a cell never shifts its layout —
+   that shift was the "ugly" part of the old plain-hover border. */
+.nb-cell--running .nb-box { outline: 1.5px solid #d29922; outline-offset: 1px; }
+.nb-cell--selected .nb-box { outline: 1.5px solid var(--v-accent); outline-offset: 1px; }
+.nb-cell--selected.nb-cell--markdown .nb-md,
+.nb-cell--selected.nb-cell--raw .nb-raw {
+  outline: 1.5px solid var(--v-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 .nb-cell--selected .nb-gutter__controls { opacity: 1; }
 
 .nb-gutter {
@@ -30,47 +35,86 @@
   font-size: 11px;
   color: var(--v-text-muted);
   text-align: right;
-  padding-top: 10px;
+  padding-top: 13px;
   user-select: none;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
 }
-.nb-gutter__run {
-  border: none; background: none; cursor: pointer;
-  color: var(--v-text-muted); font-size: 14px; padding: 0; line-height: 1;
-  opacity: 0; transition: opacity 0.1s;
-}
-.nb-cell:hover .nb-gutter__run { opacity: 1; }
-.nb-gutter__run:hover { color: var(--v-accent); }
 
 .nb-body { min-width: 0; }
 
-/* Code input */
-.nb-input {
+/* ── Code cell: one card — code, then a divider, then output ───────────── */
+
+.nb-box {
+  --nb-icon-col: 34px; /* shared by .nb-code-row and .nb-outputs__row below,
+                           so the play button and the collapse chevron — and
+                           the code and the output next to them — line up. */
   background: var(--v-bg-soft);
   border: 1px solid var(--v-border);
   border-radius: 8px;
   overflow: hidden;
 }
-.nb-input pre, .nb-input textarea {
-  margin: 0;
+.nb-box--focus { outline: 1.5px solid var(--v-accent); outline-offset: 1px; }
+
+.nb-code-row {
+  display: grid;
+  grid-template-columns: var(--nb-icon-col) 1fr;
+  align-items: start;
   padding: 10px 12px;
+}
+.nb-run-btn {
+  justify-self: center;
+  width: 21px;
+  height: 21px;
+  margin-top: 1px;
+  padding: 0 0 0 1px;
+  border-radius: 50%;
+  border: 1px solid var(--v-border-strong);
+  background: var(--v-bg);
+  color: var(--v-text-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.nb-run-btn:hover { background: var(--v-accent); border-color: var(--v-accent); color: #fff; }
+
+.nb-code-row pre, .nb-code-row textarea {
+  min-width: 0;
+  margin: 0;
+  padding: 1px 0;
   font-family: var(--v-mono);
   font-size: 12.5px;
   line-height: 1.5;
   tab-size: 4;
 }
-.nb-input pre { overflow-x: auto; }
-.nb-input textarea {
+.nb-code-row pre { overflow-x: auto; }
+.nb-code-row textarea {
   display: block; width: 100%;
   border: none; outline: none; resize: none;
   background: transparent; color: var(--v-text);
   white-space: pre;
   overflow-wrap: normal;
 }
-.nb-input--focus { border-color: var(--v-accent); }
+
+/* editMarkdown()'s edit box reuses this — kept distinct from .nb-box/
+   .nb-code-row above since it's a single plain textarea, not a card with a
+   run button and an output section. */
+.nb-input {
+  background: var(--v-bg-soft);
+  border: 1px solid var(--v-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.nb-input textarea {
+  display: block; width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: none; outline: none; resize: none;
+  background: transparent; color: var(--v-text);
+  font-family: var(--v-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  tab-size: 4;
+}
 
 /* Markdown cell */
 .nb-md { padding: 4px 2px; }
@@ -95,11 +139,79 @@
   border-left: 2px solid var(--v-border-strong);
 }
 
-/* Outputs */
-.nb-outputs { margin-top: 4px; }
+/* Outputs — only present in the DOM at all once a cell has something to
+   show. Same 2-column shape as .nb-code-row above the divider: the collapse
+   chevron sits under the play button, the output content sits under the
+   code, and a thin bar (just the "⋯" menu) tops the content column. */
+.nb-outputs { border-top: 1px solid var(--v-border); }
+
+.nb-outputs__row {
+  display: grid;
+  grid-template-columns: var(--nb-icon-col) 1fr;
+  align-items: start;
+  padding: 4px 12px;
+}
+.nb-outputs__content { min-width: 0; }
+
+.nb-outputs__bar {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+}
+.nb-outputs__spacer { flex: 1 1 auto; }
+.nb-outputs__collapse, .nb-outputs__menu-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  color: var(--v-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.nb-outputs__collapse { justify-self: center; margin-top: 2px; }
+.nb-outputs__collapse:hover, .nb-outputs__menu-btn:hover {
+  background: var(--v-bg-inset);
+  color: var(--v-text);
+}
+.nb-outputs__collapse svg { transition: transform 0.15s; }
+.nb-outputs--collapsed .nb-outputs__collapse svg { transform: rotate(-90deg); }
+.nb-outputs--collapsed .nb-outputs__content > .nb-outputs__body { display: none; }
+
+.nb-outputs__menu-wrap { position: relative; }
+.nb-outputs__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 3;
+  min-width: 128px;
+  display: flex;
+  flex-direction: column;
+  background: var(--v-bg);
+  border: 1px solid var(--v-border);
+  border-radius: 7px;
+  box-shadow: var(--v-shadow);
+  padding: 4px;
+}
+.nb-outputs__menu[hidden] { display: none; }
+.nb-outputs__menu button {
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--v-text);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.nb-outputs__menu button:hover { background: var(--v-bg-inset); }
+
 .nb-out {
   font-size: 12.5px;
-  padding: 6px 12px;
+  padding: 6px 0;
   overflow-x: auto;
 }
 .nb-out pre { margin: 0; font-family: var(--v-mono); white-space: pre-wrap; word-break: break-word; }
@@ -112,7 +224,7 @@
 
 .nb-pkg-note {
   font-size: 11px; color: var(--v-text-muted);
-  padding: 2px 12px;
+  padding: 2px 0;
 }
 
 /* ── Per-cell insert / delete controls (owner only) ────────────────────── */
@@ -136,8 +248,7 @@
   transition: opacity 0.1s;
 }
 .nb-cell:hover .nb-gutter__controls,
-.nb-gutter__controls:focus-within,
-.nb-gutter__controls:has(.nb-gutter__ctrl--armed) {
+.nb-gutter__controls:focus-within {
   opacity: 1;
 }
 .nb-gutter__ctrl {
@@ -157,11 +268,6 @@
 }
 .nb-gutter__ctrl:hover { background: var(--v-accent-soft); color: var(--v-accent); }
 .nb-gutter__ctrl--danger:hover { background: rgba(248, 81, 73, 0.15); color: var(--v-danger); }
-.nb-gutter__ctrl--armed {
-  background: var(--v-danger);
-  color: #fff;
-  opacity: 1;
-}
 
 /* ── Add-cell row at the end of the notebook (owner only) ──────────────── */
 

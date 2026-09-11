@@ -619,6 +619,32 @@ button:disabled {
   color: var(--accent-hover);
 }
 
+/* A viewer's "unsaved changes" action — same flowing-gradient-border call
+ * to action as the landing page's quick-start buttons (see .landing__cap-cta
+ * and its cta-flow keyframes), scaled down to toolbar size. Once there's
+ * nothing left to save, the item drops this variant and reads as a plain
+ * .toolbar__btn — grey, same as Clear/Restart, matching the saved file. */
+.toolbar__btn--cta {
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(var(--bg-surface), var(--bg-surface)) padding-box,
+    linear-gradient(90deg, #58a6ff, #a36eff, #ff7ad9, #3fb950, #58a6ff) border-box;
+  background-size: 100% 100%, 300% 100%;
+  animation: cta-flow 6s linear infinite;
+}
+.toolbar__btn--cta:hover:not(:disabled) {
+  background:
+    linear-gradient(var(--bg-surface), var(--bg-surface)) padding-box,
+    linear-gradient(90deg, #58a6ff, #a36eff, #ff7ad9, #3fb950, #58a6ff) border-box;
+  background-size: 100% 100%, 300% 100%;
+  animation-duration: 1.4s;
+  box-shadow: 0 0 0 1px rgba(163, 110, 255, 0.35), 0 4px 14px rgba(88, 166, 255, 0.28);
+}
+.toolbar__btn--cta:disabled { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .toolbar__btn--cta { animation: none; }
+}
+
 /* ---------------------------------------------------------------------------
  * Current document — shell-owned, sits right after Source so every viewer
  * shows it in the same place. Empty (and collapsed) for a plain website.

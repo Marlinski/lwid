@@ -1183,7 +1183,9 @@
           });
         } else {
           el = document.createElement('button');
-          el.className = 'toolbar__btn toolbar__viewer-btn' + (item.variant === 'primary' ? ' toolbar__btn--accent' : '');
+          const variantClass = item.variant === 'primary' ? ' toolbar__btn--accent'
+            : item.variant === 'cta' ? ' toolbar__btn--cta' : '';
+          el.className = 'toolbar__btn toolbar__viewer-btn' + variantClass;
           // item.icon only ever selects one of these two fixed, shell-owned
           // SVGs — never interpolated into markup — so a viewer can't use it
           // to inject arbitrary HTML across the postMessage boundary.
