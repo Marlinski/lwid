@@ -59,11 +59,16 @@ function finishHydration() {
 }
 
 // ---------------------------------------------------------------------------
-// This origin's own shell origin — sandbox.html tells us explicitly (see its
-// SET_SHELL_ORIGIN message), rather than this guessing it from its own
-// hostname: whether this origin is a real per-project subdomain or just
-// this same origin (no sandbox_base_domain configured on the server) isn't
-// something a hostname alone can tell apart.
+// This origin's own shell origin — sandbox.html tells us explicitly (on
+// SET_SHELL_ORIGIN at boot and again on every SET_FILES), rather than this
+// guessing it from its own hostname: whether this origin is a real
+// per-project subdomain or just this same origin (no sandbox_base_domain
+// configured on the server) isn't something a hostname alone can tell apart.
+//
+// Like fileCache and activeViewer this is lost whenever the browser
+// terminates an idle SW, and the default below is *wrong* on a real
+// subdomain — so nothing that needs it may run before re-hydration has had
+// its chance (see the top of handleRequest()).
 // ---------------------------------------------------------------------------
 let SHELL_ORIGIN = self.location.origin;
 
@@ -124,6 +129,7 @@ self.addEventListener('message', (event) => {
     }
     activeViewer = event.data.viewer || null;
     viewerCanEdit = !!event.data.canEdit;
+    if (event.data.shellOrigin) SHELL_ORIGIN = event.data.shellOrigin;
     if (event.ports && event.ports[0]) {
       event.ports[0].postMessage({ type: 'FILES_READY' });
     }
@@ -255,10 +261,9 @@ async function serveShellAsset(path) {
   return new Response(buf, { status: 200, headers: { 'Content-Type': ct } });
 }
 
-/** Synthesize the project manifest a viewer reads to discover its files. */
+/** Synthesize the project manifest a viewer reads to discover its files.
+ * (Hydration, if needed, already happened at the top of handleRequest.) */
 async function synthesizeFilesJson() {
-  if (fileCache.size === 0) await requestHydration();
-
   const files = [];
   for (const [path, entry] of fileCache) {
     files.push({ path, size: entry.content.byteLength, mimeType: entry.mimeType });
@@ -282,6 +287,16 @@ async function handleRequest(url) {
   if (path.startsWith(ENTRY_PREFIX)) path = path.slice(ENTRY_PREFIX.length);
   try { path = decodeURIComponent(path); } catch { /* keep the raw form */ }
 
+  // An empty cache means this SW instance has never been primed — either
+  // brand new, or (far more often) just restarted after the browser
+  // terminated it while idle, taking fileCache, activeViewer AND
+  // SHELL_ORIGIN with it. Re-hydrate before handling *anything*: a viewer
+  // asset or the SDK injection fetched with a forgotten SHELL_ORIGIN goes
+  // to this sandbox origin instead of the shell, where it doesn't exist.
+  // Normal loads never pay for this — files always arrive before the
+  // content iframe is pointed anywhere.
+  if (fileCache.size === 0) await requestHydration();
+
   // ── Reserved viewer namespaces ───────────────────────────────────────────
   if (path === '__lwid/files.json') {
     return synthesizeFilesJson();
@@ -300,12 +315,7 @@ async function handleRequest(url) {
     path += 'index.html';
   }
 
-  let entry = fileCache.get(path);
-
-  if (!entry && fileCache.size === 0) {
-    await requestHydration();
-    entry = fileCache.get(path);
-  }
+  const entry = fileCache.get(path);
 
   if (!entry && activeViewer && path === 'index.html') {
     return serveShellAsset(`/viewers/${activeViewer}/index.html`);

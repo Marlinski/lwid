@@ -105,7 +105,15 @@
         if (e.data && e.data.type === 'FILES_READY') resolve();
         else reject(new Error('unexpected SW response'));
       };
-      sw.postMessage({ type: 'SET_FILES', files: files, viewer: viewer || null, canEdit: !!canEdit }, [channel.port2]);
+      // shellOrigin rides along on every SET_FILES — including the re-sends
+      // that re-hydrate a restarted SW — because everything the SW knows is
+      // lost when the browser terminates it while idle, and a SW that has
+      // forgotten which origin the shell is fetches viewer assets from its
+      // own (sandbox) origin instead, where they don't exist.
+      sw.postMessage(
+        { type: 'SET_FILES', files: files, viewer: viewer || null, canEdit: !!canEdit, shellOrigin: SHELL_ORIGIN },
+        [channel.port2],
+      );
       setTimeout(() => reject(new Error('SW file cache timeout')), 5000);
     });
   }

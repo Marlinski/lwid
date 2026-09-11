@@ -108,9 +108,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("listening on {}", config.server.listen);
     info!("shell dir: {}", config.server.shell_dir.display());
 
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
 
     Ok(())
+}
+
+/// Resolve on SIGTERM or Ctrl-C so in-flight requests finish and the
+/// process exits promptly. Without this Kubernetes waits out the full
+/// terminationGracePeriodSeconds (30s) before SIGKILL on every rollout —
+/// and with the xyz overlay's Recreate strategy that whole wait is
+/// downtime, since the replacement pod isn't started until this one is gone.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c().await.ok();
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+    info!("shutdown signal received, draining");
 }
 
 /// Construct the three storage backends according to `storage.backend`.

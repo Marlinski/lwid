@@ -65,6 +65,10 @@ export class Kernel {
       try {
         this.worker = new Worker(await workerUrl());
       } catch (err) {
+        // Same terminal state as a crashed worker: the button must read
+        // "crashed — reconnect" and a retry must be possible, not sit on
+        // "Connecting…" with a rejected promise cached behind it.
+        this._setStatus('dead');
         this._readyReject(err);
         return;
       }
