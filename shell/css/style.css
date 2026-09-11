@@ -681,8 +681,18 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  overflow: hidden;
+  /* Scroll rather than clip — inside a fixed-position toolbar, an
+     overflow:hidden slot doesn't just clip, it makes buttons past the edge
+     unreachable (fixed elements don't grow the page's own scrollWidth), so
+     a viewer with several toolbar items would silently lose the rest of
+     them off narrow screens. Buttons stay full-size and swipeable instead
+     of being squeezed illegible or vanishing outright. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
+.toolbar__viewer-slot::-webkit-scrollbar { display: none; }
+.toolbar__viewer-slot > * { flex-shrink: 0; }
 
 .toolbar__viewer-btn {
   padding: 0.3rem 0.55rem;
@@ -1652,8 +1662,28 @@ button:disabled {
     display: none;
   }
 
+  /* Left-align instead of center once the viewer's own buttons need to
+     scroll — a centered flex row that overflows leaves whatever got pushed
+     off the *start* unreachable by scrolling (browsers snap the initial
+     scroll position to the centered content, not the true start). */
+  .toolbar__viewer-slot {
+    justify-content: flex-start;
+  }
+
   .landing {
     padding: 1.5rem 1rem;
+  }
+
+  /* The nav is absolutely positioned in the corner on desktop, where the
+     centered title is narrow enough to never reach it. On a narrow phone
+     the title wraps wide enough to sit right under it — flow the nav back
+     into the page instead, as its own centered row above the title (it's
+     already first in the markup). */
+  .landing__nav {
+    position: static;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 1.25rem;
   }
 
   .dropzone {

@@ -90,8 +90,35 @@
     };
   }
 
+  // ── Mobile sidebar toggle ────────────────────────────────────────────────
+  // Shared by any viewer with a `.v-sidebar` (docs, files) — off-canvas +
+  // backdrop below viewer.css's 720px breakpoint (a harmless no-op class
+  // above it, where the sidebar is already a plain visible column).
+  function sidebarToggle(sidebarEl) {
+    let backdrop = document.querySelector('.v-sidebar-backdrop');
+    if (!backdrop) {
+      backdrop = document.createElement('div');
+      backdrop.className = 'v-sidebar-backdrop';
+      document.body.appendChild(backdrop);
+    }
+    const close = () => {
+      sidebarEl.classList.remove('v-sidebar--open');
+      backdrop.classList.remove('v-sidebar-backdrop--show');
+    };
+    backdrop.addEventListener('click', close);
+    return {
+      toggle() {
+        const open = sidebarEl.classList.toggle('v-sidebar--open');
+        backdrop.classList.toggle('v-sidebar-backdrop--show', open);
+      },
+      close,
+      toolbarItem: { kind: 'button', id: 'sidebar', icon: 'menu', title: 'Files' },
+    };
+  }
+
   window.LwidUI = {
     toast, escapeHtml, formatBytes, resolvePath,
     theme: { apply: themeApply, toggle: themeToggle, effective: themeEffective, toolbarItem: themeToolbarItem },
+    sidebarToggle,
   };
 })();
