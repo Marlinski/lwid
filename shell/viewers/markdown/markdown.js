@@ -34,11 +34,13 @@ const state = {
   raw: '',
 };
 
-// Title / sidebar-toggle / Edit / Save / Cancel live in the shell's toolbar
-// (see js/viewers.js + LWID_TOOLBAR_SET) rather than a second bar in here.
+// Title / Edit / Save / Cancel live in the shell's toolbar (see js/viewers.js
+// + LWID_TOOLBAR_SET) rather than a second bar in here. No sidebar-toggle
+// item — the shell's own "Source" button, right next to these, already opens
+// a panel; a second one just for this sidebar would be the same affordance
+// twice. The doc nav stays visible instead.
 function syncToolbar() {
   const items = [
-    { kind: 'button', id: 'toggle-sidebar', label: '☰', title: 'Toggle sidebar' },
     { kind: 'text', label: state.title, variant: 'title' },
   ];
   if (state.canEdit) {
@@ -53,8 +55,7 @@ function syncToolbar() {
 }
 
 Host.onToolbarClick((id) => {
-  if (id === 'toggle-sidebar') $sidebar.hidden = !$sidebar.hidden;
-  else if (id === 'edit') enterEdit();
+  if (id === 'edit') enterEdit();
   else if (id === 'save') saveEdit();
   else if (id === 'cancel') { const d = state.current; exitEdit(); openDoc(d); }
 });

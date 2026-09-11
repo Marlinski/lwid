@@ -76,23 +76,19 @@
 
     let files = [];
     let active = null;
-    let sidebarOpen = true;
 
+    // No sidebar-toggle item here — the shell's "Source" button sits right
+    // next to this toolbar and already opens a panel; this file list stays
+    // visible instead of duplicating that affordance.
     function syncToolbar() {
       Host.setToolbar([
-        { kind: 'button', id: 'toggle-sidebar', label: '☰', title: 'Toggle file list' },
         { kind: 'text', label: `${files.length} file${files.length === 1 ? '' : 's'}`, variant: 'title' },
         ...(active ? [{ kind: 'button', id: 'download', label: 'Download', title: 'Download this file' }] : []),
       ]);
     }
 
     Host.onToolbarClick((id) => {
-      if (id === 'toggle-sidebar') {
-        sidebarOpen = !sidebarOpen;
-        $sidebar.hidden = !sidebarOpen;
-      } else if (id === 'download' && active) {
-        downloadFile(active);
-      }
+      if (id === 'download' && active) downloadFile(active);
     });
 
     function render() {
@@ -124,7 +120,6 @@
       active = path;
       render();
       syncToolbar();
-      if (window.matchMedia('(max-width: 720px)').matches) { sidebarOpen = false; $sidebar.hidden = true; }
       const f = files.find((x) => x.path === path);
       $main.innerHTML = `<div class="fb-file-head"><strong>${escapeHtml(path)}</strong><span>${formatBytes(f.size)}</span></div><div class="fb-content"><div class="v-empty"><span class="v-spinner"></span></div></div>`;
       const $content = $main.querySelector('.fb-content');
