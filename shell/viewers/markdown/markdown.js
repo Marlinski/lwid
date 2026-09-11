@@ -10,9 +10,12 @@
  * index.html; this module just drives them.
  */
 
-const { toast, escapeHtml, resolvePath } = window.LwidUI;
+const { toast, escapeHtml, resolvePath, theme } = window.LwidUI;
 const Host = window.LwidHost;
 const Md = window.LwidMd;
+
+// Apply any stored light/dark override before the first paint.
+theme.apply();
 
 const $ = (id) => document.getElementById(id);
 const $sidebar = $('sidebar');
@@ -51,6 +54,7 @@ function syncToolbar() {
       items.push({ kind: 'button', id: 'edit', label: 'Edit', title: 'Edit this document' });
     }
   }
+  items.push(theme.toolbarItem());
   Host.setToolbar(items);
 }
 
@@ -58,6 +62,7 @@ Host.onToolbarClick((id) => {
   if (id === 'edit') enterEdit();
   else if (id === 'save') saveEdit();
   else if (id === 'cancel') { const d = state.current; exitEdit(); openDoc(d); }
+  else if (id === 'theme') { theme.toggle(); syncToolbar(); }
 });
 
 const isMd = (p) => /\.(md|markdown)$/i.test(p);

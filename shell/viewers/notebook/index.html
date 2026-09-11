@@ -6,8 +6,8 @@
   <title>Notebook</title>
   <link rel="stylesheet" href="/sandbox/__shared__/viewer.css">
   <link rel="stylesheet" href="/sandbox/__viewer__/notebook.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css" media="(prefers-color-scheme: light)">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+  <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css">
+  <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.7/purify.min.js"></script>
@@ -45,8 +45,19 @@
         <tr><td><kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd></td><td>Run the cell in place</td></tr>
         <tr><td><kbd>Alt</kbd>+<kbd>Enter</kbd></td><td>Run the cell, then insert a new one below</td></tr>
         <tr><td><kbd>Tab</kbd></td><td>Indent</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Leave editing and select the cell</td></tr>
       </table>
-      <p>Hover a cell for its + (insert code / insert markdown) and &times; (delete) controls.</p>
+      <p>Hover a cell for its + (insert code / insert markdown) and &times; (delete) controls, or click a cell
+        (or press <kbd>Esc</kbd> while editing it) to select it, then:</p>
+      <table>
+        <tr><td><kbd>b</kbd></td><td>Insert a new cell below</td></tr>
+        <tr><td><kbd>a</kbd></td><td>Insert a new cell above</td></tr>
+        <tr><td><kbd>d</kbd> <kbd>d</kbd></td><td>Delete the selected cell</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>Edit the selected cell</td></tr>
+        <tr><td>&uarr; / &darr;</td><td>Move the selection</td></tr>
+      </table>
+      <p>The &#9728;&#65039;/&#127769; button in the toolbar switches this notebook between light and dark,
+        independent of your system theme.</p>
 
       <h3>Sharing</h3>
       <p>Anyone with this link can run cells — results are saved to the project's encrypted store

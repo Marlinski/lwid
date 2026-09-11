@@ -19,6 +19,10 @@
 }
 .nb-cell:hover { border-color: var(--v-border); }
 .nb-cell--running { border-color: #d29922; }
+/* "Command mode" selection — click a cell, or press Escape while editing it,
+   to select it; then b/a insert, d d deletes, Enter edits, ↑/↓ move. */
+.nb-cell--selected { border-color: var(--v-accent); }
+.nb-cell--selected .nb-gutter__controls { opacity: 1; }
 
 .nb-gutter {
   font-family: var(--v-mono);

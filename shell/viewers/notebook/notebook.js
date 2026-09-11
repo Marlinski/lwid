@@ -13,9 +13,12 @@
 import { parseNotebook, serializeNotebook, nextId } from '/sandbox/__viewer__/nbformat.js';
 import { Kernel } from '/sandbox/__viewer__/kernel.js';
 
-const { toast, escapeHtml, resolvePath } = window.LwidUI;
+const { toast, escapeHtml, resolvePath, theme } = window.LwidUI;
 const Host = window.LwidHost;
 const Md = window.LwidMd;
+
+// Apply any stored light/dark override before the first paint.
+theme.apply();
 
 const $ = (id) => document.getElementById(id);
 const $doc = $('doc');
@@ -40,6 +43,7 @@ const state = {
   running: false,
   saving: false,
   restarting: false,
+  selectedCell: null,   // "command mode" selection — see selectCell()
 };
 
 const kernel = new Kernel({ onStatus: syncToolbar });
@@ -88,6 +92,7 @@ function syncToolbar() {
     });
   }
 
+  items.push(theme.toolbarItem());
   items.push({ kind: 'button', id: 'help', label: '?', title: 'Notebook help & keyboard shortcuts' });
 
   Host.setToolbar(items);
@@ -100,6 +105,7 @@ Host.onToolbarClick((id, value) => {
   else if (id === 'restart') doRestart();
   else if (id === 'clear') doClear();
   else if (id === 'save') doSave();
+  else if (id === 'theme') { theme.toggle(); syncToolbar(); }
   else if (id === 'help') toggleHelp();
 });
 
@@ -197,6 +203,11 @@ function renderAll() {
     $doc.appendChild(cell._el);
   }
   if (state.canEdit) $doc.appendChild(renderAddCellRow());
+  // renderCell() gives every cell a fresh element — reapply the selection
+  // highlight if the selected cell is still around.
+  if (state.selectedCell && state.nb.cells.includes(state.selectedCell)) {
+    state.selectedCell._el.classList.add('nb-cell--selected');
+  }
 }
 
 // ── Cell insert / delete ─────────────────────────────────────────────────
@@ -207,6 +218,7 @@ function insertCell(afterCell, type) {
   const cell = { id: nextId(), type, source: '', metadata: {} };
   if (type === 'code') { cell.execCount = null; cell.outputs = []; }
   state.nb.cells.splice(idx + 1, 0, cell);
+  state.selectedCell = null; // the new cell goes straight into edit mode below
   markDirty();
   renderAll();
   focusCell(cell);
@@ -217,6 +229,7 @@ function deleteCell(cell) {
   const idx = state.nb.cells.indexOf(cell);
   if (idx === -1) return;
   state.nb.cells.splice(idx, 1);
+  if (state.selectedCell === cell) state.selectedCell = null;
   markDirty();
   renderAll();
   toast('Cell deleted — reload without saving to get it back');
@@ -228,6 +241,59 @@ function focusCell(cell) {
     else if (cell._el) cell._el.scrollIntoView({ block: 'center', behavior: 'smooth' });
   });
 }
+
+/** "Command mode" selection — click a cell (or Escape out of editing it) to
+ * select it, then b/a insert, d d deletes, Enter edits, ↑/↓ move — like a
+ * real notebook. Only active for editors (state.canEdit). */
+function selectCell(cell) {
+  if (state.selectedCell && state.selectedCell._el) {
+    state.selectedCell._el.classList.remove('nb-cell--selected');
+  }
+  state.selectedCell = cell;
+  if (cell && cell._el) {
+    cell._el.classList.add('nb-cell--selected');
+    cell._el.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+let dPendingCell = null;
+let dPendingTimer = null;
+
+document.addEventListener('keydown', (e) => {
+  if (!state.canEdit || !state.selectedCell) return;
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'TEXTAREA' || tag === 'INPUT') return; // actively editing — not command mode
+  const cell = state.selectedCell;
+  const idx = state.nb.cells.indexOf(cell);
+  if (idx === -1) return;
+
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (cell.type === 'markdown') editMarkdown(cell);
+    else focusCell(cell);
+  } else if (e.key === 'b') {
+    e.preventDefault();
+    insertCell(cell, 'code');
+  } else if (e.key === 'a') {
+    e.preventDefault();
+    insertCell(state.nb.cells[idx - 1] || null, 'code');
+  } else if (e.key === 'd') {
+    e.preventDefault();
+    if (dPendingCell === cell) {
+      clearTimeout(dPendingTimer);
+      dPendingCell = null;
+      deleteCell(cell);
+    } else {
+      dPendingCell = cell;
+      clearTimeout(dPendingTimer);
+      dPendingTimer = setTimeout(() => { dPendingCell = null; }, 600);
+    }
+  } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const next = state.nb.cells[idx + (e.key === 'ArrowDown' ? 1 : -1)];
+    if (next) selectCell(next);
+  }
+});
 
 function renderCellControls(cell) {
   const box = document.createElement('div');
@@ -338,6 +404,13 @@ function renderCell(cell) {
 
   if (state.canEdit) gutter.appendChild(renderCellControls(cell));
 
+  if (state.canEdit) {
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('textarea')) return; // already focused/editing
+      selectCell(cell);
+    });
+  }
+
   el.append(gutter, body);
   return el;
 }
@@ -376,6 +449,9 @@ function renderCodeInput(cell) {
         ta.value = ta.value.slice(0, s) + '    ' + ta.value.slice(ta.selectionEnd);
         ta.selectionStart = ta.selectionEnd = s + 4;
         cell.source = ta.value;
+      } else if (e.key === 'Escape') {
+        ta.blur();
+        selectCell(cell);
       }
     });
     wrap.appendChild(ta);
@@ -427,26 +503,39 @@ function joinMaybe(v) { return Array.isArray(v) ? v.join('') : v; }
 
 function editMarkdown(cell) {
   const el = cell._mdEl;
+  // Wrap the textarea in .nb-input, same as code cells — the theme colors
+  // (text/background) are set via a `.nb-input textarea` descendant rule, so
+  // classing the textarea itself (as before) left it on default black-on-
+  // transparent text, unreadable in dark mode.
+  const wrap = document.createElement('div');
+  wrap.className = 'nb-input';
+  wrap.style.width = '100%';
+  wrap.style.minHeight = '120px';
   const ta = document.createElement('textarea');
-  ta.className = 'nb-input';
-  ta.style.width = '100%';
   ta.style.minHeight = '120px';
   ta.value = cell.source;
   ta.spellcheck = false;
+  wrap.appendChild(ta);
+  // Removing the focused textarea from the DOM (below) fires a native blur
+  // on it, re-entering this same commit() a second time — guard so that
+  // doesn't try to replaceWith() a node that's already been swapped out.
+  let committed = false;
   const commit = () => {
+    if (committed) return;
+    committed = true;
     cell.source = ta.value;
     const fresh = document.createElement('div');
     fresh.className = 'nb-md nb-md--editing';
     fresh.title = 'Double-click to edit';
     renderMarkdownInto(fresh, cell);
     fresh.addEventListener('dblclick', () => editMarkdown(cell));
-    ta.replaceWith(fresh);
+    wrap.replaceWith(fresh);
     cell._mdEl = fresh;
     markDirty();
   };
   ta.addEventListener('blur', commit);
   ta.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { ta.value = cell.source; commit(); }
+    if (e.key === 'Escape') { ta.value = cell.source; commit(); selectCell(cell); }
     else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) commit();
     else if (e.key === 'Enter' && e.shiftKey) {
       e.preventDefault();
@@ -457,7 +546,7 @@ function editMarkdown(cell) {
       else insertCell(cell, 'code');
     }
   });
-  el.replaceWith(ta);
+  el.replaceWith(wrap);
   ta.focus();
 }
 
