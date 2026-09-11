@@ -187,14 +187,21 @@
         Source
       </button>
 
+      <!-- The document currently open in the viewer — a shell-owned label
+           (not a viewer-declared toolbar item) so it sits next to Source the
+           same way for every shim. Truncates; full name on hover. See
+           LWID_TITLE_SET below. Empty (and collapsed) for a plain site. -->
+      <span id="toolbar-doc-title" class="toolbar__doc-title"></span>
+
       <!-- Viewer-specific controls (populated by the active viewer over
            postMessage — see LWID_TOOLBAR_SET below). Empty for a plain site. -->
       <div id="toolbar-viewer-slot" class="toolbar__viewer-slot"></div>
 
-      <!-- Expiry & extend — small and out of the way; Extend is owner-only -->
-      <span id="toolbar-expiry" class="toolbar__expiry hidden" title="Time until project expires"></span>
+      <!-- Expiry — small and out of the way. For the owner it's the extend
+           trigger itself (no separate "Extend" button); for a visitor it's
+           inert text. See the writeKey branch in initProjectView(). -->
       <div class="toolbar__extend-wrap" id="extend-wrap">
-        <button id="btn-extend" class="toolbar__btn toolbar__btn--extend hidden" title="Extend project lifetime">Extend</button>
+        <span id="toolbar-expiry" class="toolbar__expiry hidden" title="Time until project expires"></span>
         <div id="extend-menu" class="extend-menu hidden">
           <button type="button" class="extend-menu__btn" data-ttl="1h">1 hour</button>
           <button type="button" class="extend-menu__btn" data-ttl="1d">1 day</button>
@@ -204,13 +211,11 @@
         </div>
       </div>
 
-      <!-- Encryption badge -->
+      <!-- Encryption badge — hovering the lock itself reveals the tooltip,
+           no separate info icon needed. -->
       <div class="toolbar__encryption" id="toolbar-encryption">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5 7V5a3 3 0 016 0v2"/>
-        </svg>
-        <svg class="toolbar__encryption-info" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="8" cy="8" r="7"/><path d="M8 11V7.5"/><circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/>
         </svg>
         <div class="toolbar__encryption-tooltip">
           <strong>End-to-end encrypted</strong><br>
@@ -477,14 +482,16 @@
 
     // Viewer-owned toolbar center (see the LWID_TOOLBAR_SET bridge below)
     const $toolbarViewerSlot = document.getElementById('toolbar-viewer-slot');
+    // Current document name, next to Source (see the LWID_TITLE_SET bridge below)
+    const $toolbarDocTitle = document.getElementById('toolbar-doc-title');
 
     // Add files — a drop target inside the Source panel, owner-only
     const $sourceDropzone  = document.getElementById('source-add-dropzone');
     const $panelFileInput  = document.getElementById('panel-file-input');
 
-    // Expiry / extend
+    // Expiry / extend — the expiry text itself is the extend trigger for the
+    // owner (no separate button); see the writeKey branch below.
     const $toolbarExpiry  = document.getElementById('toolbar-expiry');
-    const $btnExtend      = document.getElementById('btn-extend');
     const $extendMenu     = document.getElementById('extend-menu');
     const $extendWrap     = document.getElementById('extend-wrap');
 
@@ -1127,6 +1134,15 @@
       $toolbarViewerSlot.innerHTML = '';
     }
 
+    // The document a viewer currently has open — shell-owned so it sits next
+    // to Source the same way for every shim, rather than being one more
+    // viewer-declared item lost among action buttons. Protocol: viewer ->
+    // shell 'LWID_TITLE_SET' { title }. Truncated by CSS; full name on hover.
+    function setDocTitle(title) {
+      $toolbarDocTitle.textContent = title || '';
+      $toolbarDocTitle.title = title || '';
+    }
+
     function renderToolbarItems(items) {
       $toolbarViewerSlot.innerHTML = '';
       for (const item of items || []) {
@@ -1179,6 +1195,10 @@
       // Toolbar declarations need no project context and no reply.
       if (msg.type === 'LWID_TOOLBAR_SET') {
         renderToolbarItems(msg.items);
+        return;
+      }
+      if (msg.type === 'LWID_TITLE_SET') {
+        setDocTitle(msg.title);
         return;
       }
 
@@ -1653,8 +1673,15 @@
         show($menuShareEditLi);
         show($menuDeleteLi);
         show($sourceDropzone);
-        show($btnExtend);
         show($btnHistory);
+        // The expiry text is the extend trigger — only wired up (and only
+        // styled as clickable) for the owner; a visitor's stays inert.
+        $toolbarExpiry.classList.add('toolbar__expiry--clickable');
+        $toolbarExpiry.title = 'Click to change expiry';
+        $toolbarExpiry.addEventListener('click', (e) => {
+          e.stopPropagation();
+          $extendMenu.classList.toggle('hidden');
+        });
       } else {
         show($menuForkLi);
       }
@@ -1766,12 +1793,8 @@
         }
       });
 
-      // --- Extend TTL ---
-      $btnExtend.addEventListener('click', (e) => {
-        e.stopPropagation();
-        $extendMenu.classList.toggle('hidden');
-      });
-
+      // --- Extend TTL --- (the click-to-open wiring lives in the writeKey
+      // branch above, alongside the rest of the owner-only setup)
       for (const btn of $extendMenu.querySelectorAll('.extend-menu__btn')) {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
@@ -2158,6 +2181,7 @@
       show($loadingOverlay);
       closeSourceViewer();
       clearToolbarItems(); // the previous viewer's controls no longer apply
+      setDocTitle('');
 
       try {
         let result;

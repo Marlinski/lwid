@@ -34,15 +34,15 @@ const state = {
   raw: '',
 };
 
-// Title / Edit / Save / Cancel live in the shell's toolbar (see js/viewers.js
-// + LWID_TOOLBAR_SET) rather than a second bar in here. No sidebar-toggle
-// item — the shell's own "Source" button, right next to these, already opens
-// a panel; a second one just for this sidebar would be the same affordance
-// twice. The doc nav stays visible instead.
+// Edit / Save / Cancel live in the shell's toolbar (see js/viewers.js +
+// LWID_TOOLBAR_SET) rather than a second bar in here. No sidebar-toggle item
+// — the shell's own "Source" button, right next to these, already opens a
+// panel; a second one just for this sidebar would be the same affordance
+// twice. The doc nav stays visible instead. The document title goes through
+// LWID_TITLE_SET (see setTitle calls below), not a toolbar item — it's
+// shell-owned, next to Source, the same for every viewer.
 function syncToolbar() {
-  const items = [
-    { kind: 'text', label: state.title, variant: 'title' },
-  ];
+  const items = [];
   if (state.canEdit) {
     if (state.editing) {
       items.push({ kind: 'button', id: 'save', label: state.saving ? 'Saving…' : 'Save', variant: 'primary', disabled: state.saving });
@@ -178,6 +178,7 @@ async function openDoc(path, anchor) {
 
   state.title = meta.title || firstHeadingText(headings) || titleFromPath(doc);
   document.title = state.title;
+  Host.setTitle(state.title);
   syncToolbar();
 
   rewriteLinks(doc);
@@ -333,6 +334,7 @@ async function saveEdit() {
 
   if (state.docs.length === 0) {
     state.title = 'Docs';
+    Host.setTitle(state.title);
     syncToolbar();
     content().innerHTML = '<p class="v-empty">No Markdown documents in this project.</p>';
     return;

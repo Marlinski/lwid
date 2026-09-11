@@ -54,6 +54,9 @@ const STATUS_LABEL = {
 };
 
 function syncToolbar() {
+  // The current filename goes through Host.setTitle() (shell-owned, next to
+  // Source — see openNotebook()). The switcher below is a genuine control
+  // (it changes which notebook is open), so it still belongs in the center.
   const items = [];
 
   if (state.notebooks.length > 1) {
@@ -62,8 +65,6 @@ function syncToolbar() {
       options: state.notebooks.map((p) => ({ value: p, label: p })),
       title: 'Switch notebook',
     });
-  } else if (state.path) {
-    items.push({ kind: 'text', label: state.path.split('/').pop(), variant: 'title' });
   }
 
   items.push({ kind: 'status', label: STATUS_LABEL[kernel.status] || kernel.status, tone: kernel.status });
@@ -125,6 +126,7 @@ Host.onToolbarClick((id, value) => {
 async function openNotebook(path) {
   state.path = path;
   document.title = path.split('/').pop();
+  Host.setTitle(document.title);
   $doc.innerHTML = '<div class="v-empty"><span class="v-spinner"></span></div>';
   syncToolbar();
 

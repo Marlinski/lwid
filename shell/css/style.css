@@ -620,6 +620,30 @@ button:disabled {
 }
 
 /* ---------------------------------------------------------------------------
+ * Current document — shell-owned, sits right after Source so every viewer
+ * shows it in the same place. Empty (and collapsed) for a plain website.
+ * --------------------------------------------------------------------------- */
+
+.toolbar__doc-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.toolbar__doc-title:empty {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .toolbar__doc-title { max-width: 120px; }
+}
+
+/* ---------------------------------------------------------------------------
  * Toolbar viewer slot — controls declared by the active viewer
  * (shell/js/viewers.js) over postMessage. Empty for a plain website.
  * --------------------------------------------------------------------------- */
@@ -1452,17 +1476,7 @@ button:disabled {
   gap: 0.2rem;
   color: var(--green);
   flex-shrink: 0;
-  cursor: default;
-}
-
-.toolbar__encryption-info {
-  color: var(--text-subtle);
   cursor: help;
-  transition: color 0.15s;
-}
-
-.toolbar__encryption:hover .toolbar__encryption-info {
-  color: var(--text-muted);
 }
 
 .toolbar__encryption-tooltip {
@@ -1506,7 +1520,9 @@ button:disabled {
 
 /* ---------------------------------------------------------------------------
  * Toolbar expiry & extend — deliberately quiet: a small muted label, not a
- * badge competing for attention with the actual content.
+ * badge competing for attention with the actual content. For the owner the
+ * label itself is the extend trigger (no separate button); a visitor's
+ * stays plain, inert text.
  * --------------------------------------------------------------------------- */
 
 .toolbar__expiry {
@@ -1516,21 +1532,18 @@ button:disabled {
   flex-shrink: 0;
 }
 
+.toolbar__expiry--clickable {
+  cursor: pointer;
+  color: var(--accent);
+}
+.toolbar__expiry--clickable:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
 .toolbar__extend-wrap {
   position: relative;
   flex-shrink: 0;
-}
-
-.toolbar__btn--extend {
-  font-size: 0.72rem;
-  padding: 0.15rem 0.3rem;
-  color: var(--accent);
-  border-color: transparent;
-  background: transparent;
-}
-.toolbar__btn--extend:hover:not(:disabled) {
-  border-color: transparent;
-  text-decoration: underline;
 }
 
 .extend-menu {
@@ -1606,11 +1619,6 @@ button:disabled {
   /* Hide label text, keep icons */
   .toolbar__btn span,
   .share-split__main span {
-    display: none;
-  }
-
-  /* Hide info icon on mobile; lock alone suffices */
-  .toolbar__encryption-info {
     display: none;
   }
 

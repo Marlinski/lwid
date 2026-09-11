@@ -79,12 +79,12 @@
 
     // No sidebar-toggle item here — the shell's "Source" button sits right
     // next to this toolbar and already opens a panel; this file list stays
-    // visible instead of duplicating that affordance.
+    // visible instead of duplicating that affordance. The open file's name
+    // goes through Host.setTitle() (shell-owned, next to Source) rather than
+    // a toolbar item, same as every other viewer.
     function syncToolbar() {
-      Host.setToolbar([
-        { kind: 'text', label: `${files.length} file${files.length === 1 ? '' : 's'}`, variant: 'title' },
-        ...(active ? [{ kind: 'button', id: 'download', label: 'Download', title: 'Download this file' }] : []),
-      ]);
+      Host.setTitle(active ? active.split('/').pop() : `${files.length} file${files.length === 1 ? '' : 's'}`);
+      Host.setToolbar(active ? [{ kind: 'button', id: 'download', label: 'Download', title: 'Download this file' }] : []);
     }
 
     Host.onToolbarClick((id) => {

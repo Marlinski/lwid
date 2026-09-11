@@ -17,6 +17,9 @@
  *       viewer-owned center slot; see the item shapes below.
  *   LwidHost.onToolbarClick(fn)            fn(id, value?) for a click (or a
  *       <select> change) on one of those items.
+ *   LwidHost.setTitle(name)                the document currently open —
+ *       shown next to Source, the same shell-owned spot for every viewer
+ *       (not one more toolbar item, so it isn't lost among action buttons).
  *
  * File reads go straight through the Service Worker (`/sandbox/<path>`); only
  * `saveVersion` needs the shell, which owns the write key and the push flow.
@@ -122,6 +125,9 @@
     },
     onToolbarClick(handler) {
       toolbarClickHandler = handler;
+    },
+    setTitle(title) {
+      window.parent.postMessage({ type: 'LWID_TITLE_SET', title: title || '' }, '*');
     },
   };
 })();
