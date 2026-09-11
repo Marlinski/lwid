@@ -287,6 +287,112 @@ button:disabled {
   color: var(--accent-hover);
 }
 
+/* What you can drop — capability cards */
+
+.landing__capabilities {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 640px;
+  margin-top: 2.25rem;
+}
+
+.landing__cap-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 1rem 0.8rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.landing__cap-card svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.landing__cap-card h3 {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.landing__cap-card p {
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.landing__cap-card code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--text);
+}
+
+/* Quick start — skip the drop, scaffold something and start editing */
+
+.landing__quickstart {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.landing__quickstart-label {
+  font-size: 0.78rem;
+  color: var(--text-subtle);
+}
+
+.landing__quickstart-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.landing__quickstart-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+.landing__quickstart-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.landing__divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 460px;
+  margin-top: 1.75rem;
+  font-size: 0.7rem;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.landing__divider::before,
+.landing__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 /* Drop zone */
 
 .dropzone {

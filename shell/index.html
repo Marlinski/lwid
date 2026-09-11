@@ -83,6 +83,46 @@
       <a href="/docs.html" class="landing__docs-link">Learn how it works</a>
     </p>
 
+    <!-- What you can drop — it's not just websites -->
+    <div class="landing__capabilities">
+      <div class="landing__cap-card">
+        <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1.5" y="3" width="13" height="10.5" rx="1.5"/><path d="M1.5 6h13"/><circle cx="3.4" cy="4.5" r="0.4" fill="currentColor" stroke="none"/>
+        </svg>
+        <h3>Website</h3>
+        <p>Any HTML/CSS/JS folder &mdash; sandboxed, works like a static site.</p>
+      </div>
+      <div class="landing__cap-card">
+        <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="12" height="4.5" rx="1"/><rect x="2" y="8.5" width="12" height="4.5" rx="1"/><path d="M6.2 10l2.2 1.25-2.2 1.25z" fill="currentColor" stroke="none"/>
+        </svg>
+        <h3>Notebook</h3>
+        <p>Drop a <code>.ipynb</code> &mdash; Python runs right in the browser, numpy &amp; pandas included.</p>
+      </div>
+      <div class="landing__cap-card">
+        <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 1.5h5.5L12 4v9.5a1 1 0 01-1 1H4a1 1 0 01-1-1v-11a1 1 0 011-1z"/><path d="M6 6.5h4M6 8.75h4M6 11h2.5"/>
+        </svg>
+        <h3>Docs</h3>
+        <p>Drop Markdown files &mdash; sidebar &amp; navigation, generated for free.</p>
+      </div>
+      <div class="landing__cap-card">
+        <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <ellipse cx="8" cy="4" rx="5.5" ry="2.5"/><path d="M2.5 4v4c0 1.38 2.46 2.5 5.5 2.5s5.5-1.12 5.5-2.5V4"/><path d="M2.5 8v4c0 1.38 2.46 2.5 5.5 2.5s5.5-1.12 5.5-2.5V8"/>
+        </svg>
+        <h3>Shared storage</h3>
+        <p>Every app gets an encrypted store, live and shared across everyone who opens the link.</p>
+      </div>
+    </div>
+
+    <div class="landing__quickstart">
+      <span class="landing__quickstart-label">Start blank:</span>
+      <button type="button" class="landing__quickstart-btn" id="btn-quickstart-notebook">📓 New Notebook</button>
+      <button type="button" class="landing__quickstart-btn" id="btn-quickstart-docs">📄 New Docs</button>
+    </div>
+
+    <div class="landing__divider">or drop your files</div>
+
     <div id="dropzone" class="dropzone">
       <span class="dropzone__icon" aria-hidden="true">&#128193;</span>
       <p class="dropzone__label">Drop your files here or click to browse</p>
@@ -398,6 +438,10 @@
     const $btnCreate     = document.getElementById('btn-create');
     const $landingStatus = document.getElementById('landing-status');
     const $ttlSelector   = document.getElementById('ttl-selector');
+
+    // Quick start — scaffold a blank notebook/docs project, skip the dropzone
+    const $btnQuickstartNotebook = document.getElementById('btn-quickstart-notebook');
+    const $btnQuickstartDocs     = document.getElementById('btn-quickstart-docs');
 
     // My Projects — landing page only; the project view dropped it (it's a
     // browsing feature, not something a shared link's visitor needs).
@@ -1343,6 +1387,71 @@
       }
 
       $btnCreate.addEventListener('click', handleCreate);
+
+      $btnQuickstartNotebook.addEventListener('click', () => handleQuickStart('notebook'));
+      $btnQuickstartDocs.addEventListener('click', () => handleQuickStart('docs'));
+    }
+
+    // ── Quick start: scaffold a blank notebook or docs page ────────────────
+    // Same create+push flow as handleCreate(), just with a starter file
+    // instead of whatever the user dropped — a "New Notebook" a la Colab.
+
+    const STARTER_NOTEBOOK = JSON.stringify({
+      cells: [
+        {
+          cell_type: 'markdown',
+          metadata: {},
+          source: [
+            '# New Notebook\n',
+            '\n',
+            'Write Python below and hit **Run** — it runs right in your browser (via Pyodide), no server involved.',
+          ],
+        },
+        {
+          cell_type: 'code',
+          metadata: {},
+          execution_count: null,
+          outputs: [],
+          source: ["print('hello from lwid')"],
+        },
+      ],
+      metadata: { language_info: { name: 'python' } },
+      nbformat: 4,
+      nbformat_minor: 5,
+    }, null, 1);
+
+    const STARTER_DOCS =
+      '# New Project\n\n' +
+      'Start writing here — Markdown renders automatically.\n' +
+      'Add more `.md` files for a sidebar with navigation, or a `SUMMARY.md` to control the order.\n';
+
+    async function handleQuickStart(kind) {
+      $btnQuickstartNotebook.disabled = true;
+      $btnQuickstartDocs.disabled = true;
+      setStatus(kind === 'notebook' ? 'Creating notebook...' : 'Creating docs page...');
+
+      try {
+        const path = kind === 'notebook' ? 'notebook.ipynb' : 'README.md';
+        const content = new TextEncoder().encode(kind === 'notebook' ? STARTER_NOTEBOOK : STARTER_DOCS);
+
+        const readKey = generateReadKey();
+        const { publicKeyBytes, privateKeyB64url: writeKey } = await generateWriteKeyPair();
+        const pubkeyBase64 = toStandardBase64(publicKeyBytes);
+        const storeToken = await deriveStoreToken(readKey);
+        const { project_id: projectId } = await api.createProject(pubkeyBase64, selectedTtl, storeToken);
+
+        await pushVersion(api, projectId, readKey, writeKey, [{ path, content }]);
+
+        saveProject(projectId, readKey, writeKey);
+
+        const url = buildProjectUrl(window.location.origin, projectId, readKey, writeKey);
+        window.location.href = url;
+      } catch (err) {
+        console.error('Quick start failed:', err);
+        setStatus(`Error: ${err.message}`);
+        $btnQuickstartNotebook.disabled = false;
+        $btnQuickstartDocs.disabled = false;
+      }
     }
 
     async function handleCreate() {
