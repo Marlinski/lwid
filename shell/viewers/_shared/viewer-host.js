@@ -1,7 +1,7 @@
 /**
  * viewer-host.js — bridge between a viewer bundle and the lwid shell.
  *
- * Loaded as a plain <script> by every viewer (`/sandbox/__shared__/viewer-host.js`).
+ * Loaded as a plain <script> by every viewer (`/__shared__/viewer-host.js`).
  * It exposes `window.LwidHost`:
  *
  *   await LwidHost.manifest()              -> { files, viewer, canEdit }
@@ -79,14 +79,14 @@
 
   async function manifest(force) {
     if (manifestCache && !force) return manifestCache;
-    const res = await fetch('/sandbox/__lwid/files.json', { cache: 'no-store' });
+    const res = await fetch('/__lwid/files.json', { cache: 'no-store' });
     if (!res.ok) throw new Error(`LwidHost: manifest fetch failed (${res.status})`);
     manifestCache = await res.json();
     return manifestCache;
   }
 
   async function readBytes(path) {
-    const res = await fetch('/sandbox/' + encodePath(path));
+    const res = await fetch('/' + encodePath(path));
     if (!res.ok) throw new Error(`LwidHost: cannot read ${path} (${res.status})`);
     return new Uint8Array(await res.arrayBuffer());
   }

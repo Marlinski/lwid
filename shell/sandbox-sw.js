@@ -1,52 +1,44 @@
 /**
- * Service Worker for "lookwhatidid"
+ * Service Worker for a project's own sandbox origin (e.g.
+ * <project-id>.lookwhatidid.xyz).
  *
- * Purpose: intercept fetch requests from the sandboxed iframe and serve
- * decrypted files from an in-memory cache, so the user's deployed app
- * behaves like a normal static site.
+ * This is sw.js's exact job, moved to its own origin: intercept every fetch
+ * on this origin and serve decrypted files from an in-memory cache, so the
+ * user's deployed app behaves like a normal static site. The difference is
+ * *where* it runs — a dedicated origin per project means a malicious
+ * project's own script (running same-origin with this SW, as
+ * `sandbox="allow-scripts allow-same-origin"` always allows) can only ever
+ * reach *this* project's storage/DOM, never the shell's (My Projects'
+ * localStorage, write keys, etc.) or another project's.
  *
- * Communication protocol (shell SPA -> SW via postMessage):
+ * This whole origin is otherwise empty — sandbox.html (the one page that
+ * ever loads directly here) registers this worker, then hands it files via
+ * postMessage relayed from the shell. See sandbox.html for that handshake.
+ *
+ * Communication protocol (sandbox.html -> SW via postMessage):
  *
  *   { type: 'SET_FILES', files: Array<{ path, content, mimeType }>,
  *     viewer?: string | null, canEdit?: boolean }
- *     Replace the entire file cache. `content` is an ArrayBuffer (structured
- *     clone converts Uint8Array to ArrayBuffer during transfer). `viewer`, when
- *     set, names a front-end shim (see below); `canEdit` says whether the
- *     current link carries a write key.
+ *     Replace the entire file cache. `content` is an ArrayBuffer.
  *
  *   { type: 'CLEAR_FILES' }
  *     Wipe the cache and forget the active viewer.
  *
- * Fetch interception:
- *   Requests whose URL path starts with /sandbox/ are served from cache.
- *   Everything else falls through to the network untouched.
+ * Fetch interception: every request on this origin is served from cache
+ * (there is nothing else here to fall through to).
  *
- * Viewers:
- *   When a `viewer` is active, the sandbox root (`/sandbox/`) renders that
- *   viewer's own `index.html` (pulled from `/viewers/<id>/` on the shell
- *   origin) instead of the project files. Two reserved prefixes expose the
- *   shell-origin bundles to the running viewer:
+ * Viewers: same reserved prefixes as sw.js —
+ *   /__viewer__/<path>  -> shell origin's /viewers/<active viewer>/<path>
+ *   /__shared__/<path>  -> shell origin's /viewers/_shared/<path>
+ *   /__lwid/files.json  -> { files, viewer, canEdit }
+ * fetched cross-origin from the shell (its CORS is already wide open for
+ * these — see build_cors() in lwid-server, default `cors_origins: ["*"]`).
  *
- *     /sandbox/__viewer__/<path>  -> /viewers/<active viewer>/<path>
- *     /sandbox/__shared__/<path>  -> /viewers/_shared/<path>
- *
- *   and one synthesized endpoint lets the viewer discover the project:
- *
- *     /sandbox/__lwid/files.json  -> { files: [{ path, size, mimeType }],
- *                                      viewer, canEdit }
- *
- *   The project's own files stay reachable at their real paths, so a viewer
- *   fetches e.g. `/sandbox/analysis.ipynb` or `/sandbox/data/foo.csv` directly.
- *
- * Re-hydration:
- *   The file cache is in-memory, so it is wiped whenever the browser
- *   terminates this (idle) Service Worker. On a subsequent /sandbox/ request
- *   the cache is empty and every navigation would 404 until the shell page is
- *   reloaded. To avoid that, an empty-cache miss asks a live shell client to
- *   re-send its (already-decrypted, in-memory) files via SET_FILES, then the
- *   request is retried — so intra-app navigation keeps working across SW
- *   restarts without ever persisting plaintext to disk. The SET_FILES message
- *   also re-declares the active viewer.
+ * Re-hydration: identical need as sw.js (in-memory cache wiped when this SW
+ * goes idle and gets terminated), but self.clients.matchAll() here can only
+ * ever find clients on *this* origin — sandbox.html itself, which relays the
+ * request up to the shell via window.parent.postMessage() and never
+ * navigates away, so it's always around to ask.
  */
 
 // ---------------------------------------------------------------------------
@@ -54,12 +46,9 @@
 // ---------------------------------------------------------------------------
 const fileCache = new Map();
 
-// Active viewer shim. When non-null, the sandbox root serves the viewer's own
-// index.html and the reserved __viewer__ / __shared__ prefixes are live.
 let activeViewer = null;
 let viewerCanEdit = false;
 
-// Pending re-hydration request (shared so concurrent misses coalesce).
 let hydratePromise = null;
 let hydrateResolve = null;
 
@@ -68,6 +57,15 @@ function finishHydration() {
   hydratePromise = null;
   hydrateResolve = null;
 }
+
+// ---------------------------------------------------------------------------
+// This origin's own shell origin — sandbox.html tells us explicitly (see its
+// SET_SHELL_ORIGIN message), rather than this guessing it from its own
+// hostname: whether this origin is a real per-project subdomain or just
+// this same origin (no sandbox_base_domain configured on the server) isn't
+// something a hostname alone can tell apart.
+// ---------------------------------------------------------------------------
+let SHELL_ORIGIN = self.location.origin;
 
 // ---------------------------------------------------------------------------
 // MIME type helper
@@ -116,7 +114,6 @@ self.addEventListener('message', (event) => {
   if (type === 'SET_FILES') {
     fileCache.clear();
     for (const file of files) {
-      // content arrives as ArrayBuffer from structured clone; wrap it
       const bytes = file.content instanceof ArrayBuffer
         ? new Uint8Array(file.content)
         : file.content;
@@ -127,38 +124,45 @@ self.addEventListener('message', (event) => {
     }
     activeViewer = event.data.viewer || null;
     viewerCanEdit = !!event.data.canEdit;
-    // Acknowledge that files are cached so the page can load the iframe.
     if (event.ports && event.ports[0]) {
       event.ports[0].postMessage({ type: 'FILES_READY' });
     }
-    // Unblock any /sandbox/ request that was waiting on re-hydration.
     finishHydration();
   } else if (type === 'CLEAR_FILES') {
     fileCache.clear();
     activeViewer = null;
     viewerCanEdit = false;
+  } else if (type === 'SET_SHELL_ORIGIN') {
+    if (event.data.origin) SHELL_ORIGIN = event.data.origin;
   }
 });
 
 // ---------------------------------------------------------------------------
-// Fetch interception
+// Fetch interception — everything on this origin only. A SW's fetch event
+// fires for every request a page in its scope makes, cross-origin included
+// (the injected lwid-sdk.js <script src>, a viewer's CDN libraries, the
+// __viewer__/__shared__ proxy's own cross-origin fetch to the shell) — all
+// of those must fall through to the real network untouched, not get looked
+// up in *this* project's file cache and 404.
 // ---------------------------------------------------------------------------
+// The bridge page itself — must always come from the network/server, never
+// this SW's per-project file cache. It can be navigated to again (e.g. a
+// full page reload of the shell) after this SW is already installed and
+// controlling its scope from an earlier session, and it isn't a project
+// file, so a cache lookup for it would just 404.
+const BRIDGE_PATH = '__lwid_sandbox__/sandbox.html';
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-
-  // Only intercept paths under /sandbox/
-  if (!url.pathname.startsWith('/sandbox/')) {
-    return; // fall through to network
-  }
-
-  event.respondWith(handleSandboxRequest(url));
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.replace(/^\//, '') === BRIDGE_PATH) return;
+  event.respondWith(handleRequest(url));
 });
 
 /**
- * Ask a live shell client to re-send its decrypted files (SET_FILES). Called
- * when the cache is empty because the SW was terminated and restarted. Resolves
- * once files arrive (via finishHydration) or after a short timeout. Concurrent
- * callers share the same in-flight request.
+ * Ask sandbox.html (the one persistent client on this origin) to relay a
+ * re-hydration request up to the shell. Mirrors sw.js's requestHydration(),
+ * just one hop further since the shell isn't a same-origin client anymore.
  */
 function requestHydration() {
   if (hydratePromise) return hydratePromise;
@@ -166,19 +170,10 @@ function requestHydration() {
   self.clients
     .matchAll({ type: 'window', includeUncontrolled: true })
     .then((clients) => {
-      // The shell (holder of the decrypted files) lives outside /sandbox/;
-      // the sandboxed app iframe cannot re-hydrate, so skip it.
-      const shells = clients.filter(
-        (c) => !new URL(c.url).pathname.startsWith('/sandbox/'),
-      );
-      if (shells.length === 0) {
-        finishHydration(); // nobody to ask — fail fast to a 404
-        return;
-      }
-      for (const c of shells) c.postMessage({ type: 'REQUEST_FILES' });
+      if (clients.length === 0) { finishHydration(); return; }
+      for (const c of clients) c.postMessage({ type: 'REQUEST_FILES' });
     })
     .catch(() => finishHydration());
-  // Safety net: never hang a request forever.
   setTimeout(finishHydration, 5000);
   return hydratePromise;
 }
@@ -190,13 +185,33 @@ function notFound() {
   });
 }
 
+// Fetched once per SW lifetime and inlined (not left as a <script src>)
+// because in same-origin fallback mode (no sandbox_base_domain configured)
+// SHELL_ORIGIN equals this SW's own origin — a plain <script src> to it
+// would be a same-origin page request, which this same SW would intercept
+// and 404 (nothing in the project's own file cache is named js/lwid-sdk.js).
+// Inlining sidesteps that regardless of which mode is active.
+let sdkSourceCache = null;
+async function sdkScriptTag() {
+  if (sdkSourceCache == null) {
+    try {
+      const res = await fetch(SHELL_ORIGIN + '/js/lwid-sdk.js', { cache: 'no-cache', mode: 'cors' });
+      sdkSourceCache = res.ok ? await res.text() : '';
+    } catch {
+      sdkSourceCache = '';
+    }
+  }
+  return sdkSourceCache
+    ? `<script>${sdkSourceCache}</script>`
+    : `<script src="${SHELL_ORIGIN}/js/lwid-sdk.js"></script>`; // last-resort fallback
+}
+
 /**
  * Inject the lwid SDK into an HTML document and return it as a Response.
- * Shared by cached project pages and viewer bundles alike.
  */
-function htmlResponse(bytes) {
+async function htmlResponse(bytes) {
   let html = new TextDecoder().decode(bytes);
-  const scriptTag = '<script src="/js/lwid-sdk.js"></script>';
+  const scriptTag = await sdkScriptTag();
 
   const headMatch = html.match(/<head(\s[^>]*)?>/i);
   if (headMatch) {
@@ -219,13 +234,14 @@ function htmlResponse(bytes) {
 }
 
 /**
- * Serve a static asset from the shell origin (a viewer bundle). HTML documents
- * are run through {@link htmlResponse} so the viewer gets `window.lwid`.
+ * Fetch a viewer bundle asset from the shell origin (cross-origin — the
+ * shell's CORS is wide open for static assets). HTML documents are run
+ * through {@link htmlResponse} so the viewer gets `window.lwid`.
  */
 async function serveShellAsset(path) {
   let res;
   try {
-    res = await fetch(path, { cache: 'no-cache' });
+    res = await fetch(SHELL_ORIGIN + path, { cache: 'no-cache', mode: 'cors' });
   } catch {
     return notFound();
   }
@@ -255,9 +271,15 @@ async function synthesizeFilesJson() {
   );
 }
 
-async function handleSandboxRequest(url) {
-  // Strip the /sandbox/ prefix and percent-decode (cache keys are raw paths).
-  let path = url.pathname.slice('/sandbox/'.length);
+// The narrow scope sandbox.html registers this SW under (see its own
+// ENTRY_PREFIX comment) — only the content iframe's own top-level
+// navigation ever carries this; everything that page itself then fetches
+// (images, __viewer__/__shared__ assets, ...) is a plain root-relative path.
+const ENTRY_PREFIX = '__lwid_sandbox__/entry/';
+
+async function handleRequest(url) {
+  let path = url.pathname.replace(/^\//, '');
+  if (path.startsWith(ENTRY_PREFIX)) path = path.slice(ENTRY_PREFIX.length);
   try { path = decodeURIComponent(path); } catch { /* keep the raw form */ }
 
   // ── Reserved viewer namespaces ───────────────────────────────────────────
@@ -274,25 +296,17 @@ async function handleSandboxRequest(url) {
     return serveShellAsset(`/viewers/_shared/${rest}`);
   }
 
-  // Treat empty path or trailing slash as a directory -> index.html
   if (path === '' || path.endsWith('/')) {
     path += 'index.html';
   }
 
   let entry = fileCache.get(path);
 
-  // Empty cache ⇒ the SW was almost certainly restarted after going idle.
-  // Ask the shell to re-send the files (and re-declare the viewer), then
-  // retry once. (A non-empty cache that simply lacks this path is a genuine
-  // 404 — don't re-hydrate.)
   if (!entry && fileCache.size === 0) {
     await requestHydration();
     entry = fileCache.get(path);
   }
 
-  // With a viewer active, the sandbox root renders the viewer shell rather
-  // than a project file. (detectViewer() only picks a viewer when the project
-  // has no HTML of its own, so this never shadows a real index.html.)
   if (!entry && activeViewer && path === 'index.html') {
     return serveShellAsset(`/viewers/${activeViewer}/index.html`);
   }
@@ -313,13 +327,10 @@ async function handleSandboxRequest(url) {
 // ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------
-
-// Activate immediately without waiting for old SW to retire
 self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
-// Take control of all open clients right away
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });

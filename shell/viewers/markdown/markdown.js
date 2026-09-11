@@ -216,7 +216,7 @@ function rewriteLinks(fromPath) {
   const root = content();
   for (const img of root.querySelectorAll('img[src]')) {
     const resolved = resolvePath(fromPath, img.getAttribute('src'));
-    if (resolved != null) img.src = '/sandbox/' + enc(resolved);
+    if (resolved != null) img.src = '/' + enc(resolved);
   }
   for (const a of root.querySelectorAll('a[href]')) {
     const href = a.getAttribute('href');
@@ -237,7 +237,7 @@ function rewriteLinks(fromPath) {
     if (doc) {
       a.addEventListener('click', (e) => { e.preventDefault(); openDoc(doc, hash); });
     } else {
-      a.href = '/sandbox/' + enc(resolved);
+      a.href = '/' + enc(resolved);
       a.target = '_blank';
       a.rel = 'noopener';
     }

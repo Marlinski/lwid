@@ -570,6 +570,20 @@
     // -----------------------------------------------------------------------
 
     const api = new ApiClient('');
+
+    // Started immediately (in parallel with everything else) rather than
+    // reused from auth.js's own /api/manifest fetch — that one runs off
+    // DOMContentLoaded with no ordering guarantee against this page's own
+    // boot sequence, so waiting on it could race a project load that starts
+    // first. sandboxOrigin() awaits this before ever being used; unreachable
+    // or malformed just means "no subdomain configured" (same-origin
+    // fallback), never a broken load.
+    let sandboxBaseDomain = null;
+    const sandboxConfigReady = fetch('/api/manifest')
+      .then((r) => r.json())
+      .then((m) => { sandboxBaseDomain = m.sandbox_base_domain || null; })
+      .catch(() => { sandboxBaseDomain = null; });
+
     let currentProjectId = null;
     let currentReadKey   = null;
     let currentWriteKey  = null;
@@ -727,44 +741,12 @@
     setupProjectsDropdown($landingProjectsDropdown, $btnLandingProjects, $landingProjectsMenu);
 
     // -----------------------------------------------------------------------
-    // Service Worker registration
+    // Service Worker registration — the shell's own page doesn't need one
+    // anymore. That used to be how /sandbox/ got its decrypted-file-serving
+    // trick; each project's own sandbox origin now runs that trick itself
+    // (sandbox.html registers sandbox-sw.js there — see ensureSandboxBridge()
+    // and postFilesToSW() below), same-origin with nothing this page holds.
     // -----------------------------------------------------------------------
-
-    async function registerSW() {
-      if (!('serviceWorker' in navigator)) {
-        console.warn('Service Workers not supported');
-        return;
-      }
-
-      const registration = await navigator.serviceWorker.register('/sw.js');
-      await navigator.serviceWorker.ready;
-
-      // If the SW is already controlling the page, we're done.
-      if (navigator.serviceWorker.controller) return;
-
-      // Wait briefly for clients.claim() to propagate after activation.
-      await new Promise((resolve) => {
-        navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
-        // Safety timeout: if claim doesn't propagate within 2s, force a
-        // one-time reload so the SW controls the page on next load.
-        setTimeout(() => {
-          if (!navigator.serviceWorker.controller) {
-            // Guard against infinite reload loops with a sessionStorage flag
-            if (!sessionStorage.getItem('sw_reload')) {
-              sessionStorage.setItem('sw_reload', '1');
-              window.location.reload();
-            } else {
-              sessionStorage.removeItem('sw_reload');
-              console.error('Service Worker failed to take control after reload');
-              resolve(); // proceed without SW — will show error in sendFilesToSW
-            }
-          }
-        }, 2000);
-      });
-
-      // Clear the reload flag on successful SW control
-      sessionStorage.removeItem('sw_reload');
-    }
 
     // -----------------------------------------------------------------------
     // Utility
@@ -1004,22 +986,82 @@
     }
 
     /**
-     * Send decrypted files to the Service Worker and load the sandbox iframe.
-     *
-     * Uses MessageChannel so the SW can acknowledge that files are cached
-     * before we point the iframe at /sandbox/. This eliminates the race
-     * condition where the iframe fires fetch before the SW has the files.
+     * A project's sandboxed content lives on its own origin now
+     * (<base32(project-id)>.<this-hostname>) instead of a same-origin
+     * /sandbox/ path — a malicious project's script has always been able to
+     * reach anything same-origin with it (that's what allow-same-origin
+     * means), so same-origin-with-the-shell meant same-origin with My
+     * Projects' localStorage, write keys included. A dedicated origin per
+     * project means it can only ever reach its own.
      */
-    // Post the decrypted files to the Service Worker's cache and await its
-    // acknowledgment. Shared by the initial load and by re-hydration (when the
-    // SW was terminated while idle and lost its in-memory cache). The file
-    // buffers are structured-cloned (only the port is transferred), so `files`
-    // stays intact and can be re-sent any number of times.
-    async function postFilesToSW(files, viewer = currentViewer) {
-      const sw = navigator.serviceWorker.controller;
-      if (!sw) {
-        throw new Error('Service Worker not controlling page — try refreshing.');
+    const BASE32_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567';
+
+    /**
+     * Project IDs (nanoid, mixed-case + `_`/`-`) aren't safe to use as a DNS
+     * label directly: hostnames are case-insensitive (two IDs differing only
+     * in case would collide onto the same sandbox origin — the opposite of
+     * the isolation this is for) and `_`/`-` aren't valid at a label's edges
+     * either. Base32 (lowercase, a-z2-7 only) is a bijection, not a hash —
+     * every distinct ID still gets its own distinct, collision-free label.
+     */
+    function subdomainLabel(id) {
+      const bytes = new TextEncoder().encode(id);
+      let bits = 0, value = 0, out = '';
+      for (const byte of bytes) {
+        value = (value << 8) | byte;
+        bits += 8;
+        while (bits >= 5) {
+          out += BASE32_ALPHABET[(value >>> (bits - 5)) & 31];
+          bits -= 5;
+        }
       }
+      if (bits > 0) out += BASE32_ALPHABET[(value << (5 - bits)) & 31];
+      return out;
+    }
+
+    // Deployments without a wildcard DNS/cert set up for this simply don't
+    // set server.sandbox_base_domain — sandboxOrigin() then returns this
+    // page's own origin, and the sandboxed content stays same-origin (no
+    // isolation, but a real /p/{id} link works everywhere regardless of
+    // whether this feature is configured).
+    function sandboxOrigin() {
+      if (!sandboxBaseDomain) return location.origin;
+      return `${location.protocol}//${subdomainLabel(currentProjectId)}.${sandboxBaseDomain}`;
+    }
+
+    let sandboxBridgeReady = null; // resolves once sandbox.html has booted for this page's lifetime
+
+    /**
+     * Load the sandbox bridge iframe once per page session; a no-op after
+     * that. Always the same fixed backend endpoint — the server alone
+     * decides whether that's a same-origin serve or a redirect to the
+     * project's own subdomain, so this stays a single code path either way.
+     */
+    function ensureSandboxBridge() {
+      // sandboxBridgeReady is assigned synchronously (before any await gets
+      // a chance to yield) so a second call made before the first settles
+      // still sees it set and reuses the same promise, rather than kicking
+      // off a second, competing iframe navigation.
+      if (sandboxBridgeReady) return sandboxBridgeReady;
+      sandboxBridgeReady = (async () => {
+        await sandboxConfigReady; // sandboxOrigin() below (and every later caller) needs this settled
+        await new Promise((resolve, reject) => {
+          $sandboxFrame.addEventListener('load', () => resolve(), { once: true });
+          $sandboxFrame.addEventListener('error', () => reject(new Error('sandbox bridge failed to load')), { once: true });
+          $sandboxFrame.src = `${location.origin}/api/sandbox/${encodeURIComponent(currentProjectId)}`;
+        });
+      })();
+      return sandboxBridgeReady;
+    }
+
+    /**
+     * Send decrypted files to the sandbox bridge and point its content
+     * iframe at `navigateTo`. Shared by the initial load and by
+     * re-hydration (when the sandbox SW was terminated while idle and lost
+     * its in-memory cache).
+     */
+    async function postFilesToSW(files, viewer = currentViewer, navigateTo = '/') {
+      await ensureSandboxBridge();
 
       const payload = [];
       for (const [path, content] of files) {
@@ -1031,50 +1073,52 @@
       }
 
       await new Promise((resolve, reject) => {
-        const channel = new MessageChannel();
-        channel.port1.onmessage = (event) => {
-          if (event.data?.type === 'FILES_READY') {
+        const onMessage = (event) => {
+          if (event.source !== $sandboxFrame.contentWindow || event.origin !== sandboxOrigin()) return;
+          if (event.data?.type === 'LWID_SANDBOX_FILES_READY') {
+            window.removeEventListener('message', onMessage);
             resolve();
-          } else {
-            reject(new Error('Unexpected SW response'));
+          } else if (event.data?.type === 'LWID_SANDBOX_ERROR') {
+            window.removeEventListener('message', onMessage);
+            reject(new Error(event.data.error || 'sandbox bridge error'));
           }
         };
-        sw.postMessage(
-          { type: 'SET_FILES', files: payload, viewer: viewer || null, canEdit: !!currentWriteKey },
-          [channel.port2],
+        window.addEventListener('message', onMessage);
+        $sandboxFrame.contentWindow.postMessage(
+          {
+            type: 'LWID_SANDBOX_SET_FILES',
+            files: payload,
+            viewer: viewer || null,
+            canEdit: !!currentWriteKey,
+            navigateTo,
+          },
+          sandboxOrigin(),
         );
 
-        // Timeout after 5 seconds
-        setTimeout(() => reject(new Error('SW file cache timeout')), 5000);
+        setTimeout(() => { window.removeEventListener('message', onMessage); reject(new Error('sandbox bridge timeout')); }, 8000);
       });
     }
 
-    /**
-     * Send decrypted files to the Service Worker and load the sandbox iframe.
-     *
-     * Uses MessageChannel so the SW can acknowledge that files are cached
-     * before we point the iframe at /sandbox/. This eliminates the race
-     * condition where the iframe fires fetch before the SW has the files.
-     */
+    /** Send decrypted files to the sandbox bridge and load its content iframe. */
     async function sendFilesToSW(files, entryPoint, viewer = null) {
-      await postFilesToSW(files, viewer);
-      // Point the iframe at the sandbox path — SW will intercept and serve.
       // With a viewer active, the root serves the viewer's own index.html.
-      $sandboxFrame.src = viewer ? '/sandbox/' : '/sandbox/' + entryPoint;
+      await postFilesToSW(files, viewer, viewer ? '/' : '/' + entryPoint);
     }
 
-    // Re-hydration: the SW's cache is in-memory and is wiped when the browser
-    // terminates an idle SW. When that happens, a later /sandbox/ request finds
-    // an empty cache and asks us (REQUEST_FILES) to re-send the files we still
-    // hold decrypted in `currentFiles`. We re-post them without touching the
-    // iframe, so intra-app navigation keeps working across SW restarts.
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.addEventListener('message', async (event) => {
-        if (event.data?.type === 'REQUEST_FILES' && currentFiles) {
+    // Re-hydration: the sandbox SW's cache is in-memory and is wiped when the
+    // browser terminates it while idle. When that happens, the bridge relays
+    // a request (LWID_SANDBOX_REQUEST_FILES) asking us to re-send the files
+    // we still hold decrypted in `currentFiles`. We re-post them without
+    // touching the content iframe, so intra-app navigation keeps working
+    // across SW restarts.
+    {
+      window.addEventListener('message', async (event) => {
+        if (!currentProjectId || event.source !== $sandboxFrame.contentWindow || event.origin !== sandboxOrigin()) return;
+        if (event.data?.type === 'LWID_SANDBOX_REQUEST_FILES' && currentFiles) {
           try {
-            await postFilesToSW(currentFiles, currentViewer);
+            await postFilesToSW(currentFiles, currentViewer, null);
           } catch (_) {
-            /* SW will fall back to a 404; the user can reload to recover */
+            /* the sandbox SW will fall back to a 404; the user can reload to recover */
           }
         }
       });
@@ -1179,7 +1223,7 @@
           }
           el.addEventListener('change', () => {
             $sandboxFrame.contentWindow.postMessage(
-              { type: 'LWID_TOOLBAR_CLICK', id: item.id, value: el.value }, '*',
+              { type: 'LWID_TOOLBAR_CLICK', id: item.id, value: el.value }, sandboxOrigin(),
             );
           });
         } else {
@@ -1206,7 +1250,7 @@
           }
           el.disabled = !!item.disabled;
           el.addEventListener('click', () => {
-            $sandboxFrame.contentWindow.postMessage({ type: 'LWID_TOOLBAR_CLICK', id: item.id }, '*');
+            $sandboxFrame.contentWindow.postMessage({ type: 'LWID_TOOLBAR_CLICK', id: item.id }, sandboxOrigin());
           });
         }
         if (item.title) el.title = item.title;
@@ -1216,6 +1260,11 @@
     }
 
     window.addEventListener('message', async (event) => {
+      // The bridge relays everything the real (now cross-origin) content
+      // sends up, so this check now does real work — before the sandbox had
+      // its own origin, any page could claim to be it.
+      if (!currentProjectId || event.source !== $sandboxFrame.contentWindow || event.origin !== sandboxOrigin()) return;
+
       const msg = event.data;
       if (!msg || typeof msg.type !== 'string' || !msg.type.startsWith('LWID_')) return;
 
@@ -1229,17 +1278,17 @@
         return;
       }
 
-      if (!currentProjectId || !currentReadKey || !currentStoreToken) return;
+      if (!currentReadKey || !currentStoreToken) return;
 
       const { type, id } = msg;
 
       function reply(value) {
-        $sandboxFrame.contentWindow.postMessage({ type: 'LWID_RESULT', id, value }, '*');
+        $sandboxFrame.contentWindow.postMessage({ type: 'LWID_RESULT', id, value }, sandboxOrigin());
       }
       function replyError(err) {
         $sandboxFrame.contentWindow.postMessage(
           { type: 'LWID_RESULT', id, error: err instanceof Error ? err.message : String(err) },
-          '*',
+          sandboxOrigin(),
         );
       }
 
@@ -1330,10 +1379,10 @@
             // version. Replies with LWID_HOST_RESULT so it never collides
             // with the LWID_RESULT store protocol in lwid-sdk.js.
             const hostReply = (value) =>
-              $sandboxFrame.contentWindow.postMessage({ type: 'LWID_HOST_RESULT', id, value }, '*');
+              $sandboxFrame.contentWindow.postMessage({ type: 'LWID_HOST_RESULT', id, value }, sandboxOrigin());
             const hostError = (err) =>
               $sandboxFrame.contentWindow.postMessage(
-                { type: 'LWID_HOST_RESULT', id, error: err instanceof Error ? err.message : String(err) }, '*');
+                { type: 'LWID_HOST_RESULT', id, error: err instanceof Error ? err.message : String(err) }, sandboxOrigin());
             try {
               if (!currentWriteKey) throw new Error('read-only link — no write key');
               const changed = (msg.files || []).map((f) => ({
@@ -1929,8 +1978,10 @@
           const plain = new TextEncoder().encode(path);
           const encrypted = await encrypt(currentReadKey, plain);
           await api.putStoreValue(currentProjectId, serverKey, encrypted, currentStoreToken);
-          // Reload iframe to the new entry point
-          $sandboxFrame.src = '/sandbox/' + path;
+          // Navigate the sandbox's content to the new entry point — the
+          // bridge (already loaded, already holding the files) relays this
+          // to its own nested content iframe, same-origin.
+          $sandboxFrame.contentWindow.postMessage({ type: 'LWID_SANDBOX_NAVIGATE', path: '/' + path }, sandboxOrigin());
           closeSourceViewer();
           showToast('Entry point updated.');
         } catch (err) {
@@ -2041,7 +2092,7 @@
           $eye.textContent = '⊙';
           $eye.addEventListener('click', (e) => {
             e.stopPropagation(); // don't also open the source viewer
-            $sandboxFrame.src = '/sandbox/' + path;
+            $sandboxFrame.contentWindow.postMessage({ type: 'LWID_SANDBOX_NAVIGATE', path: '/' + path }, sandboxOrigin());
             closeSourceViewer();
           });
           li.appendChild($eye);
@@ -2544,8 +2595,21 @@
     // -----------------------------------------------------------------------
 
     async function init() {
-      // Register SW early so it controls the page before any project load.
-      await registerSW();
+      // One-time cleanup for returning visitors: the shell used to register
+      // /sw.js at root scope on this origin. It's inert now (it only ever
+      // intercepted /sandbox/*, which nothing requests anymore) but would
+      // otherwise stay installed indefinitely. Matched by exact path so the
+      // sandbox's own SW (/sandbox-sw.js, registered on this same origin in
+      // fallback mode) is left alone. Fire-and-forget — not worth delaying
+      // the project load over.
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then((regs) => {
+          for (const reg of regs) {
+            const worker = reg.active || reg.waiting || reg.installing;
+            if (worker && new URL(worker.scriptURL).pathname === '/sw.js') reg.unregister();
+          }
+        }).catch(() => {});
+      }
 
       const route = getRoute();
 

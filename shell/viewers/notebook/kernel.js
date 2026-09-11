@@ -9,7 +9,28 @@
  * pd.read_csv('data.csv') instead of needing its bytes handed to it.
  */
 
-const WORKER_URL = '/sandbox/__viewer__/pyodide-worker.js';
+const WORKER_URL = '/__viewer__/pyodide-worker.js';
+
+// `new Worker(WORKER_URL)` doesn't reliably go through this page's
+// controlling Service Worker when the page itself is a nested iframe (the
+// sandbox bridge's #content child) rather than a top-level document — the
+// worker's own script request falls straight through to the network, which
+// 404s since nothing at that literal path exists server-side (it's a
+// synthetic route the SW alone understands). A plain fetch() for the same
+// URL *does* go through the SW correctly (proven by every other __viewer__
+// asset loading fine), so fetch the source ourselves and hand the worker a
+// blob: URL instead — sidesteps the gap entirely, and pyodide-worker.js
+// needs nothing else from this origin (its only other input is the CDN
+// pyodide runtime and files mounted via postMessage).
+let workerBlobUrl = null;
+async function workerUrl() {
+  if (workerBlobUrl) return workerBlobUrl;
+  const res = await fetch(WORKER_URL);
+  if (!res.ok) throw new Error(`failed to fetch ${WORKER_URL}: ${res.status}`);
+  const src = await res.text();
+  workerBlobUrl = URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
+  return workerBlobUrl;
+}
 
 export class Kernel {
   constructor({ onStatus, getMountFiles } = {}) {
@@ -36,24 +57,33 @@ export class Kernel {
   start() {
     if (this.ready) return this.ready;
     this._setStatus('loading');
-    this.worker = new Worker(WORKER_URL);
-    this.worker.onmessage = (e) => this._onMessage(e.data);
-    this.worker.onerror = (e) => {
-      const err = new Error(e.message || 'worker crashed');
-      if (this._run) { this._run.reject(err); this._run = null; }
-      this._setStatus('dead');
-    };
-    this.ready = new Promise((resolve, reject) => {
+    const booted = new Promise((resolve, reject) => {
       this._readyResolve = resolve;
       this._readyReject = reject;
-    }).then(async () => {
+    });
+    (async () => {
+      try {
+        this.worker = new Worker(await workerUrl());
+      } catch (err) {
+        this._readyReject(err);
+        return;
+      }
+      this.worker.onmessage = (e) => this._onMessage(e.data);
+      this.worker.onerror = (e) => {
+        const err = new Error(e.message || 'worker crashed');
+        if (this._run) { this._run.reject(err); this._run = null; }
+        this._setStatus('dead');
+        this._readyReject(err);
+      };
+      this.worker.postMessage({ type: 'init' });
+    })();
+    this.ready = booted.then(async () => {
       try {
         const files = await this._getMountFiles();
         if (files.length) await this._mount(files);
       } catch (_) { /* a bad file shouldn't block the kernel coming up */ }
       this._setStatus('idle');
     });
-    this.worker.postMessage({ type: 'init' });
     return this.ready;
   }
 

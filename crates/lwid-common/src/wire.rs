@@ -117,6 +117,12 @@ pub struct MagicLinkRequest {
 pub struct ManifestResponse {
     pub auth: ManifestAuth,
     pub policy: ManifestPolicy,
+    /// Set only when this deployment has a wildcard domain configured for
+    /// per-project sandbox isolation (see `server.sandbox_base_domain`).
+    /// The shell uses this to compute a project's sandbox origin — absent,
+    /// it falls back to same-origin sandboxing (GET /api/sandbox/{id} always
+    /// exists either way; the server alone decides whether it redirects).
+    pub sandbox_base_domain: Option<String>,
 }
 
 /// Auth section of the manifest.

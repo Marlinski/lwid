@@ -10,8 +10,8 @@
  * the shell's toolbar (LwidHost.setToolbar) rather than a bar drawn in here —
  * see syncToolbar() below.
  */
-import { parseNotebook, serializeNotebook, nextId } from '/sandbox/__viewer__/nbformat.js';
-import { Kernel } from '/sandbox/__viewer__/kernel.js';
+import { parseNotebook, serializeNotebook, nextId } from '/__viewer__/nbformat.js';
+import { Kernel } from '/__viewer__/kernel.js';
 
 const { toast, escapeHtml, resolvePath, theme } = window.LwidUI;
 const Host = window.LwidHost;
@@ -532,7 +532,7 @@ function renderMarkdownInto(el, cell) {
     const s = img.getAttribute('src');
     if (/^(https?:|data:|attachment:)/i.test(s)) continue;
     const resolved = resolvePath(state.path, s);
-    if (resolved != null) img.src = '/sandbox/' + enc(resolved);
+    if (resolved != null) img.src = '/' + enc(resolved);
   }
 }
 

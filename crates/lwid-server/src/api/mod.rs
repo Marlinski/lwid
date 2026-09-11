@@ -139,6 +139,15 @@ pub fn router(state: AppState) -> Router {
         )
         // ── Skill files: domain-aware, correct charset ─────────────────
         .route("/SKILL.md", get(skill::get_skill))
+        // Not under /p/ — axum treats nest_service("/p", ...) below as a
+        // full wildcard tail match and refuses (panics at router-build
+        // time, not just at request time) to register any sibling route
+        // under that same prefix.
+        .route("/api/sandbox/{id}", get(crate::sandbox::get_sandbox))
+        // The bridge page is served by a handler, not the static fallback:
+        // it needs the shell's origin baked in and a frame-ancestors CSP —
+        // see get_bridge() for why both are load-bearing for isolation.
+        .route(crate::sandbox::BRIDGE_PATH, get(crate::sandbox::get_bridge))
         .with_state(state)
         // ── SPA catch-all for /p/{id} (serves index.html) ─────────────
         .nest_service("/p", spa_fallback)
@@ -181,5 +190,6 @@ async fn get_manifest(State(state): State<AppState>) -> Json<ManifestResponse> {
             free:      tier_to_wire(&cfg.policy.free),
             pro:       tier_to_wire(&cfg.policy.pro),
         },
+        sandbox_base_domain: cfg.server.sandbox_base_domain.clone(),
     })
 }

@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>lwid sandbox</title>
+<style>html,body{margin:0;height:100%;background:#fff;}</style>
+</head>
+<body>
+<script>
+/**
+ * sandbox.html — the one page that ever loads directly on a project's own
+ * sandbox origin. It registers sandbox-sw.js, then sits here for the whole
+ * session as a bridge: the shell (cross-origin) hands it files via
+ * postMessage, it forwards them to its own Service Worker, and once that's
+ * primed it points a *nested* iframe (same-origin, so a plain child) at the
+ * real content. Everything else — LWID_TOOLBAR_*, LWID_HOST_*, LWID_STORE_*,
+ * etc. — is relayed through blindly in both directions; this bridge has no
+ * opinion about any of it.
+ *
+ * It has to be the thing that persists for the whole session (not the real
+ * content page itself) because a viewer's own fetches keep going through
+ * sandbox-sw.js for as long as the project is open, and that SW can only
+ * ask a same-origin client — this page — to re-supply files if the browser
+ * evicted it while idle. If the bridge were the page that navigated away to
+ * become the real content, that re-hydration relay would go with it.
+ *
+ * The shell's origin is baked into this page by the server when it serves
+ * it (get_bridge() in sandbox.rs replaces the placeholder below), and the
+ * server also sends a frame-ancestors policy allowing only that shell to
+ * embed this page. It must NOT come from this page's own URL: this is the
+ * one page on a sandbox origin that accepts "run this content here", so
+ * whoever it believes its shell is gets to run code on the project's
+ * origin — a query parameter would let any site frame this page, name
+ * itself as the shell, and do exactly that.
+ *
+ * In fallback mode (no sandbox_base_domain) the server bakes in an empty
+ * string: the redirect that got us here was relative, so this page IS
+ * same-origin with the shell and its own location.origin is exactly right,
+ * whatever hostname the user happened to reach the shell by.
+ *
+ * Unreplaced (served raw somehow), the literal placeholder matches no real
+ * origin and this page accepts nothing — it fails closed.
+ */
+(function () {
+  var loc = location;
+  var SHELL_ORIGIN = '__LWID_SHELL_ORIGIN__' || loc.origin;
+
+  // The content iframe's own navigation has to land under this prefix so
+  // the Service Worker's *scope* — which governs which pages become
+  // controlled by it, not which URLs a controlled page may fetch — never
+  // has to be the whole origin. In fallback (no sandbox_base_domain) mode
+  // that origin is the shell's own, and a full-origin scope would silently
+  // start controlling — and 404ing every request from — the shell's own
+  // /p/{id} pages the moment a second project loads. sandbox-sw.js strips
+  // this prefix before its normal cache lookup; nothing the content page
+  // itself fetches (images, __shared__/__viewer__ assets, ...) needs it,
+  // since a controlled page's *subresource* fetches are intercepted
+  // regardless of their own path once the page itself is controlled.
+  var ENTRY_PREFIX = '/__lwid_sandbox__/entry';
+
+  var $content = null;
+  function ensureContentFrame() {
+    if ($content) return $content;
+    $content = document.createElement('iframe');
+    $content.id = 'content';
+    $content.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals');
+    $content.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;background:#fff;';
+    document.body.appendChild($content);
+    return $content;
+  }
+
+  var swReadyPromise = null;
+  function ensureSW() {
+    if (swReadyPromise) return swReadyPromise;
+    swReadyPromise = (async () => {
+      if (!('serviceWorker' in navigator)) throw new Error('Service Workers not supported');
+      await navigator.serviceWorker.register('/sandbox-sw.js', { scope: '/__lwid_sandbox__/' });
+      await navigator.serviceWorker.ready;
+      if (!navigator.serviceWorker.controller) {
+        await new Promise((resolve) => {
+          navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+          setTimeout(resolve, 2000); // don't hang the whole load on this forever
+        });
+      }
+      // The SW can't read this page's own URL (its own script URL has no
+      // query string), so it needs telling explicitly — it's what makes
+      // the shared-fallback __shared__/__viewer__ proxy and the injected
+      // lwid-sdk.js <script src> resolve to the right place.
+      navigator.serviceWorker.controller.postMessage({ type: 'SET_SHELL_ORIGIN', origin: SHELL_ORIGIN });
+    })();
+    return swReadyPromise;
+  }
+
+  function postFilesToSW(files, viewer, canEdit) {
+    return new Promise((resolve, reject) => {
+      var sw = navigator.serviceWorker.controller;
+      if (!sw) { reject(new Error('sandbox SW not controlling this page')); return; }
+      var channel = new MessageChannel();
+      channel.port1.onmessage = (e) => {
+        if (e.data && e.data.type === 'FILES_READY') resolve();
+        else reject(new Error('unexpected SW response'));
+      };
+      sw.postMessage({ type: 'SET_FILES', files: files, viewer: viewer || null, canEdit: !!canEdit }, [channel.port2]);
+      setTimeout(() => reject(new Error('SW file cache timeout')), 5000);
+    });
+  }
+
+  // Re-hydration relay: our own SW lost its in-memory cache (idle eviction)
+  // and is asking us — its one persistent client — to get the shell to
+  // resend files. Mirrors what the shell used to do for itself when it was
+  // the SW's direct client.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'REQUEST_FILES') {
+        window.parent.postMessage({ type: 'LWID_SANDBOX_REQUEST_FILES' }, SHELL_ORIGIN);
+      }
+    });
+  }
+
+  window.addEventListener('message', async (event) => {
+    var msg = event.data;
+    if (!msg || typeof msg.type !== 'string') return;
+
+    // ── From the shell (cross-origin — check event.origin) ───────────────
+    if (event.source === window.parent) {
+      if (event.origin !== SHELL_ORIGIN) return; // not our shell — ignore
+
+      if (msg.type === 'LWID_SANDBOX_SET_FILES') {
+        try {
+          await ensureSW();
+          await postFilesToSW(msg.files, msg.viewer, msg.canEdit);
+          // navigateTo is omitted on a re-hydration resend (files refreshed,
+          // nothing should navigate) — only point/re-point content when given.
+          if (msg.navigateTo) ensureContentFrame().src = ENTRY_PREFIX + msg.navigateTo;
+          window.parent.postMessage({ type: 'LWID_SANDBOX_FILES_READY' }, SHELL_ORIGIN);
+        } catch (err) {
+          window.parent.postMessage(
+            { type: 'LWID_SANDBOX_ERROR', error: String((err && err.message) || err) },
+            SHELL_ORIGIN,
+          );
+        }
+        return;
+      }
+      if (msg.type === 'LWID_SANDBOX_NAVIGATE') {
+        ensureContentFrame().src = ENTRY_PREFIX + msg.path;
+        return;
+      }
+      // Anything else addressed to the real content — same-origin hop, so
+      // the target origin is just this page's own.
+      if (msg.type.indexOf('LWID_') === 0 && $content && $content.contentWindow) {
+        $content.contentWindow.postMessage(msg, loc.origin);
+      }
+      return;
+    }
+
+    // ── From the real content (same-origin — no origin check needed, only
+    //    our own nested iframe can ever be event.source here) -> shell ────
+    if ($content && event.source === $content.contentWindow) {
+      if (msg.type.indexOf('LWID_') === 0) {
+        window.parent.postMessage(msg, SHELL_ORIGIN);
+      }
+    }
+  });
+})();
+</script>
+</body>
+</html>

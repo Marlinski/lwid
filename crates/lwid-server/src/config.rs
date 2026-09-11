@@ -160,6 +160,23 @@ pub struct ServerConfig {
     /// probes and by its in-cluster service name, and neither should be
     /// answered with a redirect.
     pub redirect_hosts: Vec<String>,
+
+    /// Wildcard domain for per-project sandbox isolation, e.g.
+    /// `lookwhatidid.xyz` (needs a `*.<this>` DNS record + TLS cert — see
+    /// deploy docs). When set, `GET /api/sandbox/{id}` 302s a project's
+    /// sandboxed content to its own subdomain instead of serving it
+    /// same-origin, so a malicious project's script — which can always
+    /// reach anything same-origin with it — can only ever reach its own
+    /// origin, never the shell's (My Projects' localStorage, write keys
+    /// included) or another project's. `None` (the default) keeps today's
+    /// same-origin behavior, for deployments without that DNS/cert set up.
+    ///
+    /// Requires `base_url` to be the shell's real public origin (the bridge
+    /// page only accepts messages from it — see sandbox.rs) and
+    /// `cors_origins` to admit the sandbox subdomains (the default `*`
+    /// does), since each sandbox origin fetches viewers and the SDK from
+    /// the shell cross-origin.
+    pub sandbox_base_domain: Option<String>,
 }
 
 // ── Policy / quota tiers ────────────────────────────────────────────────────
@@ -269,6 +286,7 @@ impl Default for ServerConfig {
             base_url: "http://localhost:8080".to_owned(),
             canonical_host: None,
             redirect_hosts: Vec::new(),
+            sandbox_base_domain: None,
         }
     }
 }
@@ -531,6 +549,10 @@ impl Config {
                 .map(|s| s.trim().to_owned())
                 .filter(|s| !s.is_empty())
                 .collect();
+        }
+        if let Ok(val) = std::env::var("LWID_SERVER__SANDBOX_BASE_DOMAIN") {
+            let val = val.trim().to_owned();
+            self.server.sandbox_base_domain = if val.is_empty() { None } else { Some(val) };
         }
 
         // Policy tier overrides
