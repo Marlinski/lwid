@@ -610,19 +610,17 @@ function ensureOutputsSection(cell) {
     collapseBtn.title = collapsed ? 'Show output' : 'Hide output';
   });
 
+  // The "⋯" menu floats over the content's top-right corner instead of
+  // sitting in its own row — a mostly-empty row above the output (nothing
+  // in it but that one icon, off in the corner) read as a stray blank line
+  // above the actual text.
   const content = document.createElement('div');
   content.className = 'nb-outputs__content';
-
-  const bar = document.createElement('div');
-  bar.className = 'nb-outputs__bar';
-  const spacer = document.createElement('span');
-  spacer.className = 'nb-outputs__spacer';
-  bar.append(spacer, renderOutputsMenu(cell));
 
   const body = document.createElement('div');
   body.className = 'nb-outputs__body';
 
-  content.append(bar, body);
+  content.append(renderOutputsMenu(cell), body);
   row.append(collapseBtn, content);
   section.appendChild(row);
   cell._boxEl.appendChild(section);

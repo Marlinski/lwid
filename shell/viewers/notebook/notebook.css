@@ -142,23 +142,19 @@
 /* Outputs — only present in the DOM at all once a cell has something to
    show. Same 2-column shape as .nb-code-row above the divider: the collapse
    chevron sits under the play button, the output content sits under the
-   code, and a thin bar (just the "⋯" menu) tops the content column. */
+   code. The "⋯" menu floats over the content's top-right corner (hover-only)
+   rather than sitting in its own row — a reserved row above the output with
+   nothing in it but that one icon read as a stray blank line. */
 .nb-outputs { border-top: 1px solid var(--v-border); }
 
 .nb-outputs__row {
   display: grid;
   grid-template-columns: var(--nb-icon-col) 1fr;
   align-items: start;
-  padding: 4px 12px;
+  padding: 6px 12px;
 }
-.nb-outputs__content { min-width: 0; }
+.nb-outputs__content { position: relative; min-width: 0; }
 
-.nb-outputs__bar {
-  display: flex;
-  align-items: center;
-  min-height: 20px;
-}
-.nb-outputs__spacer { flex: 1 1 auto; }
 .nb-outputs__collapse, .nb-outputs__menu-btn {
   width: 20px;
   height: 20px;
@@ -181,7 +177,20 @@
 .nb-outputs--collapsed .nb-outputs__collapse svg { transform: rotate(-90deg); }
 .nb-outputs--collapsed .nb-outputs__content > .nb-outputs__body { display: none; }
 
-.nb-outputs__menu-wrap { position: relative; }
+.nb-outputs__menu-wrap {
+  position: absolute;
+  top: -2px;
+  right: 0;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.nb-outputs__content:hover .nb-outputs__menu-wrap,
+.nb-outputs__menu-wrap:focus-within,
+.nb-outputs__menu-wrap:has(.nb-outputs__menu:not([hidden])) {
+  opacity: 1;
+}
+.nb-outputs__menu-btn { background: var(--v-bg); border: 1px solid var(--v-border); }
 .nb-outputs__menu {
   position: absolute;
   top: calc(100% + 4px);
