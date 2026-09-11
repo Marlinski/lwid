@@ -1756,7 +1756,10 @@
           saveProject(projectId, readKey, writeKey);
 
           const url = buildProjectUrl(window.location.origin, projectId, readKey, writeKey);
-          window.location.href = url;
+          // A new tab, not a navigation — forking shouldn't lose the project
+          // you forked *from*.
+          window.open(url, '_blank', 'noopener');
+          showToast('Forked — opened in a new tab');
         } catch (err) {
           console.error('Fork failed:', err);
           showToast(`Fork failed: ${err.message}`);
