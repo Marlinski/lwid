@@ -3,18 +3,26 @@
  *
  * The heavy lifting (downloading Pyodide, running code) happens off the main
  * thread in pyodide-worker.js so the UI stays responsive and a runaway cell
- * can be killed by terminating the worker.
+ * can be killed by terminating the worker. On every fresh boot, it also
+ * fetches the project's other files (via the caller-supplied getMountFiles)
+ * and writes them into the kernel's filesystem, so a cell can just
+ * pd.read_csv('data.csv') instead of needing its bytes handed to it.
  */
 
 const WORKER_URL = '/sandbox/__viewer__/pyodide-worker.js';
 
 export class Kernel {
-  constructor({ onStatus } = {}) {
+  constructor({ onStatus, getMountFiles } = {}) {
     this.worker = null;
     this.ready = null;
     this.status = 'uninitialized'; // uninitialized | loading | idle | busy | dead
     this.execCount = 0;
     this._onStatus = onStatus || (() => {});
+    // Called once per fresh worker boot, right after the runtime is up —
+    // returns [{ path, bytes: Uint8Array }] for the project's other files
+    // (data.csv, images, ...), which get written into the kernel's
+    // filesystem so plain relative-path opens work.
+    this._getMountFiles = getMountFiles || (async () => []);
     this._run = null; // active run: { cellId, handlers, resolve }
   }
 
@@ -23,7 +31,8 @@ export class Kernel {
     this._onStatus(s);
   }
 
-  /** Boot the worker + Pyodide runtime. Idempotent; returns the ready promise. */
+  /** Boot the worker + Pyodide runtime, then mount the project's other files
+   * into it. Idempotent; returns the ready promise. */
   start() {
     if (this.ready) return this.ready;
     this._setStatus('loading');
@@ -37,16 +46,33 @@ export class Kernel {
     this.ready = new Promise((resolve, reject) => {
       this._readyResolve = resolve;
       this._readyReject = reject;
+    }).then(async () => {
+      try {
+        const files = await this._getMountFiles();
+        if (files.length) await this._mount(files);
+      } catch (_) { /* a bad file shouldn't block the kernel coming up */ }
+      this._setStatus('idle');
     });
     this.worker.postMessage({ type: 'init' });
     return this.ready;
   }
 
+  _mount(files) {
+    return new Promise((resolve) => {
+      this._mountResolve = resolve;
+      const transfer = files.map((f) => f.bytes.buffer).filter(Boolean);
+      this.worker.postMessage({ type: 'mount', files }, transfer);
+    });
+  }
+
   _onMessage(msg) {
     switch (msg.type) {
       case 'ready':
-        this._setStatus('idle');
         this._readyResolve();
+        break;
+      case 'mounted':
+        this._mountResolve?.();
+        this._mountResolve = null;
         break;
       case 'init-error':
         this._setStatus('dead');

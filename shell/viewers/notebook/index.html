@@ -36,7 +36,9 @@
       <p>Python executes entirely in your browser via <strong>Pyodide</strong> (a WebAssembly build of CPython) —
         no server ever sees your code or its output. The first run downloads the Python runtime
         (roughly 10&ndash;20&nbsp;MB); after that, cells run instantly. numpy, pandas and matplotlib
-        install themselves automatically the first time you import them.</p>
+        install themselves automatically the first time you import them. Any other file in this
+        project (a .csv, an image, ...) is available at its usual relative path, so
+        <code>pd.read_csv('data.csv')</code> just works.</p>
 
       <h3>Keyboard shortcuts</h3>
       <table>

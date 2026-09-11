@@ -44,6 +44,7 @@ function hashString(s) {
 const state = {
   path: null,
   notebooks: [],       // every .ipynb in the project (file-select when > 1)
+  otherFiles: [],       // every non-.ipynb project file — mounted into the kernel
   nb: null,             // { cells, language, meta, nbformat }
   fileHash: '',
   canEdit: false,
@@ -54,7 +55,19 @@ const state = {
   selectedCell: null,   // "command mode" selection — see selectCell()
 };
 
-const kernel = new Kernel({ onStatus: syncToolbar });
+const kernel = new Kernel({
+  onStatus: syncToolbar,
+  // Give a cell's pd.read_csv('data.csv') something to find — fetched fresh
+  // on every (re)connect, since a fresh worker means a fresh, empty FS.
+  getMountFiles: async () => {
+    const out = [];
+    for (const path of state.otherFiles) {
+      try { out.push({ path, bytes: await Host.readBytes(path) }); }
+      catch (_) { /* skip unreadable files, best effort */ }
+    }
+    return out;
+  },
+});
 
 // ── Toolbar ──────────────────────────────────────────────────────────────
 
@@ -145,7 +158,9 @@ Host.onToolbarClick((id, value) => {
     return;
   }
   state.canEdit = !!manifest.canEdit;
-  state.notebooks = manifest.files.map((f) => f.path).filter((p) => /\.ipynb$/i.test(p));
+  const allPaths = manifest.files.map((f) => f.path);
+  state.notebooks = allPaths.filter((p) => /\.ipynb$/i.test(p));
+  state.otherFiles = allPaths.filter((p) => !/\.ipynb$/i.test(p));
 
   if (state.notebooks.length === 0) {
     $doc.innerHTML = '<div class="v-empty">No notebooks in this project.</div>';
@@ -181,7 +196,12 @@ async function openNotebook(path) {
     $doc.innerHTML = `<div class="v-empty">This file is not a valid notebook.<br>${escapeHtml(err.message)}</div>`;
     return;
   }
-  state.fileHash = hashString(text);
+  // Hash our own re-serialization of the freshly-loaded state, not the raw
+  // file bytes — serializeNotebook() doesn't necessarily round-trip a
+  // foreign notebook's exact formatting (key order etc.), so hashing the
+  // source text here would make markDirty()'s comparison below false-fire
+  // as "changed" the moment anything runs, even with no real edit.
+  state.fileHash = hashString(serializeNotebook(state.nb, state.nb.cells));
   state.dirty = false;
 
   await maybeRestoreRunState();
@@ -201,7 +221,7 @@ async function maybeRestoreRunState() {
         cell.outputs = sc.outputs || [];
         cell.execCount = sc.execCount ?? null;
       });
-      state.dirty = true;
+      markDirty();
     }
   } catch (_) { /* persistence is best-effort */ }
 }
@@ -585,6 +605,29 @@ function renderOutputs(cell) {
   const host = ensureOutputsSection(cell);
   host.innerHTML = '';
   for (const out of outputs) host.appendChild(renderOutput(out));
+  updateOutputsPreview(cell);
+}
+
+/** The one-line summary shown in place of the body while collapsed — the
+ * first line, plus how many more are hidden (nothing extra to say about a
+ * single line, so no "+N" then). */
+function updateOutputsPreview(cell) {
+  const preview = cell._outputsPreviewEl;
+  if (!preview) return;
+  const text = (cell.outputs || []).map(outputToText).filter(Boolean).join('\n');
+  const lines = text.split('\n');
+  preview.innerHTML = '';
+  const first = document.createElement('div');
+  first.className = 'nb-outputs__preview-line';
+  first.textContent = lines[0] || '';
+  preview.appendChild(first);
+  if (lines.length > 1) {
+    const more = document.createElement('div');
+    more.className = 'nb-outputs__preview-more';
+    const n = lines.length - 1;
+    more.textContent = `⋯ +${n} line${n === 1 ? '' : 's'}`;
+    preview.appendChild(more);
+  }
 }
 
 /** Build (once) the collapsible output section — bar + body — and return its
@@ -617,15 +660,19 @@ function ensureOutputsSection(cell) {
   const content = document.createElement('div');
   content.className = 'nb-outputs__content';
 
+  const preview = document.createElement('div');
+  preview.className = 'nb-outputs__preview';
+
   const body = document.createElement('div');
   body.className = 'nb-outputs__body';
 
-  content.append(renderOutputsMenu(cell), body);
+  content.append(renderOutputsMenu(cell), preview, body);
   row.append(collapseBtn, content);
   section.appendChild(row);
   cell._boxEl.appendChild(section);
   cell._outputsSectionEl = section;
   cell._outputsBodyEl = body;
+  cell._outputsPreviewEl = preview;
   return body;
 }
 
@@ -870,8 +917,12 @@ function autoScroll(cell) {
   if (r.bottom > window.innerHeight) cell._el.scrollIntoView({ block: 'nearest' });
 }
 
+/** Recompute state.dirty from an actual content comparison against the
+ * published version, rather than just flagging "something happened" —
+ * inserting then deleting a cell, or re-running to the same result, is not
+ * something worth a Save CTA over; only a real difference is. */
 function markDirty() {
-  state.dirty = true;
+  state.dirty = hashString(serializeNotebook(state.nb, state.nb.cells)) !== state.fileHash;
   syncToolbar();
 }
 

@@ -1464,6 +1464,18 @@
     // Same create+push flow as handleCreate(), just with a starter file
     // instead of whatever the user dropped — a "New Notebook" a la Colab.
 
+    // A tiny demo dataset the notebook below reads via a plain relative
+    // path — pd.read_csv('sales.csv') — to show that a project's other
+    // files are just there for the kernel, no upload/attach step needed.
+    const STARTER_CSV =
+      'month,sales\n' +
+      'Jan,120\n' +
+      'Feb,150\n' +
+      'Mar,170\n' +
+      'Apr,140\n' +
+      'May,200\n' +
+      'Jun,220\n';
+
     const STARTER_NOTEBOOK = JSON.stringify({
       cells: [
         {
@@ -1472,7 +1484,9 @@
           source: [
             '# New Notebook\n',
             '\n',
-            'Write Python below and hit **Run** — it runs right in your browser (via Pyodide), no server involved.',
+            'Write Python below and hit **Run** — it runs right in your browser (via Pyodide), no server involved.\n',
+            '\n',
+            'This project also has a `sales.csv` right next to it — any other file here is just readable at its usual path, no upload step needed.',
           ],
         },
         {
@@ -1481,6 +1495,33 @@
           execution_count: null,
           outputs: [],
           source: ["print('hello from lwid')"],
+        },
+        {
+          cell_type: 'code',
+          metadata: {},
+          execution_count: null,
+          outputs: [],
+          source: [
+            'import pandas as pd\n',
+            '\n',
+            "df = pd.read_csv('sales.csv')\n",
+            'df',
+          ],
+        },
+        {
+          cell_type: 'code',
+          metadata: {},
+          execution_count: null,
+          outputs: [],
+          source: [
+            // matplotlib still needs importing (pyodide auto-loads it by
+            // scanning for this), but no plt.show() — every cell's figures
+            // are swept up and shown automatically; show() only warns on
+            // this headless backend.
+            'import matplotlib.pyplot as plt\n',
+            '\n',
+            "df.plot(x='month', y='sales', kind='bar', title='Monthly sales', legend=False)",
+          ],
         },
       ],
       metadata: { language_info: { name: 'python' } },
@@ -1550,15 +1591,21 @@
 `;
 
     const QUICKSTART = {
-      website:  { path: 'index.html',    content: STARTER_WEBSITE,  label: 'demo page' },
-      notebook: { path: 'notebook.ipynb', content: STARTER_NOTEBOOK, label: 'notebook' },
-      docs:     { path: 'README.md',      content: STARTER_DOCS,     label: 'docs page' },
+      website:  { label: 'demo page', files: [{ path: 'index.html', content: STARTER_WEBSITE }] },
+      notebook: {
+        label: 'notebook',
+        files: [
+          { path: 'notebook.ipynb', content: STARTER_NOTEBOOK },
+          { path: 'sales.csv', content: STARTER_CSV },
+        ],
+      },
+      docs:     { label: 'docs page', files: [{ path: 'README.md', content: STARTER_DOCS }] },
     };
     const QUICKSTART_BUTTONS = () =>
       [$btnQuickstartWebsite, $btnQuickstartNotebook, $btnQuickstartDocs];
 
     async function handleQuickStart(kind) {
-      const { path, content, label } = QUICKSTART[kind];
+      const { files, label } = QUICKSTART[kind];
       for (const btn of QUICKSTART_BUTTONS()) btn.disabled = true;
       setStatus(`Creating ${label}...`);
 
@@ -1569,9 +1616,8 @@
         const storeToken = await deriveStoreToken(readKey);
         const { project_id: projectId } = await api.createProject(pubkeyBase64, selectedTtl, storeToken);
 
-        await pushVersion(api, projectId, readKey, writeKey, [
-          { path, content: new TextEncoder().encode(content) },
-        ]);
+        await pushVersion(api, projectId, readKey, writeKey,
+          files.map(({ path, content }) => ({ path, content: new TextEncoder().encode(content) })));
 
         saveProject(projectId, readKey, writeKey);
 

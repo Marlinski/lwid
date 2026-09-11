@@ -4,6 +4,8 @@
  * Protocol (main <-> worker):
  *   -> { type: 'init' }
  *   <- { type: 'ready' } | { type: 'init-error', error }
+ *   -> { type: 'mount', files: [{ path, bytes: ArrayBuffer }] }
+ *   <- { type: 'mounted' }
  *   -> { type: 'run', code, cellId }
  *   <- { type: 'packages', names }        (auto-loaded imports, if any)
  *   <- { type: 'stream', cellId, name, text }
@@ -15,6 +17,7 @@
 
 const PYODIDE_VERSION = 'v0.27.7';
 const INDEX_URL = `https://cdn.jsdelivr.net/pyodide/${PYODIDE_VERSION}/full/`;
+const WORKDIR = '/home/pyodide';
 
 let pyodide = null;
 let execCount = 0;
@@ -31,6 +34,11 @@ __lwid_ns__ = {'__name__': '__main__'}
 # document, which does not exist inside a Web Worker. MPLBACKEND is read when
 # matplotlib is first imported, so setting it here is enough.
 os.environ['MPLBACKEND'] = 'AGG'
+
+# The project's other files (see mount()) live here, and this is where a cell
+# lands by default — so pd.read_csv('data.csv') / open('./data.csv') just work.
+os.makedirs('${WORKDIR}', exist_ok=True)
+os.chdir('${WORKDIR}')
 
 
 def __lwid_format__(obj):
@@ -109,6 +117,24 @@ async function init() {
   self.postMessage({ type: 'ready' });
 }
 
+/** Write the project's other files into WORKDIR so plain relative-path
+ * opens (pd.read_csv('data.csv'), open('./notes.txt')) work like they
+ * would in a real notebook folder. Best-effort per file — one unreadable
+ * or oddly-pathed file shouldn't stop the kernel from coming up. */
+async function mount(files) {
+  for (const f of files || []) {
+    try {
+      const rel = String(f.path || '').replace(/^\/+/, '');
+      if (!rel || rel.includes('..')) continue;
+      const path = `${WORKDIR}/${rel}`;
+      const dir = path.slice(0, path.lastIndexOf('/'));
+      if (dir) pyodide.FS.mkdirTree(dir);
+      pyodide.FS.writeFile(path, new Uint8Array(f.bytes));
+    } catch (_) { /* best effort */ }
+  }
+  self.postMessage({ type: 'mounted' });
+}
+
 async function run(code, cellId) {
   const send = (o) => self.postMessage({ cellId, ...o });
 
@@ -168,6 +194,8 @@ self.onmessage = async (e) => {
   try {
     if (msg.type === 'init') {
       await init();
+    } else if (msg.type === 'mount') {
+      await mount(msg.files);
     } else if (msg.type === 'run') {
       await run(msg.code, msg.cellId);
     }

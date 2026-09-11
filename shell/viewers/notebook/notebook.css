@@ -168,14 +168,37 @@
   align-items: center;
   justify-content: center;
 }
-.nb-outputs__collapse { justify-self: center; margin-top: 2px; }
+/* .nb-out's own top padding (6px) pushes the first line of text down from
+   the row's top — match it here so the chevron centers on that first line,
+   not on the row's (unpadded) top edge. */
+.nb-outputs__collapse { justify-self: center; margin-top: 6px; }
 .nb-outputs__collapse:hover, .nb-outputs__menu-btn:hover {
   background: var(--v-bg-inset);
   color: var(--v-text);
 }
 .nb-outputs__collapse svg { transition: transform 0.15s; }
 .nb-outputs--collapsed .nb-outputs__collapse svg { transform: rotate(-90deg); }
-.nb-outputs--collapsed .nb-outputs__content > .nb-outputs__body { display: none; }
+
+/* Collapsed shows a one-line summary (first line + how many more are
+   hidden) instead of nothing — .nb-outputs__preview and .nb-outputs__body
+   swap depending on .nb-outputs--collapsed. */
+.nb-outputs__preview { display: none; }
+.nb-outputs--collapsed .nb-outputs__preview { display: block; }
+.nb-outputs--collapsed .nb-outputs__body { display: none; }
+.nb-outputs__preview-line {
+  font-family: var(--v-mono);
+  font-size: 12.5px;
+  padding: 6px 0 0;
+  color: var(--v-text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nb-outputs__preview-more {
+  font-size: 11px;
+  color: var(--v-text-muted);
+  padding: 2px 0 6px;
+}
 
 .nb-outputs__menu-wrap {
   position: absolute;
