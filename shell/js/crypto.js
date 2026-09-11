@@ -1,8 +1,11 @@
 /**
  * crypto.js — Browser-side cryptography for "lookwhatidid"
  *
- * AES-256-GCM encryption/decryption and Ed25519 key generation/signing
- * using the Web Crypto API. Pure ES module, no external dependencies.
+ * AES-256-GCM (encryption) and SHA-256 (store tokens) use the Web Crypto API
+ * exclusively — universal, no dependency. Ed25519 (key generation, signing)
+ * prefers Web Crypto too, but falls back to a lazily-loaded pure-JS
+ * implementation on browsers that don't recognize it yet; see the fallback
+ * section below for why that's safe.
  */
 
 // ---------------------------------------------------------------------------
@@ -127,33 +130,45 @@ export async function decrypt(readKeyB64url, encrypted) {
 // ---------------------------------------------------------------------------
 
 /**
- * Generate an Ed25519 keypair.
- *
- * Requires browser support for the "Ed25519" algorithm name
- * (Chrome 113+, Firefox 130+).
- *
- * @returns {Promise<{ publicKeyBytes: Uint8Array, privateKeyB64url: string }>}
+ * Error thrown when Ed25519 isn't available through any path — native Web
+ * Crypto or the pure-JS fallback below.
  */
-export async function generateWriteKeyPair() {
-  const keyPair = await crypto.subtle.generateKey("Ed25519", true, [
-    "sign",
-    "verify",
-  ]);
+export class Ed25519UnsupportedError extends Error {
+  constructor() {
+    super(
+      "This browser can't do the Ed25519 cryptography lwid needs to " +
+      "create, edit, or fork a project. Please reload and try again, or " +
+      "use the CLI instead: `lwid push`.",
+    );
+    this.name = "Ed25519UnsupportedError";
+  }
+}
 
-  const publicKeyRaw = await crypto.subtle.exportKey("raw", keyPair.publicKey);
-
-  // Export as JWK to extract the raw 32-byte seed ("d" parameter).
-  // We store only the seed, not PKCS#8, to keep URLs short and match the CLI.
-  const jwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
-
-  return {
-    publicKeyBytes: new Uint8Array(publicKeyRaw),
-    privateKeyB64url: jwk.d, // already base64url, 32-byte raw Ed25519 seed
-  };
+// ---------------------------------------------------------------------------
+// Pure-JS fallback for browsers without native Ed25519
+// ---------------------------------------------------------------------------
+//
+// Native Web Crypto Ed25519 ("Secure Curves") isn't supported everywhere yet
+// — some current browsers still throw "Unrecognized name" for it. Every
+// function below tries native first; the first failure (in any of them)
+// flips a flag and everything after that goes through @noble/ed25519
+// instead — a zero-dependency, audited, standard RFC 8032 implementation.
+// Same algorithm, so its keys and signatures are byte-for-byte
+// interchangeable with the native path and with the Rust CLI/server
+// (ed25519-dalek); only where the math runs changes, never the wire format,
+// so a link works the same regardless of which browser (or path) created
+// it. Loaded lazily — a browser with native support never fetches it.
+const NOBLE_ED25519_URL = "https://cdn.jsdelivr.net/npm/@noble/ed25519@3.2.0/index.js";
+let _ed25519UseFallback = false;
+let _ed25519FallbackPromise = null;
+function loadEd25519Fallback() {
+  if (!_ed25519FallbackPromise) _ed25519FallbackPromise = import(NOBLE_ED25519_URL);
+  return _ed25519FallbackPromise;
 }
 
 /**
- * PKCS#8 v1 prefix for Ed25519 private keys (RFC 8410).
+ * PKCS#8 v1 prefix for Ed25519 private keys (RFC 8410), used only for the
+ * native Web Crypto import — the fallback takes the raw seed directly.
  * The full PKCS8 encoding is: this 16-byte header + 32-byte raw seed = 48 bytes.
  */
 const ED25519_PKCS8_PREFIX = new Uint8Array([
@@ -161,53 +176,103 @@ const ED25519_PKCS8_PREFIX = new Uint8Array([
   0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
 ]);
 
+/** Wrap a 32-byte raw seed in the PKCS#8 envelope Web Crypto's import wants. */
+function ed25519Pkcs8(seed) {
+  const pkcs8 = new Uint8Array(48);
+  pkcs8.set(ED25519_PKCS8_PREFIX, 0);
+  pkcs8.set(seed, 16);
+  return pkcs8;
+}
+
 /**
- * Import an Ed25519 private key from a base64url string.
- * The canonical format is a 32-byte raw seed (used by both the browser and CLI).
- * Also accepts 48-byte PKCS#8 for backwards compatibility with older browser-created links.
+ * Normalize a stored write key to its 32-byte raw seed. The canonical format
+ * is that seed directly; 48-byte PKCS#8 is also accepted for backwards
+ * compatibility with older browser-created links.
  * @param {string} privateKeyB64url
- * @returns {Promise<CryptoKey>}
+ * @returns {Uint8Array}
  */
-async function importEd25519PrivateKey(privateKeyB64url) {
-  let keyData = fromBase64Url(privateKeyB64url);
-  if (keyData.byteLength === 32) {
-    // Raw 32-byte Ed25519 seed — wrap in PKCS#8 for Web Crypto import
-    const pkcs8 = new Uint8Array(48);
-    pkcs8.set(ED25519_PKCS8_PREFIX, 0);
-    pkcs8.set(keyData, 16);
-    keyData = pkcs8;
+function ed25519Seed(privateKeyB64url) {
+  const keyData = fromBase64Url(privateKeyB64url);
+  return keyData.byteLength === 32 ? keyData : keyData.slice(16);
+}
+
+/**
+ * Generate an Ed25519 keypair.
+ * @returns {Promise<{ publicKeyBytes: Uint8Array, privateKeyB64url: string }>}
+ */
+export async function generateWriteKeyPair() {
+  if (!_ed25519UseFallback) {
+    try {
+      const keyPair = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"]);
+      const publicKeyRaw = await crypto.subtle.exportKey("raw", keyPair.publicKey);
+      // Export as JWK to extract the raw 32-byte seed ("d" parameter).
+      // We store only the seed, not PKCS#8, to keep URLs short and match the CLI.
+      const jwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+      return {
+        publicKeyBytes: new Uint8Array(publicKeyRaw),
+        privateKeyB64url: jwk.d,
+      };
+    } catch {
+      _ed25519UseFallback = true;
+    }
   }
-  return crypto.subtle.importKey("pkcs8", keyData, "Ed25519", true, ["sign"]);
+  try {
+    const ed = await loadEd25519Fallback();
+    const { secretKey, publicKey } = await ed.keygenAsync();
+    return { publicKeyBytes: publicKey, privateKeyB64url: toBase64Url(secretKey) };
+  } catch {
+    throw new Ed25519UnsupportedError();
+  }
 }
 
 /**
  * Sign a message with an Ed25519 private key.
- *
- * @param {string} privateKeyB64url — base64url-encoded PKCS8 private key
+ * @param {string} privateKeyB64url
  * @param {Uint8Array} message
  * @returns {Promise<Uint8Array>} 64-byte signature
  */
 export async function sign(privateKeyB64url, message) {
-  const privateKey = await importEd25519PrivateKey(privateKeyB64url);
-  const signature = await crypto.subtle.sign("Ed25519", privateKey, message);
-  return new Uint8Array(signature);
+  const seed = ed25519Seed(privateKeyB64url);
+  if (!_ed25519UseFallback) {
+    try {
+      const privateKey = await crypto.subtle.importKey("pkcs8", ed25519Pkcs8(seed), "Ed25519", true, ["sign"]);
+      const signature = await crypto.subtle.sign("Ed25519", privateKey, message);
+      return new Uint8Array(signature);
+    } catch {
+      _ed25519UseFallback = true;
+    }
+  }
+  try {
+    const ed = await loadEd25519Fallback();
+    return await ed.signAsync(message, seed);
+  } catch {
+    throw new Ed25519UnsupportedError();
+  }
 }
 
 /**
  * Derive the 32-byte public key from an Ed25519 private key.
- *
- * Re-imports the private key, then exports it as a JWK which contains
- * the public component ("x" parameter).
- *
- * @param {string} privateKeyB64url — base64url-encoded PKCS8 private key
+ * @param {string} privateKeyB64url
  * @returns {Promise<Uint8Array>} 32-byte public key
  */
 export async function getPublicKeyBytes(privateKeyB64url) {
-  const privateKey = await importEd25519PrivateKey(privateKeyB64url);
-
-  // JWK export includes the public key as the "x" parameter (base64url)
-  const jwk = await crypto.subtle.exportKey("jwk", privateKey);
-  return fromBase64Url(jwk.x);
+  const seed = ed25519Seed(privateKeyB64url);
+  if (!_ed25519UseFallback) {
+    try {
+      const privateKey = await crypto.subtle.importKey("pkcs8", ed25519Pkcs8(seed), "Ed25519", true, ["sign"]);
+      // JWK export includes the public key as the "x" parameter (base64url)
+      const jwk = await crypto.subtle.exportKey("jwk", privateKey);
+      return fromBase64Url(jwk.x);
+    } catch {
+      _ed25519UseFallback = true;
+    }
+  }
+  try {
+    const ed = await loadEd25519Fallback();
+    return await ed.getPublicKeyAsync(seed);
+  } catch {
+    throw new Ed25519UnsupportedError();
+  }
 }
 
 // ---------------------------------------------------------------------------

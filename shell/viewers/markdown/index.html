@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Docs</title>
+  <link rel="stylesheet" href="/sandbox/__shared__/viewer.css">
+  <link rel="stylesheet" href="/sandbox/__viewer__/markdown.css">
+  <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css">
+  <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.7/purify.min.js"></script>
+  <script src="/sandbox/__shared__/viewer-ui.js"></script>
+  <script src="/sandbox/__shared__/viewer-host.js"></script>
+  <script src="/sandbox/__shared__/md.js"></script>
+</head>
+<body>
+  <div class="v-app">
+    <!-- No bar here — title / sidebar toggle / edit / save live in the
+         shell's toolbar, declared via LwidHost.setToolbar(). -->
+    <div class="v-body">
+      <nav class="v-sidebar" id="sidebar" aria-label="Documents"></nav>
+      <main class="v-main" id="main">
+        <div class="md-layout">
+          <article class="md-doc">
+            <div class="md-content" id="content"><p class="v-empty"><span class="v-spinner"></span></p></div>
+          </article>
+          <nav class="md-toc" id="toc" hidden>
+            <div class="md-toc__title">On this page</div>
+            <div id="toc-list"></div>
+          </nav>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script type="module" src="/sandbox/__viewer__/markdown.js"></script>
+</body>
+</html>

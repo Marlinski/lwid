@@ -287,6 +287,154 @@ button:disabled {
   color: var(--accent-hover);
 }
 
+/* What you can drop — capability cards */
+
+.landing__capabilities {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 640px;
+  margin-top: 2.25rem;
+}
+
+/* One column per capability: the card (the "encasing div") stops at its own
+ * border, and the CTA lives in a slot below — outside that border, not
+ * inside it. Every column reserves the same slot height (even the one with
+ * no button) so all four card boxes still end on the same line. */
+
+.landing__cap-col {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  height: 100%;
+}
+
+.landing__cap-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 1rem 0.8rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  text-align: center;
+  flex: 1 1 auto;
+}
+
+.landing__cap-card svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.landing__cap-card h3 {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.landing__cap-card p {
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  flex: 1 1 auto;
+}
+
+.landing__cap-card code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--text);
+}
+
+.landing__cap-cta-slot {
+  flex: 0 0 auto;
+  display: flex;
+  padding-top: 0.6rem;
+}
+
+/* Quick start CTA — skip the drop, scaffold something and start editing.
+ * Full width of the card above it, not an auto-width pill off to one side.
+ * A slow multicolor gradient chases its own border — the two-layer
+ * background-clip trick: an opaque fill on padding-box hides the gradient
+ * everywhere except the ring at border-box, so only the "border" moves. */
+
+.landing__cap-cta {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.55rem 1.05rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  cursor: pointer;
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background:
+    linear-gradient(var(--bg-surface), var(--bg-surface)) padding-box,
+    linear-gradient(90deg, #58a6ff, #a36eff, #ff7ad9, #3fb950, #58a6ff) border-box;
+  background-size: 100% 100%, 300% 100%;
+  animation: cta-flow 6s linear infinite;
+  transition: transform 0.18s ease, box-shadow 0.25s ease;
+}
+
+.landing__cap-cta__plus {
+  font-size: 1.4em;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--accent);
+  transition: color 0.2s;
+}
+
+.landing__cap-cta:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 0 0 1px rgba(163, 110, 255, 0.35), 0 10px 26px rgba(88, 166, 255, 0.3);
+  animation-duration: 1.4s;
+}
+.landing__cap-cta:hover:not(:disabled) .landing__cap-cta__plus {
+  color: #fff;
+}
+.landing__cap-cta:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+}
+.landing__cap-cta:disabled {
+  opacity: 0.55;
+  cursor: default;
+  animation-play-state: paused;
+}
+
+@keyframes cta-flow {
+  to { background-position: 0 0, -300% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing__cap-cta { animation: none; }
+}
+
+.landing__divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 460px;
+  margin-top: 1.75rem;
+  font-size: 0.7rem;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.landing__divider::before,
+.landing__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 /* Drop zone */
 
 .dropzone {
@@ -469,6 +617,127 @@ button:disabled {
   background: rgba(88, 166, 255, 0.2);
   border-color: var(--accent-hover);
   color: var(--accent-hover);
+}
+
+/* A viewer's "unsaved changes" action — same flowing-gradient-border call
+ * to action as the landing page's quick-start buttons (see .landing__cap-cta
+ * and its cta-flow keyframes), scaled down to toolbar size. Once there's
+ * nothing left to save, the item drops this variant and reads as a plain
+ * .toolbar__btn — grey, same as Clear/Restart, matching the saved file. */
+.toolbar__btn--cta {
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(var(--bg-surface), var(--bg-surface)) padding-box,
+    linear-gradient(90deg, #58a6ff, #a36eff, #ff7ad9, #3fb950, #58a6ff) border-box;
+  background-size: 100% 100%, 300% 100%;
+  animation: cta-flow 6s linear infinite;
+}
+.toolbar__btn--cta:hover:not(:disabled) {
+  background:
+    linear-gradient(var(--bg-surface), var(--bg-surface)) padding-box,
+    linear-gradient(90deg, #58a6ff, #a36eff, #ff7ad9, #3fb950, #58a6ff) border-box;
+  background-size: 100% 100%, 300% 100%;
+  animation-duration: 1.4s;
+  box-shadow: 0 0 0 1px rgba(163, 110, 255, 0.35), 0 4px 14px rgba(88, 166, 255, 0.28);
+}
+.toolbar__btn--cta:disabled { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .toolbar__btn--cta { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+ * Current document — shell-owned, sits right after Source so every viewer
+ * shows it in the same place. Empty (and collapsed) for a plain website.
+ * --------------------------------------------------------------------------- */
+
+.toolbar__doc-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.toolbar__doc-title:empty {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .toolbar__doc-title { max-width: 120px; }
+}
+
+/* ---------------------------------------------------------------------------
+ * Toolbar viewer slot — controls declared by the active viewer
+ * (shell/js/viewers.js) over postMessage. Empty for a plain website.
+ * --------------------------------------------------------------------------- */
+
+.toolbar__viewer-slot {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  overflow: hidden;
+}
+
+.toolbar__viewer-btn {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.78rem;
+}
+.toolbar__viewer-btn--icon {
+  padding: 0.3rem;
+  line-height: 0;
+}
+
+.toolbar__viewer-text {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.toolbar__viewer-text--title {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.toolbar__viewer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.toolbar__viewer-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-subtle);
+  flex-shrink: 0;
+}
+.toolbar__viewer-status--idle .toolbar__viewer-status-dot { background: var(--green); }
+.toolbar__viewer-status--busy .toolbar__viewer-status-dot,
+.toolbar__viewer-status--loading .toolbar__viewer-status-dot {
+  background: var(--amber);
+  animation: toolbar-status-pulse 1s ease-in-out infinite;
+}
+.toolbar__viewer-status--dead .toolbar__viewer-status-dot { background: var(--danger); }
+@keyframes toolbar-status-pulse { 50% { opacity: 0.35; } }
+
+.toolbar__viewer-select {
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.4rem;
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-width: 160px;
 }
 
 /* ---------------------------------------------------------------------------
@@ -666,6 +935,28 @@ button:disabled {
   letter-spacing: 0.04em;
 }
 
+.source-panel__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.source-panel__icon-btn {
+  background: none;
+  color: var(--text-muted);
+  padding: 0.25rem;
+  line-height: 1;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.source-panel__icon-btn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
 .source-panel__close {
   background: none;
   color: var(--text-muted);
@@ -797,6 +1088,41 @@ button:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Add-files drop target — replaces the old toolbar button; lives inside the
+ * Source panel and only shows up for the write-key holder.
+ * --------------------------------------------------------------------------- */
+
+.source-panel__dropzone {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin: 0.5rem 0.75rem;
+  padding: 0.6rem;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.source-panel__dropzone:hover,
+.source-panel__dropzone.dropzone--active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.source-panel__dropzone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1180,17 +1506,7 @@ button:disabled {
   gap: 0.2rem;
   color: var(--green);
   flex-shrink: 0;
-  cursor: default;
-}
-
-.toolbar__encryption-info {
-  color: var(--text-subtle);
   cursor: help;
-  transition: color 0.15s;
-}
-
-.toolbar__encryption:hover .toolbar__encryption-info {
-  color: var(--text-muted);
 }
 
 .toolbar__encryption-tooltip {
@@ -1233,32 +1549,31 @@ button:disabled {
 }
 
 /* ---------------------------------------------------------------------------
- * Toolbar expiry badge & extend (centered)
+ * Toolbar expiry & extend — deliberately quiet: a small muted label, not a
+ * badge competing for attention with the actual content. For the owner the
+ * label itself is the extend trigger (no separate button); a visitor's
+ * stays plain, inert text.
  * --------------------------------------------------------------------------- */
 
-.toolbar__center {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
+.toolbar__expiry {
+  font-size: 0.72rem;
+  color: var(--text-subtle);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.toolbar__expiry {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: 9999px;
-  white-space: nowrap;
-  margin-right: 4px;
+.toolbar__expiry--clickable {
+  cursor: pointer;
+  color: var(--accent);
+}
+.toolbar__expiry--clickable:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
 }
 
 .toolbar__extend-wrap {
   position: relative;
-}
-
-.toolbar__btn--extend {
-  font-size: 0.75rem;
-  color: var(--accent);
+  flex-shrink: 0;
 }
 
 .extend-menu {
@@ -1334,11 +1649,6 @@ button:disabled {
   /* Hide label text, keep icons */
   .toolbar__btn span,
   .share-split__main span {
-    display: none;
-  }
-
-  /* Hide info icon on mobile; lock alone suffices */
-  .toolbar__encryption-info {
     display: none;
   }
 

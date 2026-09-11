@@ -83,6 +83,56 @@
       <a href="/docs.html" class="landing__docs-link">Learn how it works</a>
     </p>
 
+    <!-- What you can drop — it's not just websites.
+         Each column is a card (the "encasing div") plus a CTA slot that sits
+         below and outside it — never inside the card's own border/background. -->
+    <div class="landing__capabilities">
+      <div class="landing__cap-col">
+        <div class="landing__cap-card">
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1.5" y="3" width="13" height="10.5" rx="1.5"/><path d="M1.5 6h13"/><circle cx="3.4" cy="4.5" r="0.4" fill="currentColor" stroke="none"/>
+          </svg>
+          <h3>Website</h3>
+          <p>Any HTML/CSS/JS folder &mdash; sandboxed, works like a static site.</p>
+        </div>
+        <div class="landing__cap-cta-slot">
+          <button type="button" class="landing__cap-cta" id="btn-quickstart-website">
+            <span class="landing__cap-cta__plus" aria-hidden="true">+</span>Create a demo page
+          </button>
+        </div>
+      </div>
+      <div class="landing__cap-col">
+        <div class="landing__cap-card">
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="12" height="4.5" rx="1"/><rect x="2" y="8.5" width="12" height="4.5" rx="1"/><path d="M6.2 10l2.2 1.25-2.2 1.25z" fill="currentColor" stroke="none"/>
+          </svg>
+          <h3>Notebook</h3>
+          <p>Drop a <code>.ipynb</code> &mdash; Python runs right in the browser, numpy &amp; pandas included.</p>
+        </div>
+        <div class="landing__cap-cta-slot">
+          <button type="button" class="landing__cap-cta" id="btn-quickstart-notebook">
+            <span class="landing__cap-cta__plus" aria-hidden="true">+</span>New Notebook
+          </button>
+        </div>
+      </div>
+      <div class="landing__cap-col">
+        <div class="landing__cap-card">
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 1.5h5.5L12 4v9.5a1 1 0 01-1 1H4a1 1 0 01-1-1v-11a1 1 0 011-1z"/><path d="M6 6.5h4M6 8.75h4M6 11h2.5"/>
+          </svg>
+          <h3>Docs</h3>
+          <p>Drop Markdown files &mdash; sidebar &amp; navigation, generated for free.</p>
+        </div>
+        <div class="landing__cap-cta-slot">
+          <button type="button" class="landing__cap-cta" id="btn-quickstart-docs">
+            <span class="landing__cap-cta__plus" aria-hidden="true">+</span>New Docs
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="landing__divider">or drop your files</div>
+
     <div id="dropzone" class="dropzone">
       <span class="dropzone__icon" aria-hidden="true">&#128193;</span>
       <p class="dropzone__label">Drop your files here or click to browse</p>
@@ -126,27 +176,46 @@
         <span class="toolbar__logo">lwid</span>
       </a>
 
-      <div class="projects-dropdown" id="toolbar-projects-dropdown">
-        <button class="toolbar__btn projects-dropdown__trigger" id="btn-toolbar-projects" title="My Projects">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M2 2h4l2 2h6v9H2V2z"/><path d="M2 7h12"/>
-          </svg>
-          <svg class="projects-dropdown__chevron" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 5l3 3 3-3"/>
-          </svg>
-        </button>
-        <div id="toolbar-projects-menu" class="projects-dropdown__menu hidden"></div>
+      <!-- Source tree toggle — always visible; it's a transparency feature,
+           not a management one (see Add files / History for the owner-only
+           equivalents, both relocated into the Source panel itself). -->
+      <button id="btn-source" class="toolbar__btn" title="Browse source files">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 2h4l2 2h6v9H2V2z"/>
+          <path d="M2 7h12"/>
+        </svg>
+        Source
+      </button>
+
+      <!-- The document currently open in the viewer — a shell-owned label
+           (not a viewer-declared toolbar item) so it sits next to Source the
+           same way for every shim. Truncates; full name on hover. See
+           LWID_TITLE_SET below. Empty (and collapsed) for a plain site. -->
+      <span id="toolbar-doc-title" class="toolbar__doc-title"></span>
+
+      <!-- Viewer-specific controls (populated by the active viewer over
+           postMessage — see LWID_TOOLBAR_SET below). Empty for a plain site. -->
+      <div id="toolbar-viewer-slot" class="toolbar__viewer-slot"></div>
+
+      <!-- Expiry — small and out of the way. For the owner it's the extend
+           trigger itself (no separate "Extend" button); for a visitor it's
+           inert text. See the writeKey branch in initProjectView(). -->
+      <div class="toolbar__extend-wrap" id="extend-wrap">
+        <span id="toolbar-expiry" class="toolbar__expiry hidden" title="Time until project expires"></span>
+        <div id="extend-menu" class="extend-menu hidden">
+          <button type="button" class="extend-menu__btn" data-ttl="1h">1 hour</button>
+          <button type="button" class="extend-menu__btn" data-ttl="1d">1 day</button>
+          <button type="button" class="extend-menu__btn" data-ttl="7d">7 days</button>
+          <button type="button" class="extend-menu__btn" data-ttl="30d">30 days</button>
+          <button type="button" class="extend-menu__btn" data-ttl="never">Never</button>
+        </div>
       </div>
 
-      <span class="toolbar__project-id" id="toolbar-project-id"></span>
-
-      <!-- Encryption badge -->
+      <!-- Encryption badge — hovering the lock itself reveals the tooltip,
+           no separate info icon needed. -->
       <div class="toolbar__encryption" id="toolbar-encryption">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5 7V5a3 3 0 016 0v2"/>
-        </svg>
-        <svg class="toolbar__encryption-info" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="8" cy="8" r="7"/><path d="M8 11V7.5"/><circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/>
         </svg>
         <div class="toolbar__encryption-tooltip">
           <strong>End-to-end encrypted</strong><br>
@@ -156,49 +225,6 @@
           <a href="/docs.html" class="toolbar__encryption-link">Learn more</a>
         </div>
       </div>
-
-      <div class="toolbar__spacer"></div>
-
-      <!-- Expiry & extend (centered) -->
-      <div class="toolbar__center" id="toolbar-center">
-        <span id="toolbar-expiry" class="toolbar__expiry hidden" title="Time until project expires"></span>
-        <div class="toolbar__extend-wrap" id="extend-wrap">
-          <button id="btn-extend" class="toolbar__btn toolbar__btn--extend hidden" title="Extend project lifetime">Extend</button>
-          <div id="extend-menu" class="extend-menu hidden">
-            <button type="button" class="extend-menu__btn" data-ttl="1h">1 hour</button>
-            <button type="button" class="extend-menu__btn" data-ttl="1d">1 day</button>
-            <button type="button" class="extend-menu__btn" data-ttl="7d">7 days</button>
-            <button type="button" class="extend-menu__btn" data-ttl="30d">30 days</button>
-            <button type="button" class="extend-menu__btn" data-ttl="never">Never</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="toolbar__spacer"></div>
-
-      <!-- Source tree toggle -->
-      <button id="btn-source" class="toolbar__btn" title="Browse source files">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M2 2h4l2 2h6v9H2V2z"/>
-          <path d="M2 7h12"/>
-        </svg>
-        Source
-      </button>
-
-      <button id="btn-history" class="toolbar__btn" title="Version history">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="8" cy="8" r="6"/>
-          <path d="M8 4.5V8l2.5 1.5"/>
-        </svg>
-        History
-      </button>
-
-      <button id="btn-add-files" class="toolbar__btn toolbar__btn--accent hidden" title="Upload new files">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M8 3v10M3 8h10"/>
-        </svg>
-        Add files
-      </button>
 
       <!-- Share split-button -->
       <div class="share-split" id="share-split">
@@ -240,6 +266,14 @@
               Download all
             </button>
           </li>
+          <li id="menu-fork-li" class="hidden">
+            <button id="menu-fork" class="share-split__item" title="Create your own editable copy">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="8" height="8" rx="1.5"/><rect x="6" y="6" width="8" height="8" rx="1.5"/>
+              </svg>
+              Fork this project
+            </button>
+          </li>
           <li id="menu-delete-li" class="hidden">
             <button id="menu-delete" class="share-split__item share-split__item--danger">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -258,9 +292,27 @@
       <aside id="source-panel" class="source-panel">
         <div class="source-panel__header">
           <h3>Files</h3>
-          <button id="btn-close-source" class="source-panel__close" aria-label="Close source panel">&times;</button>
+          <div class="source-panel__header-actions">
+            <!-- Version history is an ownership concern — hidden from
+                 read-only visitors, shown here rather than in the toolbar. -->
+            <button id="btn-history" class="source-panel__icon-btn hidden" title="Version history">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="8" cy="8" r="6"/>
+                <path d="M8 4.5V8l2.5 1.5"/>
+              </svg>
+            </button>
+            <button id="btn-close-source" class="source-panel__close" aria-label="Close source panel">&times;</button>
+          </div>
         </div>
         <ul id="source-tree" class="source-panel__tree"></ul>
+        <!-- Add files — a drop target instead of a toolbar button; owner-only. -->
+        <div id="source-add-dropzone" class="source-panel__dropzone hidden" title="Drop files, or click to browse">
+          <input id="panel-file-input" type="file" multiple webkitdirectory>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 3v10M3 8h10"/>
+          </svg>
+          <span>Add files</span>
+        </div>
         <div id="store-section" class="source-panel__store-section hidden">
           <div class="source-panel__store-header">
             <h3>Store</h3>
@@ -396,6 +448,7 @@
     } from '/js/project.js';
     import { scanFiles } from '/js/detect-secrets.js';
     import { GONE, selectVisibleProjects } from '/js/projects.js';
+    import { detectViewer } from '/js/viewers.js';
 
     // -----------------------------------------------------------------------
     // DOM references
@@ -409,26 +462,36 @@
     const $landingStatus = document.getElementById('landing-status');
     const $ttlSelector   = document.getElementById('ttl-selector');
 
-    // My Projects dropdowns
+    // Quick start — scaffold a blank project, skip the dropzone
+    const $btnQuickstartWebsite  = document.getElementById('btn-quickstart-website');
+    const $btnQuickstartNotebook = document.getElementById('btn-quickstart-notebook');
+    const $btnQuickstartDocs     = document.getElementById('btn-quickstart-docs');
+
+    // My Projects — landing page only; the project view dropped it (it's a
+    // browsing feature, not something a shared link's visitor needs).
     const $landingProjectsDropdown = document.getElementById('landing-projects-dropdown');
     const $btnLandingProjects      = document.getElementById('btn-landing-projects');
     const $landingProjectsMenu     = document.getElementById('landing-projects-menu');
-    const $toolbarProjectsDropdown = document.getElementById('toolbar-projects-dropdown');
-    const $btnToolbarProjects      = document.getElementById('btn-toolbar-projects');
-    const $toolbarProjectsMenu     = document.getElementById('toolbar-projects-menu');
 
     const $projectView    = document.getElementById('project-view');
     const $toolbarTitle   = document.getElementById('toolbar-title');
-    const $projectIdLabel = document.getElementById('toolbar-project-id');
     const $btnSource      = document.getElementById('btn-source');
     const $btnHistory     = document.getElementById('btn-history');
-    const $btnAddFiles    = document.getElementById('btn-add-files');
     const $loadingOverlay = document.getElementById('loading-overlay');
     const $sandboxFrame   = document.getElementById('sandbox-frame');
 
-    // Expiry / extend
+    // Viewer-owned toolbar center (see the LWID_TOOLBAR_SET bridge below)
+    const $toolbarViewerSlot = document.getElementById('toolbar-viewer-slot');
+    // Current document name, next to Source (see the LWID_TITLE_SET bridge below)
+    const $toolbarDocTitle = document.getElementById('toolbar-doc-title');
+
+    // Add files — a drop target inside the Source panel, owner-only
+    const $sourceDropzone  = document.getElementById('source-add-dropzone');
+    const $panelFileInput  = document.getElementById('panel-file-input');
+
+    // Expiry / extend — the expiry text itself is the extend trigger for the
+    // owner (no separate button); see the writeKey branch below.
     const $toolbarExpiry  = document.getElementById('toolbar-expiry');
-    const $btnExtend      = document.getElementById('btn-extend');
     const $extendMenu     = document.getElementById('extend-menu');
     const $extendWrap     = document.getElementById('extend-wrap');
 
@@ -441,6 +504,8 @@
     const $menuShareEdit     = document.getElementById('menu-share-edit');
     const $menuShareEditLi   = document.getElementById('menu-share-edit-li');
     const $menuDownload      = document.getElementById('menu-download');
+    const $menuFork          = document.getElementById('menu-fork');
+    const $menuForkLi        = document.getElementById('menu-fork-li');
     const $menuDelete        = document.getElementById('menu-delete');
     const $menuDeleteLi      = document.getElementById('menu-delete-li');
 
@@ -513,6 +578,8 @@
     let currentExpiresAt   = null;
     /** @type {Map<string, Uint8Array>|null} */
     let currentFiles     = null;
+    /** Active viewer shim id (see js/viewers.js), or null for a plain site. */
+    let currentViewer    = null;
     /** @type {File[]} */
     let stagedFiles      = [];
     /** @type {File[]} */
@@ -648,19 +715,16 @@
 
     function closeAllProjectsMenus() {
       $landingProjectsMenu.classList.add('hidden');
-      $toolbarProjectsMenu.classList.add('hidden');
     }
 
-    // Close projects menus on outside click
+    // Close the projects menu on outside click
     document.addEventListener('click', (e) => {
-      if (!$landingProjectsDropdown.contains(e.target) && !$toolbarProjectsDropdown.contains(e.target)) {
+      if (!$landingProjectsDropdown.contains(e.target)) {
         closeAllProjectsMenus();
       }
     });
 
-    // Set up both dropdowns
     setupProjectsDropdown($landingProjectsDropdown, $btnLandingProjects, $landingProjectsMenu);
-    setupProjectsDropdown($toolbarProjectsDropdown, $btnToolbarProjects, $toolbarProjectsMenu);
 
     // -----------------------------------------------------------------------
     // Service Worker registration
@@ -796,7 +860,9 @@
         '.html': 'text/html',
         '.css': 'text/css',
         '.js': 'application/javascript',
+        '.mjs': 'application/javascript',
         '.json': 'application/json',
+        '.ipynb': 'application/json',
         '.svg': 'image/svg+xml',
         '.png': 'image/png',
         '.jpg': 'image/jpeg',
@@ -806,8 +872,10 @@
         '.ico': 'image/x-icon',
         '.txt': 'text/plain',
         '.md': 'text/markdown',
+        '.markdown': 'text/markdown',
         '.xml': 'application/xml',
         '.csv': 'text/csv',
+        '.py': 'text/x-python',
       };
       return map[ext] || 'application/octet-stream';
     }
@@ -947,7 +1015,7 @@
     // SW was terminated while idle and lost its in-memory cache). The file
     // buffers are structured-cloned (only the port is transferred), so `files`
     // stays intact and can be re-sent any number of times.
-    async function postFilesToSW(files) {
+    async function postFilesToSW(files, viewer = currentViewer) {
       const sw = navigator.serviceWorker.controller;
       if (!sw) {
         throw new Error('Service Worker not controlling page — try refreshing.');
@@ -971,7 +1039,10 @@
             reject(new Error('Unexpected SW response'));
           }
         };
-        sw.postMessage({ type: 'SET_FILES', files: payload }, [channel.port2]);
+        sw.postMessage(
+          { type: 'SET_FILES', files: payload, viewer: viewer || null, canEdit: !!currentWriteKey },
+          [channel.port2],
+        );
 
         // Timeout after 5 seconds
         setTimeout(() => reject(new Error('SW file cache timeout')), 5000);
@@ -985,10 +1056,11 @@
      * before we point the iframe at /sandbox/. This eliminates the race
      * condition where the iframe fires fetch before the SW has the files.
      */
-    async function sendFilesToSW(files, entryPoint) {
-      await postFilesToSW(files);
-      // Point the iframe at the sandbox path — SW will intercept and serve
-      $sandboxFrame.src = '/sandbox/' + entryPoint;
+    async function sendFilesToSW(files, entryPoint, viewer = null) {
+      await postFilesToSW(files, viewer);
+      // Point the iframe at the sandbox path — SW will intercept and serve.
+      // With a viewer active, the root serves the viewer's own index.html.
+      $sandboxFrame.src = viewer ? '/sandbox/' : '/sandbox/' + entryPoint;
     }
 
     // Re-hydration: the SW's cache is in-memory and is wiped when the browser
@@ -1000,7 +1072,7 @@
       navigator.serviceWorker.addEventListener('message', async (event) => {
         if (event.data?.type === 'REQUEST_FILES' && currentFiles) {
           try {
-            await postFilesToSW(currentFiles);
+            await postFilesToSW(currentFiles, currentViewer);
           } catch (_) {
             /* SW will fall back to a 404; the user can reload to recover */
           }
@@ -1050,9 +1122,112 @@
       await api.putStoreValue(currentProjectId, IDX_SERVER_KEY, encrypted, currentStoreToken);
     }
 
+    // -----------------------------------------------------------------------
+    // Toolbar viewer slot — the active viewer (js/viewers.js) declares its
+    // own controls here instead of drawing a second bar inside the sandbox.
+    // Protocol: viewer -> shell 'LWID_TOOLBAR_SET' { items }, rendered as
+    // real toolbar buttons/text/status/select; clicks post back to the
+    // viewer as 'LWID_TOOLBAR_CLICK' { id, value? }.
+    // -----------------------------------------------------------------------
+
+    function clearToolbarItems() {
+      $toolbarViewerSlot.innerHTML = '';
+    }
+
+    // The document a viewer currently has open — shell-owned so it sits next
+    // to Source the same way for every shim, rather than being one more
+    // viewer-declared item lost among action buttons. Protocol: viewer ->
+    // shell 'LWID_TITLE_SET' { title }. Truncated by CSS; full name on hover.
+    function setDocTitle(title) {
+      $toolbarDocTitle.textContent = title || '';
+      $toolbarDocTitle.title = title || '';
+    }
+
+    // Fixed, shell-owned icon set for toolbar buttons (see item.icon in
+    // renderToolbarItems) — same outline style as the rest of the chrome
+    // (stroke="currentColor", so it's always toolbar-white, not emoji-yellow).
+    const TOOLBAR_ICONS = {
+      sun: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"></circle><path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77"></path></svg>',
+      moon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"></path></svg>',
+    };
+
+    function renderToolbarItems(items) {
+      $toolbarViewerSlot.innerHTML = '';
+      for (const item of items || []) {
+        let el;
+        if (item.kind === 'text') {
+          el = document.createElement('span');
+          el.className = 'toolbar__viewer-text' + (item.variant ? ` toolbar__viewer-text--${item.variant}` : '');
+          el.textContent = item.label;
+        } else if (item.kind === 'status') {
+          el = document.createElement('span');
+          el.className = 'toolbar__viewer-status toolbar__viewer-status--' + (item.tone || 'muted');
+          const dot = document.createElement('span');
+          dot.className = 'toolbar__viewer-status-dot';
+          el.appendChild(dot);
+          el.appendChild(document.createTextNode(item.label));
+        } else if (item.kind === 'select') {
+          el = document.createElement('select');
+          el.className = 'toolbar__viewer-select';
+          for (const opt of item.options || []) {
+            const o = document.createElement('option');
+            o.value = opt.value;
+            o.textContent = opt.label;
+            if (opt.value === item.value) o.selected = true;
+            el.appendChild(o);
+          }
+          el.addEventListener('change', () => {
+            $sandboxFrame.contentWindow.postMessage(
+              { type: 'LWID_TOOLBAR_CLICK', id: item.id, value: el.value }, '*',
+            );
+          });
+        } else {
+          el = document.createElement('button');
+          const variantClass = item.variant === 'primary' ? ' toolbar__btn--accent'
+            : item.variant === 'cta' ? ' toolbar__btn--cta' : '';
+          el.className = 'toolbar__btn toolbar__viewer-btn' + variantClass;
+          // item.icon only ever selects one of these two fixed, shell-owned
+          // SVGs — never interpolated into markup — so a viewer can't use it
+          // to inject arbitrary HTML across the postMessage boundary.
+          const iconSvg = TOOLBAR_ICONS[item.icon];
+          if (iconSvg) {
+            el.classList.add('toolbar__viewer-btn--icon');
+            el.innerHTML = iconSvg;
+          } else if (item.tone) {
+            // A status dot inside the button itself — same look as the
+            // standalone 'status' item above, just folded into one control.
+            el.classList.add('toolbar__viewer-status--' + item.tone);
+            const dot = document.createElement('span');
+            dot.className = 'toolbar__viewer-status-dot';
+            el.append(dot, document.createTextNode(item.label));
+          } else {
+            el.textContent = item.label;
+          }
+          el.disabled = !!item.disabled;
+          el.addEventListener('click', () => {
+            $sandboxFrame.contentWindow.postMessage({ type: 'LWID_TOOLBAR_CLICK', id: item.id }, '*');
+          });
+        }
+        if (item.title) el.title = item.title;
+        if (item.id) el.dataset.itemId = item.id;
+        $toolbarViewerSlot.appendChild(el);
+      }
+    }
+
     window.addEventListener('message', async (event) => {
       const msg = event.data;
       if (!msg || typeof msg.type !== 'string' || !msg.type.startsWith('LWID_')) return;
+
+      // Toolbar declarations need no project context and no reply.
+      if (msg.type === 'LWID_TOOLBAR_SET') {
+        renderToolbarItems(msg.items);
+        return;
+      }
+      if (msg.type === 'LWID_TITLE_SET') {
+        setDocTitle(msg.title);
+        return;
+      }
+
       if (!currentProjectId || !currentReadKey || !currentStoreToken) return;
 
       const { type, id } = msg;
@@ -1149,6 +1324,43 @@
             reply(idx);
             break;
           }
+          case 'LWID_HOST_SAVE': {
+            // A viewer (js/viewers.js) asking the shell to publish a new
+            // version. Replies with LWID_HOST_RESULT so it never collides
+            // with the LWID_RESULT store protocol in lwid-sdk.js.
+            const hostReply = (value) =>
+              $sandboxFrame.contentWindow.postMessage({ type: 'LWID_HOST_RESULT', id, value }, '*');
+            const hostError = (err) =>
+              $sandboxFrame.contentWindow.postMessage(
+                { type: 'LWID_HOST_RESULT', id, error: err instanceof Error ? err.message : String(err) }, '*');
+            try {
+              if (!currentWriteKey) throw new Error('read-only link — no write key');
+              const changed = (msg.files || []).map((f) => ({
+                path: f.path,
+                content: new Uint8Array(f.content),
+              }));
+              const merged = [];
+              if (currentFiles) for (const [p, c] of currentFiles) merged.push({ path: p, content: c });
+              for (const nf of changed) {
+                const i = merged.findIndex((f) => f.path === nf.path);
+                if (i >= 0) merged[i] = nf; else merged.push(nf);
+              }
+              const { manifestCid } = await pushVersion(
+                api, currentProjectId, currentReadKey, currentWriteKey, merged,
+              );
+              currentManifestCid = manifestCid;
+              currentFiles = new Map(merged.map((f) => [f.path, f.content]));
+              buildSourceTree(currentFiles);
+              // Refresh the SW cache so the viewer's next /sandbox/ read sees
+              // the version it just published.
+              await postFilesToSW(currentFiles, currentViewer);
+              hostReply({ manifestCid });
+            } catch (err) {
+              console.error('Viewer save failed:', err);
+              hostError(err);
+            }
+            break;
+          }
           default:
             break;
         }
@@ -1242,6 +1454,180 @@
       }
 
       $btnCreate.addEventListener('click', handleCreate);
+
+      $btnQuickstartWebsite.addEventListener('click', () => handleQuickStart('website'));
+      $btnQuickstartNotebook.addEventListener('click', () => handleQuickStart('notebook'));
+      $btnQuickstartDocs.addEventListener('click', () => handleQuickStart('docs'));
+    }
+
+    // ── Quick start: scaffold a blank notebook or docs page ────────────────
+    // Same create+push flow as handleCreate(), just with a starter file
+    // instead of whatever the user dropped — a "New Notebook" a la Colab.
+
+    // A tiny demo dataset the notebook below reads via a plain relative
+    // path — pd.read_csv('sales.csv') — to show that a project's other
+    // files are just there for the kernel, no upload/attach step needed.
+    const STARTER_CSV =
+      'month,sales\n' +
+      'Jan,120\n' +
+      'Feb,150\n' +
+      'Mar,170\n' +
+      'Apr,140\n' +
+      'May,200\n' +
+      'Jun,220\n';
+
+    const STARTER_NOTEBOOK = JSON.stringify({
+      cells: [
+        {
+          cell_type: 'markdown',
+          metadata: {},
+          source: [
+            '# New Notebook\n',
+            '\n',
+            'Write Python below and hit **Run** — it runs right in your browser (via Pyodide), no server involved.\n',
+            '\n',
+            'This project also has a `sales.csv` right next to it — any other file here is just readable at its usual path, no upload step needed.',
+          ],
+        },
+        {
+          cell_type: 'code',
+          metadata: {},
+          execution_count: null,
+          outputs: [],
+          source: ["print('hello from lwid')"],
+        },
+        {
+          cell_type: 'code',
+          metadata: {},
+          execution_count: null,
+          outputs: [],
+          source: [
+            'import pandas as pd\n',
+            '\n',
+            "df = pd.read_csv('sales.csv')\n",
+            'df',
+          ],
+        },
+        {
+          cell_type: 'code',
+          metadata: {},
+          execution_count: null,
+          outputs: [],
+          source: [
+            // matplotlib still needs importing (pyodide auto-loads it by
+            // scanning for this), but no plt.show() — every cell's figures
+            // are swept up and shown automatically; show() only warns on
+            // this headless backend.
+            'import matplotlib.pyplot as plt\n',
+            '\n',
+            "df.plot(x='month', y='sales', kind='bar', title='Monthly sales', legend=False)",
+          ],
+        },
+      ],
+      metadata: { language_info: { name: 'python' } },
+      nbformat: 4,
+      nbformat_minor: 5,
+    }, null, 1);
+
+    // No heading — the docs viewer titles the page from this (README.md ->
+    // "README") when the doc itself doesn't supply one, which reads better
+    // than a placeholder "New Project" heading baked into the content.
+    const STARTER_DOCS =
+      'Start writing here — Markdown renders automatically.\n' +
+      'Add more `.md` files for a sidebar with navigation, or a `SUMMARY.md` to control the order.\n';
+
+    // A small static page — also doubles as a live demo of lwid.store: the
+    // click counter is persisted and shared with everyone who opens the link.
+    const STARTER_WEBSITE = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo Page</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: linear-gradient(160deg, #1c2333, #0d1117);
+    color: #e6edf3; padding: 1.5rem; box-sizing: border-box;
+  }
+  .card {
+    max-width: 420px; text-align: center; padding: 2rem;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px; backdrop-filter: blur(6px);
+  }
+  h1 { margin: 0 0 0.75rem; font-size: 1.6rem; }
+  p { color: #9198a1; line-height: 1.6; font-size: 0.9rem; }
+  code { background: rgba(255,255,255,0.08); padding: 0.1em 0.4em; border-radius: 4px; }
+  button {
+    margin-top: 1rem; padding: 0.6rem 1.25rem; font-size: 0.9rem; font-weight: 600;
+    color: #fff; background: #58a6ff; border: none; border-radius: 999px; cursor: pointer;
+  }
+  button:hover { background: #79c0ff; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>👋 It works!</h1>
+    <p>This is a static site hosted on lwid — sandboxed HTML/CSS/JS, served straight from an encrypted blob. Replace <code>index.html</code> to make it yours.</p>
+    <button id="clickme">Clicked <span id="count">0</span> times</button>
+    <p>That count is stored in <code>lwid.store</code> — shared live with anyone who opens this link.</p>
+  </div>
+  <script>
+    (async () => {
+      const $count = document.getElementById('count');
+      let n = (await lwid.store.get('demo-clicks')) ?? 0;
+      $count.textContent = n;
+      document.getElementById('clickme').addEventListener('click', async () => {
+        n++;
+        $count.textContent = n;
+        await lwid.store.set('demo-clicks', n);
+      });
+    })();
+  <\/script>
+</body>
+</html>
+`;
+
+    const QUICKSTART = {
+      website:  { label: 'demo page', files: [{ path: 'index.html', content: STARTER_WEBSITE }] },
+      notebook: {
+        label: 'notebook',
+        files: [
+          { path: 'notebook.ipynb', content: STARTER_NOTEBOOK },
+          { path: 'sales.csv', content: STARTER_CSV },
+        ],
+      },
+      docs:     { label: 'docs page', files: [{ path: 'README.md', content: STARTER_DOCS }] },
+    };
+    const QUICKSTART_BUTTONS = () =>
+      [$btnQuickstartWebsite, $btnQuickstartNotebook, $btnQuickstartDocs];
+
+    async function handleQuickStart(kind) {
+      const { files, label } = QUICKSTART[kind];
+      for (const btn of QUICKSTART_BUTTONS()) btn.disabled = true;
+      setStatus(`Creating ${label}...`);
+
+      try {
+        const readKey = generateReadKey();
+        const { publicKeyBytes, privateKeyB64url: writeKey } = await generateWriteKeyPair();
+        const pubkeyBase64 = toStandardBase64(publicKeyBytes);
+        const storeToken = await deriveStoreToken(readKey);
+        const { project_id: projectId } = await api.createProject(pubkeyBase64, selectedTtl, storeToken);
+
+        await pushVersion(api, projectId, readKey, writeKey,
+          files.map(({ path, content }) => ({ path, content: new TextEncoder().encode(content) })));
+
+        saveProject(projectId, readKey, writeKey);
+
+        const url = buildProjectUrl(window.location.origin, projectId, readKey, writeKey);
+        window.location.href = url;
+      } catch (err) {
+        console.error('Quick start failed:', err);
+        setStatus(`Error: ${err.message}`);
+        for (const btn of QUICKSTART_BUTTONS()) btn.disabled = false;
+      }
     }
 
     async function handleCreate() {
@@ -1343,9 +1729,6 @@
         history.replaceState(null, '', window.location.pathname + '#' + readKey);
       }
 
-      // Configure toolbar
-      $projectIdLabel.textContent = truncateId(projectId);
-
       // Fetch project metadata to get expiry info
       try {
         const projectMeta = await api.getProject(projectId);
@@ -1355,11 +1738,24 @@
         // Non-critical — continue loading
       }
 
+      // Everything below is an ownership concern — held out unless this link
+      // carries (or has ever carried) the write key. A visitor gets the
+      // opposite offer instead: fork it into a project of their own.
       if (writeKey) {
         show($menuShareEditLi);
         show($menuDeleteLi);
-        show($btnAddFiles);
-        show($btnExtend);
+        show($sourceDropzone);
+        show($btnHistory);
+        // The expiry text is the extend trigger — only wired up (and only
+        // styled as clickable) for the owner; a visitor's stays inert.
+        $toolbarExpiry.classList.add('toolbar__expiry--clickable');
+        $toolbarExpiry.title = 'Click to change expiry';
+        $toolbarExpiry.addEventListener('click', (e) => {
+          e.stopPropagation();
+          $extendMenu.classList.toggle('hidden');
+        });
+      } else {
+        show($menuForkLi);
       }
 
       // --- Share split-button ---
@@ -1409,6 +1805,39 @@
         closeAllMenus();
       });
 
+      // Fork: a visitor has no write key for *this* project, so give them a
+      // project of their own instead — fresh keys, the current files pushed
+      // as its first version. Same create+push shape as a quick start.
+      $menuFork.addEventListener('click', async () => {
+        closeAllMenus();
+        if (!currentFiles || currentFiles.size === 0) {
+          showToast('Project is still loading — try again in a moment.');
+          return;
+        }
+        showToast('Forking project...');
+        try {
+          const readKey = generateReadKey();
+          const { publicKeyBytes, privateKeyB64url: writeKey } = await generateWriteKeyPair();
+          const pubkeyBase64 = toStandardBase64(publicKeyBytes);
+          const storeToken = await deriveStoreToken(readKey);
+          const { project_id: projectId } = await api.createProject(pubkeyBase64, selectedTtl, storeToken);
+
+          const fileData = Array.from(currentFiles, ([path, content]) => ({ path, content }));
+          await pushVersion(api, projectId, readKey, writeKey, fileData);
+
+          saveProject(projectId, readKey, writeKey);
+
+          const url = buildProjectUrl(window.location.origin, projectId, readKey, writeKey);
+          // A new tab, not a navigation — forking shouldn't lose the project
+          // you forked *from*.
+          window.open(url, '_blank', 'noopener');
+          showToast('Forked — opened in a new tab');
+        } catch (err) {
+          console.error('Fork failed:', err);
+          showToast(`Fork failed: ${err.message}`);
+        }
+      });
+
       $menuDelete.addEventListener('click', async () => {
         closeAllMenus();
         if (!currentWriteKey || !currentProjectId) return;
@@ -1439,12 +1868,19 @@
         }
       });
 
-      // --- Extend TTL ---
-      $btnExtend.addEventListener('click', (e) => {
-        e.stopPropagation();
-        $extendMenu.classList.toggle('hidden');
+      // A click inside the sandbox iframe is a click in a different
+      // document — it never bubbles up to the listener above, so "outside
+      // click" alone misses most of the page (the preview area). Clicking
+      // into an iframe does move focus there, though, which the parent
+      // window can observe as its own blur.
+      window.addEventListener('blur', () => {
+        setTimeout(() => {
+          if (document.activeElement === $sandboxFrame) closeAllMenus();
+        }, 0);
       });
 
+      // --- Extend TTL --- (the click-to-open wiring lives in the writeKey
+      // branch above, alongside the rest of the owner-only setup)
       for (const btn of $extendMenu.querySelectorAll('.extend-menu__btn')) {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
@@ -1513,12 +1949,31 @@
         $historyPanel.classList.remove('history-panel--open');
       });
 
-      // --- Add files ---
-      $btnAddFiles.addEventListener('click', () => {
-        uploadStagedFiles = [];
-        $uploadFileList.innerHTML = '';
-        $btnUploadPush.disabled = true;
+      // --- Add files (drop target inside the Source panel) ---
+      function openUploadOverlay(files) {
+        uploadStagedFiles = files || [];
+        renderFileList(uploadStagedFiles, $uploadFileList);
+        $btnUploadPush.disabled = uploadStagedFiles.length === 0;
         show($uploadOverlay);
+      }
+      // A native file input covers the tile, so click-to-browse needs no
+      // handler of its own — only its change event and drag-and-drop.
+      $panelFileInput.addEventListener('change', () => {
+        openUploadOverlay(Array.from($panelFileInput.files));
+        $panelFileInput.value = '';
+      });
+      $sourceDropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        $sourceDropzone.classList.add('dropzone--active');
+      });
+      $sourceDropzone.addEventListener('dragleave', () => {
+        $sourceDropzone.classList.remove('dropzone--active');
+      });
+      $sourceDropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        $sourceDropzone.classList.remove('dropzone--active');
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length > 0) openUploadOverlay(files);
       });
       $btnUploadCancel.addEventListener('click', () => hide($uploadOverlay));
 
@@ -1811,6 +2266,8 @@
     async function loadProject(manifestCid) {
       show($loadingOverlay);
       closeSourceViewer();
+      clearToolbarItems(); // the previous viewer's controls no longer apply
+      setDocTitle('');
 
       try {
         let result;
@@ -1843,14 +2300,23 @@
         // Load store entries (non-blocking — don't await)
         loadStoreEntries();
 
-        // Resolve entry point and send files to Service Worker
-        const entryPoint = await resolveEntryPoint(result.files, currentManifestCid);
-        await sendFilesToSW(result.files, entryPoint);
+        // Pick a viewer shim for non-website projects (notebooks, docs, data
+        // folders). detectViewer() returns null whenever the project ships any
+        // HTML of its own, so plain sites are unaffected.
+        currentViewer = detectViewer(result.files.keys());
 
-        // If entry point is not an HTML file, open source panel and show its contents
-        if (!entryPoint.endsWith('.html')) {
-          $sourcePanel.classList.add('source-panel--open');
-          openSourceViewer(entryPoint);
+        if (currentViewer) {
+          await sendFilesToSW(result.files, null, currentViewer);
+        } else {
+          // Resolve entry point and send files to Service Worker
+          const entryPoint = await resolveEntryPoint(result.files, currentManifestCid);
+          await sendFilesToSW(result.files, entryPoint, null);
+
+          // If entry point is not an HTML file, open source panel and show its contents
+          if (!entryPoint.endsWith('.html')) {
+            $sourcePanel.classList.add('source-panel--open');
+            openSourceViewer(entryPoint);
+          }
         }
 
         hide($loadingOverlay);

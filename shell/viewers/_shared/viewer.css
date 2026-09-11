@@ -1,0 +1,245 @@
+/**
+ * viewer.css — shared chrome for lwid viewer bundles.
+ *
+ * Neutral, theme-aware defaults so every viewer (files, markdown, notebook)
+ * feels like one product. Palette tokens are defined on :root and swapped
+ * under prefers-color-scheme: dark.
+ */
+
+:root {
+  --v-bg:        #ffffff;
+  --v-bg-soft:   #f6f7f9;
+  --v-bg-inset:  #eef0f3;
+  --v-border:    #e2e5ea;
+  --v-border-strong: #cfd4dc;
+  --v-text:      #1f2328;
+  --v-text-soft: #57606a;
+  --v-text-muted:#8b949e;
+  --v-accent:    #3b5bdb;
+  --v-accent-soft: #e7ecfd;
+  --v-danger:    #c0392b;
+  --v-ok:        #1a7f37;
+  --v-shadow:    0 1px 3px rgba(16, 22, 26, 0.08), 0 1px 2px rgba(16, 22, 26, 0.06);
+  --v-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --v-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* System preference — unless a viewer has applied a manual override (see
+   below), in which case data-theme wins. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --v-bg:        #0d1117;
+    --v-bg-soft:   #161b22;
+    --v-bg-inset:  #1c2128;
+    --v-border:    #2a2f37;
+    --v-border-strong: #3d444d;
+    --v-text:      #e6edf3;
+    --v-text-soft: #9198a1;
+    --v-text-muted:#6e7681;
+    --v-accent:    #6b8afd;
+    --v-accent-soft: #1a2340;
+    --v-danger:    #ff7b72;
+    --v-ok:        #3fb950;
+    --v-shadow:    0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* Manual override — set by viewers that offer a sun/moon toggle (see
+   viewer-ui.js's `LwidUI.theme`). Wins over prefers-color-scheme in both
+   directions, so a dark-system user can still pick light and vice versa. */
+:root[data-theme="dark"] {
+  --v-bg:        #0d1117;
+  --v-bg-soft:   #161b22;
+  --v-bg-inset:  #1c2128;
+  --v-border:    #2a2f37;
+  --v-border-strong: #3d444d;
+  --v-text:      #e6edf3;
+  --v-text-soft: #9198a1;
+  --v-text-muted:#6e7681;
+  --v-accent:    #6b8afd;
+  --v-accent-soft: #1a2340;
+  --v-danger:    #ff7b72;
+  --v-ok:        #3fb950;
+  --v-shadow:    0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+* { box-sizing: border-box; }
+
+/* Author rules below set display on .v-btn etc, which would otherwise beat the
+   UA [hidden] rule. Toggle visibility with el.hidden. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--v-bg);
+  color: var(--v-text);
+  font-family: var(--v-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--v-accent); }
+
+/* ── Top bar ────────────────────────────────────────────────────────────── */
+
+.v-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 44px;
+  padding: 0 14px;
+  background: var(--v-bg-soft);
+  border-bottom: 1px solid var(--v-border);
+  flex: 0 0 auto;
+}
+
+.v-bar__title {
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.v-bar__spacer { flex: 1 1 auto; }
+
+.v-bar__badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--v-bg-inset);
+  color: var(--v-text-soft);
+  border: 1px solid var(--v-border);
+  white-space: nowrap;
+}
+
+.v-btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--v-border-strong);
+  background: var(--v-bg);
+  color: var(--v-text);
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.v-btn:hover:not(:disabled) { background: var(--v-bg-inset); }
+.v-btn:disabled { opacity: 0.5; cursor: default; }
+
+.v-btn--primary {
+  background: var(--v-accent);
+  border-color: var(--v-accent);
+  color: #fff;
+}
+.v-btn--primary:hover:not(:disabled) { filter: brightness(1.06); background: var(--v-accent); }
+
+.v-btn--ghost { border-color: transparent; background: transparent; }
+.v-btn--ghost:hover:not(:disabled) { background: var(--v-bg-inset); }
+
+/* ── Layout shell ───────────────────────────────────────────────────────── */
+
+.v-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.v-body {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+
+.v-sidebar {
+  flex: 0 0 240px;
+  border-right: 1px solid var(--v-border);
+  background: var(--v-bg-soft);
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.v-main {
+  flex: 1 1 auto;
+  overflow: auto;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .v-sidebar { position: absolute; z-index: 20; height: 100%; box-shadow: var(--v-shadow); }
+  .v-sidebar[hidden] { display: none; }
+}
+
+/* ── Sidebar entries ────────────────────────────────────────────────────── */
+
+.v-nav__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  font-size: 13px;
+  color: var(--v-text-soft);
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+.v-nav__item:hover { background: var(--v-bg-inset); color: var(--v-text); }
+.v-nav__item--active { background: var(--v-accent-soft); color: var(--v-text); font-weight: 600; }
+.v-nav__group {
+  padding: 10px 14px 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--v-text-muted);
+}
+
+/* ── Misc ───────────────────────────────────────────────────────────────── */
+
+.v-empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--v-text-muted);
+}
+
+.v-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--v-text);
+  color: var(--v-bg);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: var(--v-shadow);
+  transition: transform 0.22s ease;
+  z-index: 100;
+  pointer-events: none;
+}
+.v-toast--show { transform: translateX(-50%) translateY(0); }
+
+.v-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid var(--v-border-strong);
+  border-top-color: var(--v-accent);
+  border-radius: 50%;
+  display: inline-block;
+  animation: v-spin 0.7s linear infinite;
+  vertical-align: -3px;
+}
+@keyframes v-spin { to { transform: rotate(360deg); } }
+
+code, pre { font-family: var(--v-mono); }

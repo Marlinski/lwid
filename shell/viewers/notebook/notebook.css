@@ -1,0 +1,396 @@
+.nb-app { display: flex; flex-direction: column; height: 100%; }
+
+/* Filename / kernel status / Run all / Stop / Restart / Clear / Save live in
+   the shell's toolbar (see notebook.js syncToolbar()) — nothing to style
+   here for them. */
+
+/* ── Notebook body ──────────────────────────────────────────────────────── */
+
+.nb-scroll { flex: 1 1 auto; overflow-y: auto; }
+.nb-doc { max-width: 920px; margin: 0 auto; padding: 20px 16px 160px; }
+
+.nb-cell {
+  position: relative;
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 8px;
+  margin: 10px 0;
+}
+/* "Command mode" selection — click a cell, or press Escape while editing it,
+   to select it; then b/a insert, d d deletes, Enter edits, ↑/↓ move. An
+   outline (not a border) so highlighting a cell never shifts its layout —
+   that shift was the "ugly" part of the old plain-hover border. */
+.nb-cell--running .nb-box { outline: 1.5px solid #d29922; outline-offset: 1px; }
+.nb-cell--selected .nb-box { outline: 1.5px solid var(--v-accent); outline-offset: 1px; }
+.nb-cell--selected.nb-cell--markdown .nb-md,
+.nb-cell--selected.nb-cell--raw .nb-raw {
+  outline: 1.5px solid var(--v-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.nb-cell--selected .nb-gutter__controls { opacity: 1; }
+
+.nb-gutter {
+  font-family: var(--v-mono);
+  font-size: 11px;
+  color: var(--v-text-muted);
+  text-align: right;
+  padding-top: 13px;
+  user-select: none;
+}
+
+.nb-body { min-width: 0; }
+
+/* ── Code cell: one card — code, then a divider, then output ───────────── */
+
+.nb-box {
+  --nb-icon-col: 34px; /* shared by .nb-code-row and .nb-outputs__row below,
+                           so the play button and the collapse chevron — and
+                           the code and the output next to them — line up. */
+  background: var(--v-bg-soft);
+  border: 1px solid var(--v-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.nb-box--focus { outline: 1.5px solid var(--v-accent); outline-offset: 1px; }
+
+.nb-code-row {
+  display: grid;
+  grid-template-columns: var(--nb-icon-col) 1fr;
+  align-items: start;
+  padding: 10px 12px;
+}
+.nb-run-btn {
+  justify-self: center;
+  width: 21px;
+  height: 21px;
+  margin-top: 1px;
+  padding: 0 0 0 1px;
+  border-radius: 50%;
+  border: 1px solid var(--v-border-strong);
+  background: var(--v-bg);
+  color: var(--v-text-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.nb-run-btn:hover { background: var(--v-accent); border-color: var(--v-accent); color: #fff; }
+
+.nb-code-row pre, .nb-code-row textarea {
+  min-width: 0;
+  margin: 0;
+  padding: 1px 0;
+  font-family: var(--v-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  tab-size: 4;
+}
+.nb-code-row pre { overflow-x: auto; }
+.nb-code-row textarea {
+  display: block; width: 100%;
+  border: none; outline: none; resize: none;
+  background: transparent; color: var(--v-text);
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+/* editMarkdown()'s edit box reuses this — kept distinct from .nb-box/
+   .nb-code-row above since it's a single plain textarea, not a card with a
+   run button and an output section. */
+.nb-input {
+  background: var(--v-bg-soft);
+  border: 1px solid var(--v-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.nb-input textarea {
+  display: block; width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: none; outline: none; resize: none;
+  background: transparent; color: var(--v-text);
+  font-family: var(--v-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  tab-size: 4;
+}
+
+/* Markdown cell */
+.nb-md { padding: 4px 2px; }
+.nb-md > *:first-child { margin-top: 0.2em; }
+.nb-md pre {
+  background: var(--v-bg-soft); border: 1px solid var(--v-border);
+  border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-size: 12.5px;
+}
+.nb-md code { background: var(--v-bg-inset); padding: 0.12em 0.35em; border-radius: 4px; font-size: 0.88em; }
+.nb-md pre code { background: none; padding: 0; }
+.nb-md img { max-width: 100%; }
+.nb-md table { border-collapse: collapse; }
+.nb-md th, .nb-md td { border: 1px solid var(--v-border); padding: 4px 10px; }
+.nb-md--editing { cursor: text; }
+
+.nb-raw {
+  white-space: pre-wrap;
+  font-family: var(--v-mono);
+  font-size: 12.5px;
+  color: var(--v-text-soft);
+  padding: 8px 12px;
+  border-left: 2px solid var(--v-border-strong);
+}
+
+/* Outputs — only present in the DOM at all once a cell has something to
+   show. Same 2-column shape as .nb-code-row above the divider: the collapse
+   chevron sits under the play button, the output content sits under the
+   code. The "⋯" menu floats over the content's top-right corner (hover-only)
+   rather than sitting in its own row — a reserved row above the output with
+   nothing in it but that one icon read as a stray blank line. */
+.nb-outputs { border-top: 1px solid var(--v-border); }
+
+.nb-outputs__row {
+  display: grid;
+  grid-template-columns: var(--nb-icon-col) 1fr;
+  align-items: start;
+  padding: 6px 12px;
+}
+.nb-outputs__content { position: relative; min-width: 0; }
+
+.nb-outputs__collapse, .nb-outputs__menu-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  color: var(--v-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* .nb-out's own top padding (6px) pushes the first line of text down from
+   the row's top — match it here so the chevron centers on that first line,
+   not on the row's (unpadded) top edge. */
+.nb-outputs__collapse { justify-self: center; margin-top: 6px; }
+.nb-outputs__collapse:hover, .nb-outputs__menu-btn:hover {
+  background: var(--v-bg-inset);
+  color: var(--v-text);
+}
+.nb-outputs__collapse svg { transition: transform 0.15s; }
+.nb-outputs--collapsed .nb-outputs__collapse svg { transform: rotate(-90deg); }
+
+/* Collapsed shows a one-line summary (first line + how many more are
+   hidden) instead of nothing — .nb-outputs__preview and .nb-outputs__body
+   swap depending on .nb-outputs--collapsed. */
+.nb-outputs__preview { display: none; }
+.nb-outputs--collapsed .nb-outputs__preview { display: block; }
+.nb-outputs--collapsed .nb-outputs__body { display: none; }
+.nb-outputs__preview-line {
+  font-family: var(--v-mono);
+  font-size: 12.5px;
+  padding: 6px 0 0;
+  color: var(--v-text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nb-outputs__preview-more {
+  font-size: 11px;
+  color: var(--v-text-muted);
+  padding: 2px 0 6px;
+}
+
+.nb-outputs__menu-wrap {
+  position: absolute;
+  top: -2px;
+  right: 0;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.nb-outputs__content:hover .nb-outputs__menu-wrap,
+.nb-outputs__menu-wrap:focus-within,
+.nb-outputs__menu-wrap:has(.nb-outputs__menu:not([hidden])) {
+  opacity: 1;
+}
+.nb-outputs__menu-btn { background: var(--v-bg); border: 1px solid var(--v-border); }
+.nb-outputs__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 3;
+  min-width: 128px;
+  display: flex;
+  flex-direction: column;
+  background: var(--v-bg);
+  border: 1px solid var(--v-border);
+  border-radius: 7px;
+  box-shadow: var(--v-shadow);
+  padding: 4px;
+}
+.nb-outputs__menu[hidden] { display: none; }
+.nb-outputs__menu button {
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--v-text);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.nb-outputs__menu button:hover { background: var(--v-bg-inset); }
+
+.nb-out {
+  font-size: 12.5px;
+  padding: 6px 0;
+  overflow-x: auto;
+}
+.nb-out pre { margin: 0; font-family: var(--v-mono); white-space: pre-wrap; word-break: break-word; }
+.nb-out--stderr { background: rgba(248, 81, 73, 0.08); }
+.nb-out--error pre { color: var(--v-danger); }
+.nb-out img { max-width: 100%; background: #fff; border-radius: 4px; }
+.nb-out table { border-collapse: collapse; }
+.nb-out th, .nb-out td { border: 1px solid var(--v-border); padding: 3px 8px; text-align: right; }
+.nb-out .nb-out__html :is(h1,h2,h3) { font-size: 1.1em; margin: 0.4em 0; }
+
+.nb-pkg-note {
+  font-size: 11px; color: var(--v-text-muted);
+  padding: 2px 0;
+}
+
+/* ── Per-cell insert / delete controls (owner only) ────────────────────── */
+/* A small floating bar hovering above the cell's top-right corner, mostly
+   out of it — hidden until the cell is hovered/selected, so it never crowds
+   the cell body. */
+
+.nb-gutter__controls {
+  position: absolute;
+  top: -11px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  gap: 3px;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--v-bg);
+  border: 1px solid var(--v-border);
+  box-shadow: var(--v-shadow);
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.nb-cell:hover .nb-gutter__controls,
+.nb-gutter__controls:focus-within {
+  opacity: 1;
+}
+.nb-gutter__ctrl {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--v-bg-inset);
+  color: var(--v-text-muted);
+  font-size: 10.5px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.nb-gutter__ctrl:hover { background: var(--v-accent-soft); color: var(--v-accent); }
+.nb-gutter__ctrl--danger:hover { background: rgba(248, 81, 73, 0.15); color: var(--v-danger); }
+
+/* ── Add-cell row at the end of the notebook (owner only) ──────────────── */
+
+.nb-add-row {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0 14px 72px;
+}
+.nb-add-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  border: 1px dashed var(--v-border-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--v-text-muted);
+  cursor: pointer;
+}
+.nb-add-btn:hover {
+  border-color: var(--v-accent);
+  color: var(--v-accent);
+  background: var(--v-accent-soft);
+}
+
+/* ── Help modal ──────────────────────────────────────────────────────────  */
+
+.nb-help-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.nb-help-modal[hidden] { display: none; }
+.nb-help-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+.nb-help-modal__box {
+  position: relative;
+  max-width: 480px;
+  width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--v-bg);
+  border: 1px solid var(--v-border);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: var(--v-shadow);
+}
+.nb-help-modal__box h2 { margin: 0 0 12px; font-size: 16px; }
+.nb-help-modal__box h3 {
+  margin: 18px 0 6px;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--v-text-muted);
+}
+.nb-help-modal__box h3:first-of-type { margin-top: 0; }
+.nb-help-modal__box p { font-size: 13px; line-height: 1.6; color: var(--v-text-soft); margin: 0 0 8px; }
+.nb-help-modal__box table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin-bottom: 8px; }
+.nb-help-modal__box td { padding: 4px 10px 4px 0; vertical-align: top; }
+.nb-help-modal__box td:first-child { white-space: nowrap; color: var(--v-text); }
+.nb-help-modal__box kbd {
+  font-family: var(--v-mono);
+  background: var(--v-bg-inset);
+  border: 1px solid var(--v-border-strong);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+}
+.nb-help-modal__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  color: var(--v-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.nb-help-modal__close:hover { background: var(--v-bg-inset); color: var(--v-text); }
+
+@media (max-width: 640px) {
+  .nb-cell { grid-template-columns: 34px 1fr; gap: 4px; }
+  .nb-gutter { font-size: 10px; }
+  .nb-add-row { margin-left: 42px; }
+}
