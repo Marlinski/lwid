@@ -6,7 +6,7 @@
  * kernel so cells can actually run. Run state is mirrored into lwid.store so a
  * shared link shows the last execution; "Save .ipynb" publishes a new version.
  *
- * Filename / kernel status / Run all / Stop / Restart / Clear / Save live in
+ * Filename / Connect kernel / Run all / Stop / Clear / Save live in
  * the shell's toolbar (LwidHost.setToolbar) rather than a bar drawn in here —
  * see syncToolbar() below.
  */
@@ -50,12 +50,23 @@ const kernel = new Kernel({ onStatus: syncToolbar });
 
 // ── Toolbar ──────────────────────────────────────────────────────────────
 
-const STATUS_LABEL = {
-  uninitialized: 'no kernel',
-  loading: 'starting Python…',
-  idle: 'kernel ready',
-  busy: 'running…',
-  dead: 'kernel crashed',
+// One button carries both the kernel's status and the action to (re)connect
+// it — a separate "Restart" button didn't mean much on its own once you
+// factor in that this same control will later open a submenu to pick a
+// remote kernel instead of the local (Pyodide) one.
+const CONNECT_LABEL = {
+  uninitialized: 'Connect kernel',
+  loading: 'Connecting…',
+  idle: 'Kernel connected',
+  busy: 'Running…',
+  dead: 'Kernel crashed — reconnect',
+};
+const CONNECT_TITLE = {
+  uninitialized: 'Start the Python kernel',
+  loading: 'Starting the Python kernel…',
+  idle: 'Click to restart the kernel',
+  busy: 'A cell is running',
+  dead: 'The kernel crashed — click to restart it',
 };
 
 function syncToolbar() {
@@ -72,10 +83,12 @@ function syncToolbar() {
     });
   }
 
-  items.push({ kind: 'status', label: STATUS_LABEL[kernel.status] || kernel.status, tone: kernel.status });
-  // Restart acts on the kernel the status just reported on — keep it right
-  // next to that status rather than off with the other cell-level actions.
-  items.push({ kind: 'button', id: 'restart', label: '⟳ Restart', title: 'Restart the kernel', disabled: state.restarting });
+  items.push({
+    kind: 'button', id: 'connect', tone: kernel.status,
+    label: CONNECT_LABEL[kernel.status] || kernel.status,
+    title: CONNECT_TITLE[kernel.status] || '',
+    disabled: state.restarting || kernel.status === 'busy',
+  });
 
   if (state.running) {
     items.push({ kind: 'button', id: 'stop', label: '■ Stop', title: 'Stop execution' });
@@ -102,7 +115,7 @@ Host.onToolbarClick((id, value) => {
   if (id === 'file') openNotebook(value);
   else if (id === 'run-all') runAll();
   else if (id === 'stop') { kernel.interrupt(); toast('Execution stopped'); syncToolbar(); }
-  else if (id === 'restart') doRestart();
+  else if (id === 'connect') doRestart();
   else if (id === 'clear') doClear();
   else if (id === 'save') doSave();
   else if (id === 'theme') { theme.toggle(); syncToolbar(); }
@@ -688,10 +701,11 @@ async function runAll() {
 }
 
 async function doRestart() {
+  const wasConnected = kernel.status === 'idle' || kernel.status === 'busy';
   state.restarting = true;
   syncToolbar();
-  try { await kernel.restart(); toast('Kernel restarted'); }
-  catch (e) { toast('Restart failed: ' + e.message); }
+  try { await kernel.restart(); toast(wasConnected ? 'Kernel restarted' : 'Kernel connected'); }
+  catch (e) { toast('Connect failed: ' + e.message); }
   finally { state.restarting = false; syncToolbar(); }
 }
 

@@ -1191,6 +1191,13 @@
           if (iconSvg) {
             el.classList.add('toolbar__viewer-btn--icon');
             el.innerHTML = iconSvg;
+          } else if (item.tone) {
+            // A status dot inside the button itself — same look as the
+            // standalone 'status' item above, just folded into one control.
+            el.classList.add('toolbar__viewer-status--' + item.tone);
+            const dot = document.createElement('span');
+            dot.className = 'toolbar__viewer-status-dot';
+            el.append(dot, document.createTextNode(item.label));
           } else {
             el.textContent = item.label;
           }
