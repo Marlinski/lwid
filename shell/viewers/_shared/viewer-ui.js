@@ -80,9 +80,12 @@
   }
   function themeToolbarItem() {
     const dark = themeEffective() === 'dark';
+    // icon (not label) — the shell renders this as one of its own outline
+    // SVGs, so it's white/monochrome like the rest of the toolbar rather
+    // than a yellow emoji.
     return {
       kind: 'button', id: 'theme',
-      label: dark ? '☀️' : '🌙',
+      icon: dark ? 'sun' : 'moon',
       title: dark ? 'Switch to light theme' : 'Switch to dark theme',
     };
   }

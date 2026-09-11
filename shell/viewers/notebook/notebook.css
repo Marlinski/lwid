@@ -10,6 +10,7 @@
 .nb-doc { max-width: 920px; margin: 0 auto; padding: 20px 16px 160px; }
 
 .nb-cell {
+  position: relative;
   display: grid;
   grid-template-columns: 64px 1fr;
   gap: 8px;
@@ -115,13 +116,22 @@
 }
 
 /* ── Per-cell insert / delete controls (owner only) ────────────────────── */
+/* A small floating bar hovering above the cell's top-right corner, mostly
+   out of it — hidden until the cell is hovered/selected, so it never crowds
+   the cell body. */
 
 .nb-gutter__controls {
+  position: absolute;
+  top: -11px;
+  right: 10px;
+  z-index: 2;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
   gap: 3px;
-  margin-top: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--v-bg);
+  border: 1px solid var(--v-border);
+  box-shadow: var(--v-shadow);
   opacity: 0;
   transition: opacity 0.1s;
 }

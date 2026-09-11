@@ -402,7 +402,9 @@ function renderCell(cell) {
     body.appendChild(raw);
   }
 
-  if (state.canEdit) gutter.appendChild(renderCellControls(cell));
+  // Floating, top-right of the whole cell (not the gutter) — hover-only, see
+  // .nb-gutter__controls in notebook.css.
+  if (state.canEdit) el.appendChild(renderCellControls(cell));
 
   if (state.canEdit) {
     el.addEventListener('click', (e) => {

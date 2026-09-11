@@ -662,6 +662,10 @@ button:disabled {
   padding: 0.3rem 0.55rem;
   font-size: 0.78rem;
 }
+.toolbar__viewer-btn--icon {
+  padding: 0.3rem;
+  line-height: 0;
+}
 
 .toolbar__viewer-text {
   font-size: 0.8rem;

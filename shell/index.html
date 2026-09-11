@@ -1143,6 +1143,14 @@
       $toolbarDocTitle.title = title || '';
     }
 
+    // Fixed, shell-owned icon set for toolbar buttons (see item.icon in
+    // renderToolbarItems) — same outline style as the rest of the chrome
+    // (stroke="currentColor", so it's always toolbar-white, not emoji-yellow).
+    const TOOLBAR_ICONS = {
+      sun: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"></circle><path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77"></path></svg>',
+      moon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"></path></svg>',
+    };
+
     function renderToolbarItems(items) {
       $toolbarViewerSlot.innerHTML = '';
       for (const item of items || []) {
@@ -1176,7 +1184,16 @@
         } else {
           el = document.createElement('button');
           el.className = 'toolbar__btn toolbar__viewer-btn' + (item.variant === 'primary' ? ' toolbar__btn--accent' : '');
-          el.textContent = item.label;
+          // item.icon only ever selects one of these two fixed, shell-owned
+          // SVGs — never interpolated into markup — so a viewer can't use it
+          // to inject arbitrary HTML across the postMessage boundary.
+          const iconSvg = TOOLBAR_ICONS[item.icon];
+          if (iconSvg) {
+            el.classList.add('toolbar__viewer-btn--icon');
+            el.innerHTML = iconSvg;
+          } else {
+            el.textContent = item.label;
+          }
           el.disabled = !!item.disabled;
           el.addEventListener('click', () => {
             $sandboxFrame.contentWindow.postMessage({ type: 'LWID_TOOLBAR_CLICK', id: item.id }, '*');
