@@ -1796,6 +1796,17 @@
         }
       });
 
+      // A click inside the sandbox iframe is a click in a different
+      // document — it never bubbles up to the listener above, so "outside
+      // click" alone misses most of the page (the preview area). Clicking
+      // into an iframe does move focus there, though, which the parent
+      // window can observe as its own blur.
+      window.addEventListener('blur', () => {
+        setTimeout(() => {
+          if (document.activeElement === $sandboxFrame) closeAllMenus();
+        }, 0);
+      });
+
       // --- Extend TTL --- (the click-to-open wiring lives in the writeKey
       // branch above, alongside the rest of the owner-only setup)
       for (const btn of $extendMenu.querySelectorAll('.extend-menu__btn')) {
