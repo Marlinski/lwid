@@ -10,7 +10,7 @@
  * the shell's toolbar (LwidHost.setToolbar) rather than a bar drawn in here —
  * see syncToolbar() below.
  */
-import { parseNotebook, serializeNotebook } from '/sandbox/__viewer__/nbformat.js';
+import { parseNotebook, serializeNotebook, nextId } from '/sandbox/__viewer__/nbformat.js';
 import { Kernel } from '/sandbox/__viewer__/kernel.js';
 
 const { toast, escapeHtml, resolvePath } = window.LwidUI;
@@ -19,6 +19,7 @@ const Md = window.LwidMd;
 
 const $ = (id) => document.getElementById(id);
 const $doc = $('doc');
+const $helpModal = $('help-modal');
 
 const enc = (p) => p.split('/').map(encodeURIComponent).join('/');
 const STORE_PREFIX = 'viewer:notebook:';
@@ -68,13 +69,15 @@ function syncToolbar() {
   }
 
   items.push({ kind: 'status', label: STATUS_LABEL[kernel.status] || kernel.status, tone: kernel.status });
+  // Restart acts on the kernel the status just reported on — keep it right
+  // next to that status rather than off with the other cell-level actions.
+  items.push({ kind: 'button', id: 'restart', label: '⟳ Restart', title: 'Restart the kernel', disabled: state.restarting });
 
   if (state.running) {
     items.push({ kind: 'button', id: 'stop', label: '■ Stop', title: 'Stop execution' });
   } else {
     items.push({ kind: 'button', id: 'run-all', label: '▶▶ Run all', title: 'Run every cell' });
   }
-  items.push({ kind: 'button', id: 'restart', label: '⟳ Restart', title: 'Restart the kernel', disabled: state.restarting });
   items.push({ kind: 'button', id: 'clear', label: 'Clear', title: 'Clear all outputs' });
 
   if (state.canEdit) {
@@ -84,6 +87,8 @@ function syncToolbar() {
       variant: 'primary', disabled: state.saving, title: 'Publish a new version',
     });
   }
+
+  items.push({ kind: 'button', id: 'help', label: '?', title: 'Notebook help & keyboard shortcuts' });
 
   Host.setToolbar(items);
 }
@@ -95,6 +100,7 @@ Host.onToolbarClick((id, value) => {
   else if (id === 'restart') doRestart();
   else if (id === 'clear') doClear();
   else if (id === 'save') doSave();
+  else if (id === 'help') toggleHelp();
 });
 
 // ── Boot ─────────────────────────────────────────────────────────────────
@@ -190,6 +196,100 @@ function renderAll() {
     cell._el = renderCell(cell);
     $doc.appendChild(cell._el);
   }
+  if (state.canEdit) $doc.appendChild(renderAddCellRow());
+}
+
+// ── Cell insert / delete ─────────────────────────────────────────────────
+
+/** Insert a new empty cell right after `afterCell` (or at the top if null). */
+function insertCell(afterCell, type) {
+  const idx = afterCell ? state.nb.cells.indexOf(afterCell) : -1;
+  const cell = { id: nextId(), type, source: '', metadata: {} };
+  if (type === 'code') { cell.execCount = null; cell.outputs = []; }
+  state.nb.cells.splice(idx + 1, 0, cell);
+  markDirty();
+  renderAll();
+  focusCell(cell);
+}
+
+function deleteCell(cell) {
+  if (state.nb.cells.length <= 1) { toast("Can't delete the only cell"); return; }
+  const idx = state.nb.cells.indexOf(cell);
+  if (idx === -1) return;
+  state.nb.cells.splice(idx, 1);
+  markDirty();
+  renderAll();
+  toast('Cell deleted — reload without saving to get it back');
+}
+
+function focusCell(cell) {
+  requestAnimationFrame(() => {
+    if (cell._inputEl) cell._inputEl.focus();
+    else if (cell._el) cell._el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
+}
+
+function renderCellControls(cell) {
+  const box = document.createElement('div');
+  box.className = 'nb-gutter__controls';
+
+  const addCode = document.createElement('button');
+  addCode.className = 'nb-gutter__ctrl';
+  addCode.title = 'Insert code cell below';
+  addCode.textContent = '+';
+  addCode.addEventListener('click', () => insertCell(cell, 'code'));
+
+  const addMd = document.createElement('button');
+  addMd.className = 'nb-gutter__ctrl';
+  addMd.title = 'Insert markdown cell below';
+  addMd.textContent = '+M';
+  addMd.addEventListener('click', () => insertCell(cell, 'markdown'));
+
+  // Native confirm() doesn't fire in this sandbox (no allow-modals), so
+  // deleting arms on the first click and only commits on a second one
+  // within a couple of seconds — no blocking dialog needed.
+  const del = document.createElement('button');
+  del.className = 'nb-gutter__ctrl nb-gutter__ctrl--danger';
+  del.title = 'Delete this cell';
+  del.textContent = '×';
+  let armTimer = null;
+  const disarm = () => {
+    clearTimeout(armTimer);
+    armTimer = null;
+    del.textContent = '×';
+    del.title = 'Delete this cell';
+    del.classList.remove('nb-gutter__ctrl--armed');
+  };
+  del.addEventListener('click', () => {
+    if (armTimer) { disarm(); deleteCell(cell); return; }
+    del.textContent = '✓';
+    del.title = 'Click again to delete';
+    del.classList.add('nb-gutter__ctrl--armed');
+    armTimer = setTimeout(disarm, 2500);
+  });
+  del.addEventListener('blur', disarm);
+
+  box.append(addCode, addMd, del);
+  return box;
+}
+
+function renderAddCellRow() {
+  const row = document.createElement('div');
+  row.className = 'nb-add-row';
+  const last = state.nb.cells[state.nb.cells.length - 1] || null;
+
+  const addCode = document.createElement('button');
+  addCode.className = 'nb-add-btn';
+  addCode.textContent = '+ Code';
+  addCode.addEventListener('click', () => insertCell(last, 'code'));
+
+  const addMd = document.createElement('button');
+  addMd.className = 'nb-add-btn';
+  addMd.textContent = '+ Markdown';
+  addMd.addEventListener('click', () => insertCell(last, 'markdown'));
+
+  row.append(addCode, addMd);
+  return row;
 }
 
 function renderCell(cell) {
@@ -236,6 +336,8 @@ function renderCell(cell) {
     body.appendChild(raw);
   }
 
+  if (state.canEdit) gutter.appendChild(renderCellControls(cell));
+
   el.append(gutter, body);
   return el;
 }
@@ -253,10 +355,21 @@ function renderCodeInput(cell) {
     ta.addEventListener('input', () => { cell.source = ta.value; grow(); });
     ta.addEventListener('focus', () => wrap.classList.add('nb-input--focus'));
     ta.addEventListener('blur', () => wrap.classList.remove('nb-input--focus'));
-    ta.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+    ta.addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        runCell(cell);
+        await runCell(cell);
+      } else if (e.key === 'Enter' && e.shiftKey) {
+        e.preventDefault();
+        await runCell(cell);
+        const idx = state.nb.cells.indexOf(cell);
+        const next = state.nb.cells[idx + 1];
+        if (next) focusCell(next);
+        else insertCell(cell, 'code');
+      } else if (e.key === 'Enter' && e.altKey) {
+        e.preventDefault();
+        await runCell(cell);
+        insertCell(cell, 'code');
       } else if (e.key === 'Tab') {
         e.preventDefault();
         const s = ta.selectionStart;
@@ -334,7 +447,15 @@ function editMarkdown(cell) {
   ta.addEventListener('blur', commit);
   ta.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { ta.value = cell.source; commit(); }
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) commit();
+    else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) commit();
+    else if (e.key === 'Enter' && e.shiftKey) {
+      e.preventDefault();
+      commit();
+      const idx = state.nb.cells.indexOf(cell);
+      const next = state.nb.cells[idx + 1];
+      if (next) focusCell(next);
+      else insertCell(cell, 'code');
+    }
   });
   el.replaceWith(ta);
   ta.focus();
@@ -522,6 +643,20 @@ function autoScroll(cell) {
 function markDirty() {
   state.dirty = true;
   syncToolbar();
+}
+
+// ── Help ─────────────────────────────────────────────────────────────────
+
+function toggleHelp() {
+  if ($helpModal) $helpModal.hidden = !$helpModal.hidden;
+}
+
+if ($helpModal) {
+  $helpModal.querySelector('.nb-help-modal__close')?.addEventListener('click', () => { $helpModal.hidden = true; });
+  $helpModal.querySelector('.nb-help-modal__backdrop')?.addEventListener('click', () => { $helpModal.hidden = true; });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$helpModal.hidden) $helpModal.hidden = true;
+  });
 }
 
 // ── utils ────────────────────────────────────────────────────────────────

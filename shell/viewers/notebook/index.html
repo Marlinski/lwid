@@ -26,6 +26,36 @@
       </div>
     </div>
   </div>
+
+  <div id="help-modal" class="nb-help-modal" hidden>
+    <div class="nb-help-modal__backdrop"></div>
+    <div class="nb-help-modal__box" role="dialog" aria-modal="true" aria-labelledby="nb-help-title">
+      <button class="nb-help-modal__close" aria-label="Close">&times;</button>
+      <h2 id="nb-help-title">Notebook help</h2>
+
+      <h3>How this runs</h3>
+      <p>Python executes entirely in your browser via <strong>Pyodide</strong> (a WebAssembly build of CPython) —
+        no server ever sees your code or its output. The first run downloads the Python runtime
+        (roughly 10&ndash;20&nbsp;MB); after that, cells run instantly. numpy, pandas and matplotlib
+        install themselves automatically the first time you import them.</p>
+
+      <h3>Keyboard shortcuts</h3>
+      <table>
+        <tr><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>Run the cell, then move to (or create) the next</td></tr>
+        <tr><td><kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd></td><td>Run the cell in place</td></tr>
+        <tr><td><kbd>Alt</kbd>+<kbd>Enter</kbd></td><td>Run the cell, then insert a new one below</td></tr>
+        <tr><td><kbd>Tab</kbd></td><td>Indent</td></tr>
+      </table>
+      <p>Hover a cell for its + (insert code / insert markdown) and &times; (delete) controls.</p>
+
+      <h3>Sharing</h3>
+      <p>Anyone with this link can run cells — results are saved to the project's encrypted store
+        and shown to the next person who opens it, whether or not they can edit. Only an edit link
+        can change the notebook's actual cells; use <strong>Save&nbsp;.ipynb</strong> to publish
+        those changes as a new version.</p>
+    </div>
+  </div>
+
   <script type="module" src="/sandbox/__viewer__/notebook.js"></script>
 </body>
 </html>

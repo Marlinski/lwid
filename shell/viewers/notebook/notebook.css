@@ -110,7 +110,135 @@
   padding: 2px 12px;
 }
 
+/* ── Per-cell insert / delete controls (owner only) ────────────────────── */
+
+.nb-gutter__controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 3px;
+  margin-top: 2px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.nb-cell:hover .nb-gutter__controls,
+.nb-gutter__controls:focus-within,
+.nb-gutter__controls:has(.nb-gutter__ctrl--armed) {
+  opacity: 1;
+}
+.nb-gutter__ctrl {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--v-bg-inset);
+  color: var(--v-text-muted);
+  font-size: 10.5px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.nb-gutter__ctrl:hover { background: var(--v-accent-soft); color: var(--v-accent); }
+.nb-gutter__ctrl--danger:hover { background: rgba(248, 81, 73, 0.15); color: var(--v-danger); }
+.nb-gutter__ctrl--armed {
+  background: var(--v-danger);
+  color: #fff;
+  opacity: 1;
+}
+
+/* ── Add-cell row at the end of the notebook (owner only) ──────────────── */
+
+.nb-add-row {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0 14px 72px;
+}
+.nb-add-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  border: 1px dashed var(--v-border-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--v-text-muted);
+  cursor: pointer;
+}
+.nb-add-btn:hover {
+  border-color: var(--v-accent);
+  color: var(--v-accent);
+  background: var(--v-accent-soft);
+}
+
+/* ── Help modal ──────────────────────────────────────────────────────────  */
+
+.nb-help-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.nb-help-modal[hidden] { display: none; }
+.nb-help-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+.nb-help-modal__box {
+  position: relative;
+  max-width: 480px;
+  width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--v-bg);
+  border: 1px solid var(--v-border);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: var(--v-shadow);
+}
+.nb-help-modal__box h2 { margin: 0 0 12px; font-size: 16px; }
+.nb-help-modal__box h3 {
+  margin: 18px 0 6px;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--v-text-muted);
+}
+.nb-help-modal__box h3:first-of-type { margin-top: 0; }
+.nb-help-modal__box p { font-size: 13px; line-height: 1.6; color: var(--v-text-soft); margin: 0 0 8px; }
+.nb-help-modal__box table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin-bottom: 8px; }
+.nb-help-modal__box td { padding: 4px 10px 4px 0; vertical-align: top; }
+.nb-help-modal__box td:first-child { white-space: nowrap; color: var(--v-text); }
+.nb-help-modal__box kbd {
+  font-family: var(--v-mono);
+  background: var(--v-bg-inset);
+  border: 1px solid var(--v-border-strong);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+}
+.nb-help-modal__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  color: var(--v-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.nb-help-modal__close:hover { background: var(--v-bg-inset); color: var(--v-text); }
+
 @media (max-width: 640px) {
   .nb-cell { grid-template-columns: 34px 1fr; gap: 4px; }
   .nb-gutter { font-size: 10px; }
+  .nb-add-row { margin-left: 42px; }
 }
