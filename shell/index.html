@@ -126,19 +126,33 @@
         <span class="toolbar__logo">lwid</span>
       </a>
 
-      <div class="projects-dropdown" id="toolbar-projects-dropdown">
-        <button class="toolbar__btn projects-dropdown__trigger" id="btn-toolbar-projects" title="My Projects">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M2 2h4l2 2h6v9H2V2z"/><path d="M2 7h12"/>
-          </svg>
-          <svg class="projects-dropdown__chevron" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 5l3 3 3-3"/>
-          </svg>
-        </button>
-        <div id="toolbar-projects-menu" class="projects-dropdown__menu hidden"></div>
-      </div>
+      <!-- Source tree toggle — always visible; it's a transparency feature,
+           not a management one (see Add files / History for the owner-only
+           equivalents, both relocated into the Source panel itself). -->
+      <button id="btn-source" class="toolbar__btn" title="Browse source files">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 2h4l2 2h6v9H2V2z"/>
+          <path d="M2 7h12"/>
+        </svg>
+        Source
+      </button>
 
-      <span class="toolbar__project-id" id="toolbar-project-id"></span>
+      <!-- Viewer-specific controls (populated by the active viewer over
+           postMessage — see LWID_TOOLBAR_SET below). Empty for a plain site. -->
+      <div id="toolbar-viewer-slot" class="toolbar__viewer-slot"></div>
+
+      <!-- Expiry & extend — small and out of the way; Extend is owner-only -->
+      <span id="toolbar-expiry" class="toolbar__expiry hidden" title="Time until project expires"></span>
+      <div class="toolbar__extend-wrap" id="extend-wrap">
+        <button id="btn-extend" class="toolbar__btn toolbar__btn--extend hidden" title="Extend project lifetime">Extend</button>
+        <div id="extend-menu" class="extend-menu hidden">
+          <button type="button" class="extend-menu__btn" data-ttl="1h">1 hour</button>
+          <button type="button" class="extend-menu__btn" data-ttl="1d">1 day</button>
+          <button type="button" class="extend-menu__btn" data-ttl="7d">7 days</button>
+          <button type="button" class="extend-menu__btn" data-ttl="30d">30 days</button>
+          <button type="button" class="extend-menu__btn" data-ttl="never">Never</button>
+        </div>
+      </div>
 
       <!-- Encryption badge -->
       <div class="toolbar__encryption" id="toolbar-encryption">
@@ -156,49 +170,6 @@
           <a href="/docs.html" class="toolbar__encryption-link">Learn more</a>
         </div>
       </div>
-
-      <div class="toolbar__spacer"></div>
-
-      <!-- Expiry & extend (centered) -->
-      <div class="toolbar__center" id="toolbar-center">
-        <span id="toolbar-expiry" class="toolbar__expiry hidden" title="Time until project expires"></span>
-        <div class="toolbar__extend-wrap" id="extend-wrap">
-          <button id="btn-extend" class="toolbar__btn toolbar__btn--extend hidden" title="Extend project lifetime">Extend</button>
-          <div id="extend-menu" class="extend-menu hidden">
-            <button type="button" class="extend-menu__btn" data-ttl="1h">1 hour</button>
-            <button type="button" class="extend-menu__btn" data-ttl="1d">1 day</button>
-            <button type="button" class="extend-menu__btn" data-ttl="7d">7 days</button>
-            <button type="button" class="extend-menu__btn" data-ttl="30d">30 days</button>
-            <button type="button" class="extend-menu__btn" data-ttl="never">Never</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="toolbar__spacer"></div>
-
-      <!-- Source tree toggle -->
-      <button id="btn-source" class="toolbar__btn" title="Browse source files">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M2 2h4l2 2h6v9H2V2z"/>
-          <path d="M2 7h12"/>
-        </svg>
-        Source
-      </button>
-
-      <button id="btn-history" class="toolbar__btn" title="Version history">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="8" cy="8" r="6"/>
-          <path d="M8 4.5V8l2.5 1.5"/>
-        </svg>
-        History
-      </button>
-
-      <button id="btn-add-files" class="toolbar__btn toolbar__btn--accent hidden" title="Upload new files">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M8 3v10M3 8h10"/>
-        </svg>
-        Add files
-      </button>
 
       <!-- Share split-button -->
       <div class="share-split" id="share-split">
@@ -258,9 +229,27 @@
       <aside id="source-panel" class="source-panel">
         <div class="source-panel__header">
           <h3>Files</h3>
-          <button id="btn-close-source" class="source-panel__close" aria-label="Close source panel">&times;</button>
+          <div class="source-panel__header-actions">
+            <!-- Version history is an ownership concern — hidden from
+                 read-only visitors, shown here rather than in the toolbar. -->
+            <button id="btn-history" class="source-panel__icon-btn hidden" title="Version history">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="8" cy="8" r="6"/>
+                <path d="M8 4.5V8l2.5 1.5"/>
+              </svg>
+            </button>
+            <button id="btn-close-source" class="source-panel__close" aria-label="Close source panel">&times;</button>
+          </div>
         </div>
         <ul id="source-tree" class="source-panel__tree"></ul>
+        <!-- Add files — a drop target instead of a toolbar button; owner-only. -->
+        <div id="source-add-dropzone" class="source-panel__dropzone hidden" title="Drop files, or click to browse">
+          <input id="panel-file-input" type="file" multiple webkitdirectory>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 3v10M3 8h10"/>
+          </svg>
+          <span>Add files</span>
+        </div>
         <div id="store-section" class="source-panel__store-section hidden">
           <div class="source-panel__store-header">
             <h3>Store</h3>
@@ -410,22 +399,25 @@
     const $landingStatus = document.getElementById('landing-status');
     const $ttlSelector   = document.getElementById('ttl-selector');
 
-    // My Projects dropdowns
+    // My Projects — landing page only; the project view dropped it (it's a
+    // browsing feature, not something a shared link's visitor needs).
     const $landingProjectsDropdown = document.getElementById('landing-projects-dropdown');
     const $btnLandingProjects      = document.getElementById('btn-landing-projects');
     const $landingProjectsMenu     = document.getElementById('landing-projects-menu');
-    const $toolbarProjectsDropdown = document.getElementById('toolbar-projects-dropdown');
-    const $btnToolbarProjects      = document.getElementById('btn-toolbar-projects');
-    const $toolbarProjectsMenu     = document.getElementById('toolbar-projects-menu');
 
     const $projectView    = document.getElementById('project-view');
     const $toolbarTitle   = document.getElementById('toolbar-title');
-    const $projectIdLabel = document.getElementById('toolbar-project-id');
     const $btnSource      = document.getElementById('btn-source');
     const $btnHistory     = document.getElementById('btn-history');
-    const $btnAddFiles    = document.getElementById('btn-add-files');
     const $loadingOverlay = document.getElementById('loading-overlay');
     const $sandboxFrame   = document.getElementById('sandbox-frame');
+
+    // Viewer-owned toolbar center (see the LWID_TOOLBAR_SET bridge below)
+    const $toolbarViewerSlot = document.getElementById('toolbar-viewer-slot');
+
+    // Add files — a drop target inside the Source panel, owner-only
+    const $sourceDropzone  = document.getElementById('source-add-dropzone');
+    const $panelFileInput  = document.getElementById('panel-file-input');
 
     // Expiry / extend
     const $toolbarExpiry  = document.getElementById('toolbar-expiry');
@@ -651,19 +643,16 @@
 
     function closeAllProjectsMenus() {
       $landingProjectsMenu.classList.add('hidden');
-      $toolbarProjectsMenu.classList.add('hidden');
     }
 
-    // Close projects menus on outside click
+    // Close the projects menu on outside click
     document.addEventListener('click', (e) => {
-      if (!$landingProjectsDropdown.contains(e.target) && !$toolbarProjectsDropdown.contains(e.target)) {
+      if (!$landingProjectsDropdown.contains(e.target)) {
         closeAllProjectsMenus();
       }
     });
 
-    // Set up both dropdowns
     setupProjectsDropdown($landingProjectsDropdown, $btnLandingProjects, $landingProjectsMenu);
-    setupProjectsDropdown($toolbarProjectsDropdown, $btnToolbarProjects, $toolbarProjectsMenu);
 
     // -----------------------------------------------------------------------
     // Service Worker registration
@@ -1061,9 +1050,73 @@
       await api.putStoreValue(currentProjectId, IDX_SERVER_KEY, encrypted, currentStoreToken);
     }
 
+    // -----------------------------------------------------------------------
+    // Toolbar viewer slot — the active viewer (js/viewers.js) declares its
+    // own controls here instead of drawing a second bar inside the sandbox.
+    // Protocol: viewer -> shell 'LWID_TOOLBAR_SET' { items }, rendered as
+    // real toolbar buttons/text/status/select; clicks post back to the
+    // viewer as 'LWID_TOOLBAR_CLICK' { id, value? }.
+    // -----------------------------------------------------------------------
+
+    function clearToolbarItems() {
+      $toolbarViewerSlot.innerHTML = '';
+    }
+
+    function renderToolbarItems(items) {
+      $toolbarViewerSlot.innerHTML = '';
+      for (const item of items || []) {
+        let el;
+        if (item.kind === 'text') {
+          el = document.createElement('span');
+          el.className = 'toolbar__viewer-text' + (item.variant ? ` toolbar__viewer-text--${item.variant}` : '');
+          el.textContent = item.label;
+        } else if (item.kind === 'status') {
+          el = document.createElement('span');
+          el.className = 'toolbar__viewer-status toolbar__viewer-status--' + (item.tone || 'muted');
+          const dot = document.createElement('span');
+          dot.className = 'toolbar__viewer-status-dot';
+          el.appendChild(dot);
+          el.appendChild(document.createTextNode(item.label));
+        } else if (item.kind === 'select') {
+          el = document.createElement('select');
+          el.className = 'toolbar__viewer-select';
+          for (const opt of item.options || []) {
+            const o = document.createElement('option');
+            o.value = opt.value;
+            o.textContent = opt.label;
+            if (opt.value === item.value) o.selected = true;
+            el.appendChild(o);
+          }
+          el.addEventListener('change', () => {
+            $sandboxFrame.contentWindow.postMessage(
+              { type: 'LWID_TOOLBAR_CLICK', id: item.id, value: el.value }, '*',
+            );
+          });
+        } else {
+          el = document.createElement('button');
+          el.className = 'toolbar__btn toolbar__viewer-btn' + (item.variant === 'primary' ? ' toolbar__btn--accent' : '');
+          el.textContent = item.label;
+          el.disabled = !!item.disabled;
+          el.addEventListener('click', () => {
+            $sandboxFrame.contentWindow.postMessage({ type: 'LWID_TOOLBAR_CLICK', id: item.id }, '*');
+          });
+        }
+        if (item.title) el.title = item.title;
+        if (item.id) el.dataset.itemId = item.id;
+        $toolbarViewerSlot.appendChild(el);
+      }
+    }
+
     window.addEventListener('message', async (event) => {
       const msg = event.data;
       if (!msg || typeof msg.type !== 'string' || !msg.type.startsWith('LWID_')) return;
+
+      // Toolbar declarations need no project context and no reply.
+      if (msg.type === 'LWID_TOOLBAR_SET') {
+        renderToolbarItems(msg.items);
+        return;
+      }
+
       if (!currentProjectId || !currentReadKey || !currentStoreToken) return;
 
       const { type, id } = msg;
@@ -1391,9 +1444,6 @@
         history.replaceState(null, '', window.location.pathname + '#' + readKey);
       }
 
-      // Configure toolbar
-      $projectIdLabel.textContent = truncateId(projectId);
-
       // Fetch project metadata to get expiry info
       try {
         const projectMeta = await api.getProject(projectId);
@@ -1403,11 +1453,14 @@
         // Non-critical — continue loading
       }
 
+      // Everything below is an ownership concern — held out unless this link
+      // carries (or has ever carried) the write key.
       if (writeKey) {
         show($menuShareEditLi);
         show($menuDeleteLi);
-        show($btnAddFiles);
+        show($sourceDropzone);
         show($btnExtend);
+        show($btnHistory);
       }
 
       // --- Share split-button ---
@@ -1561,12 +1614,31 @@
         $historyPanel.classList.remove('history-panel--open');
       });
 
-      // --- Add files ---
-      $btnAddFiles.addEventListener('click', () => {
-        uploadStagedFiles = [];
-        $uploadFileList.innerHTML = '';
-        $btnUploadPush.disabled = true;
+      // --- Add files (drop target inside the Source panel) ---
+      function openUploadOverlay(files) {
+        uploadStagedFiles = files || [];
+        renderFileList(uploadStagedFiles, $uploadFileList);
+        $btnUploadPush.disabled = uploadStagedFiles.length === 0;
         show($uploadOverlay);
+      }
+      // A native file input covers the tile, so click-to-browse needs no
+      // handler of its own — only its change event and drag-and-drop.
+      $panelFileInput.addEventListener('change', () => {
+        openUploadOverlay(Array.from($panelFileInput.files));
+        $panelFileInput.value = '';
+      });
+      $sourceDropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        $sourceDropzone.classList.add('dropzone--active');
+      });
+      $sourceDropzone.addEventListener('dragleave', () => {
+        $sourceDropzone.classList.remove('dropzone--active');
+      });
+      $sourceDropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        $sourceDropzone.classList.remove('dropzone--active');
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length > 0) openUploadOverlay(files);
       });
       $btnUploadCancel.addEventListener('click', () => hide($uploadOverlay));
 
@@ -1859,6 +1931,7 @@
     async function loadProject(manifestCid) {
       show($loadingOverlay);
       closeSourceViewer();
+      clearToolbarItems(); // the previous viewer's controls no longer apply
 
       try {
         let result;

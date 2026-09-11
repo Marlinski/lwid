@@ -5,6 +5,10 @@
  * outputs (no runtime needed to read one), and — on demand — a Pyodide
  * kernel so cells can actually run. Run state is mirrored into lwid.store so a
  * shared link shows the last execution; "Save .ipynb" publishes a new version.
+ *
+ * Filename / kernel status / Run all / Stop / Restart / Clear / Save live in
+ * the shell's toolbar (LwidHost.setToolbar) rather than a bar drawn in here —
+ * see syncToolbar() below.
  */
 import { parseNotebook, serializeNotebook } from '/sandbox/__viewer__/nbformat.js';
 import { Kernel } from '/sandbox/__viewer__/kernel.js';
@@ -15,15 +19,6 @@ const Md = window.LwidMd;
 
 const $ = (id) => document.getElementById(id);
 const $doc = $('doc');
-const $title = $('title');
-const $fileSelect = $('file-select');
-const $status = $('status');
-const $statusText = $('status-text');
-const $runAll = $('run-all');
-const $stop = $('stop');
-const $restart = $('restart');
-const $clear = $('clear');
-const $save = $('save');
 
 const enc = (p) => p.split('/').map(encodeURIComponent).join('/');
 const STORE_PREFIX = 'viewer:notebook:';
@@ -36,14 +31,70 @@ function hashString(s) {
 
 const state = {
   path: null,
-  nb: null,           // { cells, language, meta, nbformat }
+  notebooks: [],       // every .ipynb in the project (file-select when > 1)
+  nb: null,             // { cells, language, meta, nbformat }
   fileHash: '',
   canEdit: false,
-  dirty: false,       // run-state differs from the saved file
+  dirty: false,        // run-state differs from the saved file
   running: false,
+  saving: false,
+  restarting: false,
 };
 
-const kernel = new Kernel({ onStatus: updateStatus });
+const kernel = new Kernel({ onStatus: syncToolbar });
+
+// ── Toolbar ──────────────────────────────────────────────────────────────
+
+const STATUS_LABEL = {
+  uninitialized: 'no kernel',
+  loading: 'starting Python…',
+  idle: 'kernel ready',
+  busy: 'running…',
+  dead: 'kernel crashed',
+};
+
+function syncToolbar() {
+  const items = [];
+
+  if (state.notebooks.length > 1) {
+    items.push({
+      kind: 'select', id: 'file', value: state.path,
+      options: state.notebooks.map((p) => ({ value: p, label: p })),
+      title: 'Switch notebook',
+    });
+  } else if (state.path) {
+    items.push({ kind: 'text', label: state.path.split('/').pop(), variant: 'title' });
+  }
+
+  items.push({ kind: 'status', label: STATUS_LABEL[kernel.status] || kernel.status, tone: kernel.status });
+
+  if (state.running) {
+    items.push({ kind: 'button', id: 'stop', label: '■ Stop', title: 'Stop execution' });
+  } else {
+    items.push({ kind: 'button', id: 'run-all', label: '▶▶ Run all', title: 'Run every cell' });
+  }
+  items.push({ kind: 'button', id: 'restart', label: '⟳ Restart', title: 'Restart the kernel', disabled: state.restarting });
+  items.push({ kind: 'button', id: 'clear', label: 'Clear', title: 'Clear all outputs' });
+
+  if (state.canEdit) {
+    items.push({
+      kind: 'button', id: 'save',
+      label: state.saving ? 'Saving…' : (state.dirty ? 'Save .ipynb •' : 'Save .ipynb'),
+      variant: 'primary', disabled: state.saving, title: 'Publish a new version',
+    });
+  }
+
+  Host.setToolbar(items);
+}
+
+Host.onToolbarClick((id, value) => {
+  if (id === 'file') openNotebook(value);
+  else if (id === 'run-all') runAll();
+  else if (id === 'stop') { kernel.interrupt(); toast('Execution stopped'); syncToolbar(); }
+  else if (id === 'restart') doRestart();
+  else if (id === 'clear') doClear();
+  else if (id === 'save') doSave();
+});
 
 // ── Boot ─────────────────────────────────────────────────────────────────
 
@@ -56,30 +107,16 @@ const kernel = new Kernel({ onStatus: updateStatus });
     return;
   }
   state.canEdit = !!manifest.canEdit;
-  const notebooks = manifest.files.map((f) => f.path).filter((p) => /\.ipynb$/i.test(p));
+  state.notebooks = manifest.files.map((f) => f.path).filter((p) => /\.ipynb$/i.test(p));
 
-  if (notebooks.length === 0) {
+  if (state.notebooks.length === 0) {
     $doc.innerHTML = '<div class="v-empty">No notebooks in this project.</div>';
+    syncToolbar();
     return;
   }
 
-  if (state.canEdit) $save.hidden = false;
-  else $('read-only').hidden = false;
-
-  if (notebooks.length > 1) {
-    $fileSelect.hidden = false;
-    for (const p of notebooks) {
-      const opt = document.createElement('option');
-      opt.value = p;
-      opt.textContent = p;
-      $fileSelect.appendChild(opt);
-    }
-    $fileSelect.addEventListener('change', () => openNotebook($fileSelect.value));
-  }
-
   const preferred =
-    notebooks.find((p) => /(^|\/)(index|main)\.ipynb$/i.test(p)) || notebooks[0];
-  $fileSelect.value = preferred;
+    state.notebooks.find((p) => /(^|\/)(index|main)\.ipynb$/i.test(p)) || state.notebooks[0];
   await openNotebook(preferred);
 })();
 
@@ -87,9 +124,9 @@ const kernel = new Kernel({ onStatus: updateStatus });
 
 async function openNotebook(path) {
   state.path = path;
-  $title.textContent = path.split('/').pop();
-  document.title = $title.textContent;
+  document.title = path.split('/').pop();
   $doc.innerHTML = '<div class="v-empty"><span class="v-spinner"></span></div>';
+  syncToolbar();
 
   let text;
   try {
@@ -110,6 +147,7 @@ async function openNotebook(path) {
 
   await maybeRestoreRunState();
   renderAll();
+  syncToolbar();
 }
 
 async function maybeRestoreRunState() {
@@ -383,8 +421,7 @@ function stripAnsi(s) {
 async function runCell(cell) {
   if (cell.type !== 'code' || state.running) return;
   state.running = true;
-  $runAll.hidden = true;
-  $stop.hidden = false;
+  syncToolbar();
   cell._el.classList.add('nb-cell--running');
   cell.outputs = [];
   renderOutputs(cell);
@@ -421,8 +458,7 @@ async function runCell(cell) {
     cell._el.classList.remove('nb-cell--running');
     updateGutter(cell);
     state.running = false;
-    $stop.hidden = true;
-    $runAll.hidden = false;
+    syncToolbar();
     markDirty();
     persist();
   }
@@ -437,6 +473,40 @@ async function runAll() {
   }
 }
 
+async function doRestart() {
+  state.restarting = true;
+  syncToolbar();
+  try { await kernel.restart(); toast('Kernel restarted'); }
+  catch (e) { toast('Restart failed: ' + e.message); }
+  finally { state.restarting = false; syncToolbar(); }
+}
+
+function doClear() {
+  for (const cell of state.nb.cells) {
+    if (cell.type === 'code') { cell.outputs = []; cell.execCount = null; renderOutputs(cell); updateGutter(cell); }
+  }
+  markDirty();
+  persist();
+}
+
+async function doSave() {
+  state.saving = true;
+  syncToolbar();
+  try {
+    const text = serializeNotebook(state.nb, state.nb.cells);
+    await Host.saveVersion([{ path: state.path, content: text }]);
+    state.fileHash = hashString(text);
+    state.dirty = false;
+    if (window.lwid) { try { await window.lwid.store.delete(STORE_PREFIX + state.path); } catch (_) { /* ignore */ } }
+    toast('Published new version');
+  } catch (err) {
+    toast('Save failed: ' + err.message);
+  } finally {
+    state.saving = false;
+    syncToolbar();
+  }
+}
+
 function updateGutter(cell) {
   const label = cell._el.querySelector('.nb-gutter__label');
   if (label) label.textContent = `In [${cell.execCount ?? ' '}]:`;
@@ -447,58 +517,10 @@ function autoScroll(cell) {
   if (r.bottom > window.innerHeight) cell._el.scrollIntoView({ block: 'nearest' });
 }
 
-// ── Toolbar ──────────────────────────────────────────────────────────────
-
-function updateStatus(s) {
-  $status.className = 'nb-status nb-status--' + s;
-  $statusText.textContent = {
-    uninitialized: 'no kernel',
-    loading: 'starting Python…',
-    idle: 'kernel ready',
-    busy: 'running…',
-    dead: 'kernel crashed',
-  }[s] || s;
-}
-
-$runAll.addEventListener('click', () => { runAll(); });
-$stop.addEventListener('click', () => { kernel.interrupt(); toast('Execution stopped'); });
-$restart.addEventListener('click', async () => {
-  $restart.disabled = true;
-  try { await kernel.restart(); toast('Kernel restarted'); }
-  catch (e) { toast('Restart failed: ' + e.message); }
-  finally { $restart.disabled = false; }
-});
-$clear.addEventListener('click', () => {
-  for (const cell of state.nb.cells) {
-    if (cell.type === 'code') { cell.outputs = []; cell.execCount = null; renderOutputs(cell); updateGutter(cell); }
-  }
-  markDirty();
-  persist();
-});
-
 function markDirty() {
   state.dirty = true;
-  if (state.canEdit) $save.textContent = 'Save .ipynb •';
+  syncToolbar();
 }
-
-$save.addEventListener('click', async () => {
-  $save.disabled = true;
-  $save.textContent = 'Saving…';
-  try {
-    const text = serializeNotebook(state.nb, state.nb.cells);
-    await Host.saveVersion([{ path: state.path, content: text }]);
-    state.fileHash = hashString(text);
-    state.dirty = false;
-    if (window.lwid) { try { await window.lwid.store.delete(STORE_PREFIX + state.path); } catch (_) { /**/ } }
-    toast('Published new version');
-    $save.textContent = 'Save .ipynb';
-  } catch (err) {
-    toast('Save failed: ' + err.message);
-    $save.textContent = 'Save .ipynb •';
-  } finally {
-    $save.disabled = false;
-  }
-});
 
 // ── utils ────────────────────────────────────────────────────────────────
 

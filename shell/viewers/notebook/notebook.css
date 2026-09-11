@@ -1,27 +1,8 @@
 .nb-app { display: flex; flex-direction: column; height: 100%; }
 
-/* ── Toolbar ────────────────────────────────────────────────────────────── */
-
-.nb-status {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; color: var(--v-text-soft);
-}
-.nb-status__dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--v-text-muted);
-}
-.nb-status--idle   .nb-status__dot { background: var(--v-ok); }
-.nb-status--loading .nb-status__dot,
-.nb-status--busy   .nb-status__dot { background: #d29922; animation: nb-pulse 1s ease-in-out infinite; }
-.nb-status--dead   .nb-status__dot { background: var(--v-danger); }
-@keyframes nb-pulse { 50% { opacity: 0.3; } }
-
-.nb-file-select {
-  font: inherit; font-size: 12px;
-  background: var(--v-bg); color: var(--v-text);
-  border: 1px solid var(--v-border-strong); border-radius: 6px;
-  padding: 4px 6px;
-}
+/* Filename / kernel status / Run all / Stop / Restart / Clear / Save live in
+   the shell's toolbar (see notebook.js syncToolbar()) — nothing to style
+   here for them. */
 
 /* ── Notebook body ──────────────────────────────────────────────────────── */
 

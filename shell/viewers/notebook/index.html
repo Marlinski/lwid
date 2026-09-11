@@ -17,20 +17,9 @@
 </head>
 <body>
   <div class="v-app nb-app">
-    <div class="v-bar">
-      <span class="v-bar__title" id="title">Notebook</span>
-      <select class="nb-file-select" id="file-select" hidden></select>
-      <span class="v-bar__spacer"></span>
-      <span class="nb-status nb-status--uninitialized" id="status" title="Python kernel status">
-        <span class="nb-status__dot"></span><span id="status-text">no kernel</span>
-      </span>
-      <button class="v-btn" id="run-all" data-act="run-all" title="Run every cell">▶▶ Run all</button>
-      <button class="v-btn" id="stop" hidden title="Stop execution">■ Stop</button>
-      <button class="v-btn" id="restart" title="Restart the kernel">⟳ Restart</button>
-      <button class="v-btn" id="clear" title="Clear all outputs">Clear</button>
-      <span class="v-bar__badge" id="read-only" hidden>read-only</span>
-      <button class="v-btn v-btn--primary" id="save" hidden title="Publish a new version">Save .ipynb</button>
-    </div>
+    <!-- No bar here — filename / kernel status / Run all / Stop / Restart /
+         Clear / Save live in the shell's toolbar, declared via
+         LwidHost.setToolbar(). -->
     <div class="nb-scroll" id="scroll">
       <div class="nb-doc" id="doc">
         <div class="v-empty"><span class="v-spinner"></span></div>

@@ -16,11 +16,7 @@ const Md = window.LwidMd;
 
 const $ = (id) => document.getElementById(id);
 const $sidebar = $('sidebar');
-const $title = $('title');
 const $main = $('main');
-const $editBtn = $('edit-btn');
-const $saveBtn = $('save-btn');
-const $cancelBtn = $('cancel-btn');
 
 // Elements inside <main> are recreated when toggling the editor — query fresh.
 const content = () => $('content');
@@ -31,10 +27,37 @@ const state = {
   docs: [],       // markdown paths
   order: [],      // sidebar entries: { path, label, indent } | { group }
   current: null,
+  title: 'Docs',
   canEdit: false,
   editing: false,
+  saving: false,
   raw: '',
 };
+
+// Title / sidebar-toggle / Edit / Save / Cancel live in the shell's toolbar
+// (see js/viewers.js + LWID_TOOLBAR_SET) rather than a second bar in here.
+function syncToolbar() {
+  const items = [
+    { kind: 'button', id: 'toggle-sidebar', label: '☰', title: 'Toggle sidebar' },
+    { kind: 'text', label: state.title, variant: 'title' },
+  ];
+  if (state.canEdit) {
+    if (state.editing) {
+      items.push({ kind: 'button', id: 'save', label: state.saving ? 'Saving…' : 'Save', variant: 'primary', disabled: state.saving });
+      items.push({ kind: 'button', id: 'cancel', label: 'Cancel', disabled: state.saving });
+    } else {
+      items.push({ kind: 'button', id: 'edit', label: 'Edit', title: 'Edit this document' });
+    }
+  }
+  Host.setToolbar(items);
+}
+
+Host.onToolbarClick((id) => {
+  if (id === 'toggle-sidebar') $sidebar.hidden = !$sidebar.hidden;
+  else if (id === 'edit') enterEdit();
+  else if (id === 'save') saveEdit();
+  else if (id === 'cancel') { const d = state.current; exitEdit(); openDoc(d); }
+});
 
 const isMd = (p) => /\.(md|markdown)$/i.test(p);
 const base = (p) => p.split('/').pop();
@@ -152,8 +175,9 @@ async function openDoc(path, anchor) {
   const { html, meta, headings } = Md.render(src);
   content().innerHTML = html;
 
-  $title.textContent = meta.title || firstHeadingText(headings) || titleFromPath(doc);
-  document.title = $title.textContent;
+  state.title = meta.title || firstHeadingText(headings) || titleFromPath(doc);
+  document.title = state.title;
+  syncToolbar();
 
   rewriteLinks(doc);
   buildToc(headings);
@@ -241,9 +265,7 @@ function onScroll() {
 
 function enterEdit() {
   state.editing = true;
-  $editBtn.hidden = true;
-  $saveBtn.hidden = false;
-  $cancelBtn.hidden = false;
+  syncToolbar();
 
   $main.innerHTML = `
     <div class="md-editor">
@@ -272,33 +294,26 @@ function enterEdit() {
 
 function exitEdit() {
   state.editing = false;
-  $saveBtn.hidden = true;
-  $cancelBtn.hidden = true;
-  $editBtn.hidden = false;
   renderReaderShell();
+  syncToolbar();
 }
 
 async function saveEdit() {
   const next = $('md-src').value;
-  $saveBtn.disabled = true;
-  $saveBtn.textContent = 'Saving…';
+  state.saving = true;
+  syncToolbar();
   try {
     await Host.saveVersion([{ path: state.current, content: next }]);
     toast('Published new version');
+    state.saving = false;
     exitEdit();
     await openDoc(state.current);
   } catch (err) {
     toast('Save failed: ' + err.message);
-  } finally {
-    $saveBtn.disabled = false;
-    $saveBtn.textContent = 'Save';
+    state.saving = false;
+    syncToolbar();
   }
 }
-
-$editBtn.addEventListener('click', enterEdit);
-$saveBtn.addEventListener('click', saveEdit);
-$cancelBtn.addEventListener('click', () => { const d = state.current; exitEdit(); openDoc(d); });
-$('menu-toggle').addEventListener('click', () => { $sidebar.hidden = !$sidebar.hidden; });
 
 // ── Boot ─────────────────────────────────────────────────────────────────
 
@@ -315,10 +330,9 @@ $('menu-toggle').addEventListener('click', () => { $sidebar.hidden = !$sidebar.h
   state.canEdit = !!manifest.canEdit;
   state.docs = manifest.files.map((f) => f.path).filter(isMd);
 
-  if (state.canEdit) $editBtn.hidden = false;
-  else $('read-only').hidden = false;
-
   if (state.docs.length === 0) {
+    state.title = 'Docs';
+    syncToolbar();
     content().innerHTML = '<p class="v-empty">No Markdown documents in this project.</p>';
     return;
   }

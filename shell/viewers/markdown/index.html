@@ -17,15 +17,8 @@
 </head>
 <body>
   <div class="v-app">
-    <div class="v-bar">
-      <button class="v-btn v-btn--ghost" id="menu-toggle" title="Toggle sidebar" aria-label="Toggle sidebar">☰</button>
-      <span class="v-bar__title" id="title">Docs</span>
-      <span class="v-bar__spacer"></span>
-      <span class="v-bar__badge" id="read-only" hidden>read-only</span>
-      <button class="v-btn" id="edit-btn" hidden>Edit</button>
-      <button class="v-btn v-btn--primary" id="save-btn" hidden>Save</button>
-      <button class="v-btn" id="cancel-btn" hidden>Cancel</button>
-    </div>
+    <!-- No bar here — title / sidebar toggle / edit / save live in the
+         shell's toolbar, declared via LwidHost.setToolbar(). -->
     <div class="v-body">
       <nav class="v-sidebar" id="sidebar" aria-label="Documents"></nav>
       <main class="v-main" id="main">

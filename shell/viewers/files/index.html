@@ -11,6 +11,9 @@
   <script src="/sandbox/__shared__/viewer-ui.js"></script>
   <script src="/sandbox/__shared__/viewer-host.js"></script>
   <style>
+    /* No .v-bar here — file count / download live in the shell's toolbar,
+       declared via LwidHost.setToolbar(). */
+    .v-app { height: 100%; }
     .fb-main { padding: 0; }
     .fb-file-head {
       position: sticky; top: 0;
@@ -39,13 +42,6 @@
 </head>
 <body>
   <div class="v-app">
-    <div class="v-bar">
-      <button class="v-btn v-btn--ghost" id="menu-toggle" title="Toggle file list" aria-label="Toggle file list">☰</button>
-      <span class="v-bar__title" id="title">Files</span>
-      <span class="v-bar__spacer"></span>
-      <span class="v-bar__badge" id="count"></span>
-      <button class="v-btn" id="download" hidden>Download</button>
-    </div>
     <div class="v-body">
       <nav class="v-sidebar" id="sidebar" aria-label="Files"></nav>
       <main class="v-main fb-main" id="main">
@@ -56,11 +52,9 @@
 
   <script type="module">
     const { toast, escapeHtml, formatBytes } = window.LwidUI;
+    const Host = window.LwidHost;
     const $sidebar = document.getElementById('sidebar');
     const $main = document.getElementById('main');
-    const $count = document.getElementById('count');
-    const $download = document.getElementById('download');
-    const $menuToggle = document.getElementById('menu-toggle');
 
     const TEXT_EXT = /\.(txt|md|markdown|json|jsonl|ndjson|csv|tsv|log|ya?ml|toml|ini|cfg|conf|env|xml|svg|html?|css|scss|less|js|mjs|cjs|jsx|ts|tsx|py|rb|go|rs|c|h|cpp|hpp|cc|java|kt|swift|php|sh|bash|zsh|fish|sql|lua|r|jl|pl|dockerfile|makefile|gitignore|lock)$/i;
     const HL_LANG = {
@@ -82,6 +76,24 @@
 
     let files = [];
     let active = null;
+    let sidebarOpen = true;
+
+    function syncToolbar() {
+      Host.setToolbar([
+        { kind: 'button', id: 'toggle-sidebar', label: '☰', title: 'Toggle file list' },
+        { kind: 'text', label: `${files.length} file${files.length === 1 ? '' : 's'}`, variant: 'title' },
+        ...(active ? [{ kind: 'button', id: 'download', label: 'Download', title: 'Download this file' }] : []),
+      ]);
+    }
+
+    Host.onToolbarClick((id) => {
+      if (id === 'toggle-sidebar') {
+        sidebarOpen = !sidebarOpen;
+        $sidebar.hidden = !sidebarOpen;
+      } else if (id === 'download' && active) {
+        downloadFile(active);
+      }
+    });
 
     function render() {
       $sidebar.innerHTML = '';
@@ -111,18 +123,17 @@
     async function open(path) {
       active = path;
       render();
-      if (window.matchMedia('(max-width: 720px)').matches) $sidebar.hidden = true;
+      syncToolbar();
+      if (window.matchMedia('(max-width: 720px)').matches) { sidebarOpen = false; $sidebar.hidden = true; }
       const f = files.find((x) => x.path === path);
       $main.innerHTML = `<div class="fb-file-head"><strong>${escapeHtml(path)}</strong><span>${formatBytes(f.size)}</span></div><div class="fb-content"><div class="v-empty"><span class="v-spinner"></span></div></div>`;
       const $content = $main.querySelector('.fb-content');
-      $download.hidden = false;
-      $download.onclick = () => downloadFile(path);
 
       const e = ext(path);
       const isImage = /^(png|jpe?g|gif|webp|svg|ico|avif|bmp)$/.test(e);
       try {
         if (isImage) {
-          const bytes = await window.LwidHost.readBytes(path);
+          const bytes = await Host.readBytes(path);
           const mime = f.mimeType && f.mimeType.startsWith('image/') ? f.mimeType : 'image/' + (e === 'jpg' ? 'jpeg' : e);
           const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
           $content.innerHTML = `<div class="fb-image-wrap"><img alt="${escapeHtml(path)}" src="${url}"></div>`;
@@ -133,7 +144,7 @@
           $content.querySelector('#dl').onclick = () => downloadFile(path);
           return;
         }
-        const text = await window.LwidHost.readText(path);
+        const text = await Host.readText(path);
         const lang = HL_LANG[e];
         let highlighted;
         if (window.hljs && lang && window.hljs.getLanguage(lang)) {
@@ -150,7 +161,7 @@
     }
 
     async function downloadFile(path) {
-      const bytes = await window.LwidHost.readBytes(path);
+      const bytes = await Host.readBytes(path);
       const url = URL.createObjectURL(new Blob([bytes]));
       const a = document.createElement('a');
       a.href = url;
@@ -159,17 +170,16 @@
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
-    $menuToggle.addEventListener('click', () => { $sidebar.hidden = !$sidebar.hidden; });
-
     (async () => {
       try {
-        files = await window.LwidHost.files();
+        files = await Host.files();
       } catch (err) {
         $main.innerHTML = `<div class="v-empty">Failed to load project files.<br>${escapeHtml(err.message)}</div>`;
+        syncToolbar();
         return;
       }
-      $count.textContent = `${files.length} file${files.length === 1 ? '' : 's'}`;
       render();
+      syncToolbar();
 
       // Auto-open a sensible default: a readme, else the first text file.
       const readme = files.find((f) => /readme/i.test(f.path.split('/').pop()));

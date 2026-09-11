@@ -472,6 +472,73 @@ button:disabled {
 }
 
 /* ---------------------------------------------------------------------------
+ * Toolbar viewer slot — controls declared by the active viewer
+ * (shell/js/viewers.js) over postMessage. Empty for a plain website.
+ * --------------------------------------------------------------------------- */
+
+.toolbar__viewer-slot {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  overflow: hidden;
+}
+
+.toolbar__viewer-btn {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.78rem;
+}
+
+.toolbar__viewer-text {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.toolbar__viewer-text--title {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.toolbar__viewer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.toolbar__viewer-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-subtle);
+  flex-shrink: 0;
+}
+.toolbar__viewer-status--idle .toolbar__viewer-status-dot { background: var(--green); }
+.toolbar__viewer-status--busy .toolbar__viewer-status-dot,
+.toolbar__viewer-status--loading .toolbar__viewer-status-dot {
+  background: var(--amber);
+  animation: toolbar-status-pulse 1s ease-in-out infinite;
+}
+.toolbar__viewer-status--dead .toolbar__viewer-status-dot { background: var(--danger); }
+@keyframes toolbar-status-pulse { 50% { opacity: 0.35; } }
+
+.toolbar__viewer-select {
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.4rem;
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-width: 160px;
+}
+
+/* ---------------------------------------------------------------------------
  * Share split-button
  * --------------------------------------------------------------------------- */
 
@@ -666,6 +733,28 @@ button:disabled {
   letter-spacing: 0.04em;
 }
 
+.source-panel__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.source-panel__icon-btn {
+  background: none;
+  color: var(--text-muted);
+  padding: 0.25rem;
+  line-height: 1;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.source-panel__icon-btn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
 .source-panel__close {
   background: none;
   color: var(--text-muted);
@@ -797,6 +886,41 @@ button:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Add-files drop target — replaces the old toolbar button; lives inside the
+ * Source panel and only shows up for the write-key holder.
+ * --------------------------------------------------------------------------- */
+
+.source-panel__dropzone {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin: 0.5rem 0.75rem;
+  padding: 0.6rem;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.source-panel__dropzone:hover,
+.source-panel__dropzone.dropzone--active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.source-panel__dropzone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1233,32 +1357,32 @@ button:disabled {
 }
 
 /* ---------------------------------------------------------------------------
- * Toolbar expiry badge & extend (centered)
+ * Toolbar expiry & extend — deliberately quiet: a small muted label, not a
+ * badge competing for attention with the actual content.
  * --------------------------------------------------------------------------- */
 
-.toolbar__center {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
 .toolbar__expiry {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: 9999px;
+  font-size: 0.72rem;
+  color: var(--text-subtle);
   white-space: nowrap;
-  margin-right: 4px;
+  flex-shrink: 0;
 }
 
 .toolbar__extend-wrap {
   position: relative;
+  flex-shrink: 0;
 }
 
 .toolbar__btn--extend {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.3rem;
   color: var(--accent);
+  border-color: transparent;
+  background: transparent;
+}
+.toolbar__btn--extend:hover:not(:disabled) {
+  border-color: transparent;
+  text-decoration: underline;
 }
 
 .extend-menu {

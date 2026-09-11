@@ -13,10 +13,24 @@
  *   await LwidHost.saveVersion(changed)    -> { manifestCid }
  *       changed: [{ path, content: string | Uint8Array | ArrayBuffer }]
  *
+ *   LwidHost.setToolbar(items)             declare the shell toolbar's
+ *       viewer-owned center slot; see the item shapes below.
+ *   LwidHost.onToolbarClick(fn)            fn(id, value?) for a click (or a
+ *       <select> change) on one of those items.
+ *
  * File reads go straight through the Service Worker (`/sandbox/<path>`); only
  * `saveVersion` needs the shell, which owns the write key and the push flow.
  * That round-trip uses `LWID_HOST_*` messages, kept separate from the
  * `LWID_*` store protocol in lwid-sdk.js so the two never collide on ids.
+ *
+ * Toolbar items (each `{ id, kind, label, ... }`):
+ *   kind: 'button' (default) — { id, label, variant?: 'primary', disabled?, title? }
+ *   kind: 'text'             — { label, variant?: 'title', title? }
+ *   kind: 'status'           — { label, tone?: 'idle'|'busy'|'loading'|'dead', title? }
+ *   kind: 'select'           — { id, value, options: [{ value, label }], title? }
+ * There is no bar of its own inside the sandbox — the shell renders these as
+ * real toolbar controls, which is also what keeps a viewer from drawing a
+ * second bar on top of the shell's.
  */
 (function () {
   'use strict';
@@ -25,15 +39,20 @@
   const pending = new Map();
   let nextId = 1;
   let manifestCache = null;
+  let toolbarClickHandler = null;
 
   window.addEventListener('message', (event) => {
     const msg = event.data;
-    if (!msg || msg.type !== 'LWID_HOST_RESULT') return;
-    const entry = pending.get(msg.id);
-    if (!entry) return;
-    pending.delete(msg.id);
-    if (msg.error) entry.reject(new Error(msg.error));
-    else entry.resolve(msg.value);
+    if (!msg) return;
+    if (msg.type === 'LWID_HOST_RESULT') {
+      const entry = pending.get(msg.id);
+      if (!entry) return;
+      pending.delete(msg.id);
+      if (msg.error) entry.reject(new Error(msg.error));
+      else entry.resolve(msg.value);
+    } else if (msg.type === 'LWID_TOOLBAR_CLICK' && toolbarClickHandler) {
+      toolbarClickHandler(msg.id, msg.value);
+    }
   });
 
   function request(type, payload, timeoutMs = 60000) {
@@ -97,6 +116,12 @@
       const result = await request('LWID_HOST_SAVE', { files }, 120000);
       manifestCache = null; // project changed underneath us
       return result;
+    },
+    setToolbar(items) {
+      window.parent.postMessage({ type: 'LWID_TOOLBAR_SET', items: items || [] }, '*');
+    },
+    onToolbarClick(handler) {
+      toolbarClickHandler = handler;
     },
   };
 })();
