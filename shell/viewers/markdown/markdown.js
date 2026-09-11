@@ -10,7 +10,7 @@
  * index.html; this module just drives them.
  */
 
-const { toast, escapeHtml, resolvePath, theme } = window.LwidUI;
+const { toast, escapeHtml, resolvePath, theme, sidebarToggle } = window.LwidUI;
 const Host = window.LwidHost;
 const Md = window.LwidMd;
 
@@ -20,6 +20,7 @@ theme.apply();
 const $ = (id) => document.getElementById(id);
 const $sidebar = $('sidebar');
 const $main = $('main');
+const sidebar = sidebarToggle($sidebar);
 
 // Elements inside <main> are recreated when toggling the editor — query fresh.
 const content = () => $('content');
@@ -39,14 +40,14 @@ const state = {
 };
 
 // Edit / Save / Cancel live in the shell's toolbar (see js/viewers.js +
-// LWID_TOOLBAR_SET) rather than a second bar in here. No sidebar-toggle item
-// — the shell's own "Source" button, right next to these, already opens a
-// panel; a second one just for this sidebar would be the same affordance
-// twice. The doc nav stays visible instead. The document title goes through
-// LWID_TITLE_SET (see setTitle calls below), not a toolbar item — it's
-// shell-owned, next to Source, the same for every viewer.
+// LWID_TOOLBAR_SET) rather than a second bar in here. The document title
+// goes through LWID_TITLE_SET (see setTitle calls below), not a toolbar
+// item — it's shell-owned, next to Source, the same for every viewer.
+// The sidebar toggle *is* a toolbar item — below viewer.css's mobile
+// breakpoint the doc nav goes off-canvas (nowhere to put a fixed-width
+// sidebar on a phone), so it needs its own way back open.
 function syncToolbar() {
-  const items = [];
+  const items = [sidebar.toolbarItem];
   if (state.canEdit) {
     if (state.editing) {
       items.push({
@@ -71,6 +72,7 @@ Host.onToolbarClick((id) => {
   else if (id === 'save') saveEdit();
   else if (id === 'cancel') { const d = state.current; exitEdit(); openDoc(d); }
   else if (id === 'theme') { theme.toggle(); syncToolbar(); }
+  else if (id === 'sidebar') sidebar.toggle();
 });
 
 const isMd = (p) => /\.(md|markdown)$/i.test(p);
@@ -176,6 +178,7 @@ async function openDoc(path, anchor) {
   if (!state.docs.includes(doc)) { toast('Not found: ' + path); return; }
   state.current = doc;
   renderSidebar();
+  sidebar.close(); // no-op on desktop; on mobile, picking a doc should close the overlay
 
   content().innerHTML = '<p class="v-empty"><span class="v-spinner"></span></p>';
   let src;

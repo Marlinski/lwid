@@ -51,10 +51,11 @@
   </div>
 
   <script type="module">
-    const { toast, escapeHtml, formatBytes } = window.LwidUI;
+    const { toast, escapeHtml, formatBytes, sidebarToggle } = window.LwidUI;
     const Host = window.LwidHost;
     const $sidebar = document.getElementById('sidebar');
     const $main = document.getElementById('main');
+    const sidebar = sidebarToggle($sidebar);
 
     const TEXT_EXT = /\.(txt|md|markdown|json|jsonl|ndjson|csv|tsv|log|ya?ml|toml|ini|cfg|conf|env|xml|svg|html?|css|scss|less|js|mjs|cjs|jsx|ts|tsx|py|rb|go|rs|c|h|cpp|hpp|cc|java|kt|swift|php|sh|bash|zsh|fish|sql|lua|r|jl|pl|dockerfile|makefile|gitignore|lock)$/i;
     const HL_LANG = {
@@ -77,18 +78,21 @@
     let files = [];
     let active = null;
 
-    // No sidebar-toggle item here — the shell's "Source" button sits right
-    // next to this toolbar and already opens a panel; this file list stays
-    // visible instead of duplicating that affordance. The open file's name
-    // goes through Host.setTitle() (shell-owned, next to Source) rather than
-    // a toolbar item, same as every other viewer.
+    // The open file's name goes through Host.setTitle() (shell-owned, next
+    // to Source) rather than a toolbar item, same as every other viewer.
+    // The sidebar toggle *is* one, though — below viewer.css's mobile
+    // breakpoint the file list goes off-canvas, so it needs its own way
+    // back open (there's no other way to switch files on a phone).
     function syncToolbar() {
       Host.setTitle(active ? active.split('/').pop() : `${files.length} file${files.length === 1 ? '' : 's'}`);
-      Host.setToolbar(active ? [{ kind: 'button', id: 'download', label: 'Download', title: 'Download this file' }] : []);
+      const items = [sidebar.toolbarItem];
+      if (active) items.push({ kind: 'button', id: 'download', label: 'Download', title: 'Download this file' });
+      Host.setToolbar(items);
     }
 
     Host.onToolbarClick((id) => {
       if (id === 'download' && active) downloadFile(active);
+      else if (id === 'sidebar') sidebar.toggle();
     });
 
     function render() {
@@ -120,6 +124,7 @@
       active = path;
       render();
       syncToolbar();
+      sidebar.close(); // no-op on desktop; on mobile, picking a file should close the overlay
       const f = files.find((x) => x.path === path);
       $main.innerHTML = `<div class="fb-file-head"><strong>${escapeHtml(path)}</strong><span>${formatBytes(f.size)}</span></div><div class="fb-content"><div class="v-empty"><span class="v-spinner"></span></div></div>`;
       const $content = $main.querySelector('.fb-content');
