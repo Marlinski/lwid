@@ -83,44 +83,51 @@
       <a href="/docs.html" class="landing__docs-link">Learn how it works</a>
     </p>
 
-    <!-- What you can drop — it's not just websites -->
+    <!-- What you can drop — it's not just websites.
+         Each column is a card (the "encasing div") plus a CTA slot that sits
+         below and outside it — never inside the card's own border/background. -->
     <div class="landing__capabilities">
-      <div class="landing__cap-card">
-        <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="1.5" y="3" width="13" height="10.5" rx="1.5"/><path d="M1.5 6h13"/><circle cx="3.4" cy="4.5" r="0.4" fill="currentColor" stroke="none"/>
-        </svg>
-        <h3>Website</h3>
-        <p>Any HTML/CSS/JS folder &mdash; sandboxed, works like a static site.</p>
-        <button type="button" class="landing__cap-cta" id="btn-quickstart-website">
-          <span class="landing__cap-cta__plus" aria-hidden="true">+</span>Create a demo page
-        </button>
+      <div class="landing__cap-col">
+        <div class="landing__cap-card">
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1.5" y="3" width="13" height="10.5" rx="1.5"/><path d="M1.5 6h13"/><circle cx="3.4" cy="4.5" r="0.4" fill="currentColor" stroke="none"/>
+          </svg>
+          <h3>Website</h3>
+          <p>Any HTML/CSS/JS folder &mdash; sandboxed, works like a static site.</p>
+        </div>
+        <div class="landing__cap-cta-slot">
+          <button type="button" class="landing__cap-cta" id="btn-quickstart-website">
+            <span class="landing__cap-cta__plus" aria-hidden="true">+</span>Create a demo page
+          </button>
+        </div>
       </div>
-      <div class="landing__cap-card">
-        <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="2" width="12" height="4.5" rx="1"/><rect x="2" y="8.5" width="12" height="4.5" rx="1"/><path d="M6.2 10l2.2 1.25-2.2 1.25z" fill="currentColor" stroke="none"/>
-        </svg>
-        <h3>Notebook</h3>
-        <p>Drop a <code>.ipynb</code> &mdash; Python runs right in the browser, numpy &amp; pandas included.</p>
-        <button type="button" class="landing__cap-cta" id="btn-quickstart-notebook">
-          <span class="landing__cap-cta__plus" aria-hidden="true">+</span>New Notebook
-        </button>
+      <div class="landing__cap-col">
+        <div class="landing__cap-card">
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="12" height="4.5" rx="1"/><rect x="2" y="8.5" width="12" height="4.5" rx="1"/><path d="M6.2 10l2.2 1.25-2.2 1.25z" fill="currentColor" stroke="none"/>
+          </svg>
+          <h3>Notebook</h3>
+          <p>Drop a <code>.ipynb</code> &mdash; Python runs right in the browser, numpy &amp; pandas included.</p>
+        </div>
+        <div class="landing__cap-cta-slot">
+          <button type="button" class="landing__cap-cta" id="btn-quickstart-notebook">
+            <span class="landing__cap-cta__plus" aria-hidden="true">+</span>New Notebook
+          </button>
+        </div>
       </div>
-      <div class="landing__cap-card">
-        <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 1.5h5.5L12 4v9.5a1 1 0 01-1 1H4a1 1 0 01-1-1v-11a1 1 0 011-1z"/><path d="M6 6.5h4M6 8.75h4M6 11h2.5"/>
-        </svg>
-        <h3>Docs</h3>
-        <p>Drop Markdown files &mdash; sidebar &amp; navigation, generated for free.</p>
-        <button type="button" class="landing__cap-cta" id="btn-quickstart-docs">
-          <span class="landing__cap-cta__plus" aria-hidden="true">+</span>New Docs
-        </button>
-      </div>
-      <div class="landing__cap-card">
-        <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-          <ellipse cx="8" cy="4" rx="5.5" ry="2.5"/><path d="M2.5 4v4c0 1.38 2.46 2.5 5.5 2.5s5.5-1.12 5.5-2.5V4"/><path d="M2.5 8v4c0 1.38 2.46 2.5 5.5 2.5s5.5-1.12 5.5-2.5V8"/>
-        </svg>
-        <h3>Shared storage</h3>
-        <p>Every app gets an encrypted store, live and shared across everyone who opens the link.</p>
+      <div class="landing__cap-col">
+        <div class="landing__cap-card">
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 1.5h5.5L12 4v9.5a1 1 0 01-1 1H4a1 1 0 01-1-1v-11a1 1 0 011-1z"/><path d="M6 6.5h4M6 8.75h4M6 11h2.5"/>
+          </svg>
+          <h3>Docs</h3>
+          <p>Drop Markdown files &mdash; sidebar &amp; navigation, generated for free.</p>
+        </div>
+        <div class="landing__cap-cta-slot">
+          <button type="button" class="landing__cap-cta" id="btn-quickstart-docs">
+            <span class="landing__cap-cta__plus" aria-hidden="true">+</span>New Docs
+          </button>
+        </div>
       </div>
     </div>
 

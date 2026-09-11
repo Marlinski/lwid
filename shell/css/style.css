@@ -298,6 +298,18 @@ button:disabled {
   margin-top: 2.25rem;
 }
 
+/* One column per capability: the card (the "encasing div") stops at its own
+ * border, and the CTA lives in a slot below — outside that border, not
+ * inside it. Every column reserves the same slot height (even the one with
+ * no button) so all four card boxes still end on the same line. */
+
+.landing__cap-col {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  height: 100%;
+}
+
 .landing__cap-card {
   display: flex;
   flex-direction: column;
@@ -308,7 +320,7 @@ button:disabled {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   text-align: center;
-  height: 100%;
+  flex: 1 1 auto;
 }
 
 .landing__cap-card svg {
@@ -335,22 +347,25 @@ button:disabled {
   color: var(--text);
 }
 
+.landing__cap-cta-slot {
+  flex: 0 0 auto;
+  display: flex;
+  padding-top: 0.6rem;
+}
+
 /* Quick start CTA — skip the drop, scaffold something and start editing.
- * Sits apart from the blurb (generous margin-top, not glued to the text),
- * with a slow multicolor gradient chasing its own border — the two-layer
+ * Full width of the card above it, not an auto-width pill off to one side.
+ * A slow multicolor gradient chases its own border — the two-layer
  * background-clip trick: an opaque fill on padding-box hides the gradient
  * everywhere except the ring at border-box, so only the "border" moves. */
 
-.landing__cap-card {
-  padding-bottom: 1.15rem;
-}
-
 .landing__cap-cta {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   align-items: center;
+  justify-content: center;
   gap: 0.3rem;
-  margin-top: 1.1rem;
-  padding: 0.55rem 1.05rem 0.55rem 0.8rem;
+  padding: 0.55rem 1.05rem;
   font: inherit;
   font-size: 0.8rem;
   font-weight: 600;
