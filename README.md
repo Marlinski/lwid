@@ -180,7 +180,10 @@ the encrypted project store, so a shared link shows the last execution.
 
 Viewers pull a few libraries from CDN at runtime (markdown-it, highlight.js,
 DOMPurify from cdnjs/jsDelivr; Pyodide from jsDelivr) — the same CDN reliance
-the shell already has for syntax highlighting.
+the shell already has for syntax highlighting. The shell itself normally
+needs nothing beyond the browser's Web Crypto API, but on a browser that
+doesn't yet recognize Ed25519 there, project creation/signing falls back to
+`@noble/ed25519` from jsDelivr, loaded only on browsers that actually need it.
 
 ## Building from source
 
