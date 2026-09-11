@@ -1420,8 +1420,10 @@
       nbformat_minor: 5,
     }, null, 1);
 
+    // No heading — the docs viewer titles the page from this (README.md ->
+    // "README") when the doc itself doesn't supply one, which reads better
+    // than a placeholder "New Project" heading baked into the content.
     const STARTER_DOCS =
-      '# New Project\n\n' +
       'Start writing here — Markdown renders automatically.\n' +
       'Add more `.md` files for a sidebar with navigation, or a `SUMMARY.md` to control the order.\n';
 
