@@ -91,6 +91,7 @@
         </svg>
         <h3>Website</h3>
         <p>Any HTML/CSS/JS folder &mdash; sandboxed, works like a static site.</p>
+        <button type="button" class="landing__cap-cta" id="btn-quickstart-website">+ Create a demo page</button>
       </div>
       <div class="landing__cap-card">
         <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
@@ -98,6 +99,7 @@
         </svg>
         <h3>Notebook</h3>
         <p>Drop a <code>.ipynb</code> &mdash; Python runs right in the browser, numpy &amp; pandas included.</p>
+        <button type="button" class="landing__cap-cta" id="btn-quickstart-notebook">+ New Jupyter Notebook</button>
       </div>
       <div class="landing__cap-card">
         <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
@@ -105,6 +107,7 @@
         </svg>
         <h3>Docs</h3>
         <p>Drop Markdown files &mdash; sidebar &amp; navigation, generated for free.</p>
+        <button type="button" class="landing__cap-cta" id="btn-quickstart-docs">+ New Docs</button>
       </div>
       <div class="landing__cap-card">
         <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
@@ -113,12 +116,6 @@
         <h3>Shared storage</h3>
         <p>Every app gets an encrypted store, live and shared across everyone who opens the link.</p>
       </div>
-    </div>
-
-    <div class="landing__quickstart">
-      <span class="landing__quickstart-label">Start blank:</span>
-      <button type="button" class="landing__quickstart-btn" id="btn-quickstart-notebook">📓 New Notebook</button>
-      <button type="button" class="landing__quickstart-btn" id="btn-quickstart-docs">📄 New Docs</button>
     </div>
 
     <div class="landing__divider">or drop your files</div>
@@ -249,6 +246,14 @@
                 <path d="M8 2v9M4 8l4 4 4-4"/><path d="M2 13h12"/>
               </svg>
               Download all
+            </button>
+          </li>
+          <li id="menu-fork-li" class="hidden">
+            <button id="menu-fork" class="share-split__item" title="Create your own editable copy">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="8" height="8" rx="1.5"/><rect x="6" y="6" width="8" height="8" rx="1.5"/>
+              </svg>
+              Fork this project
             </button>
           </li>
           <li id="menu-delete-li" class="hidden">
@@ -439,7 +444,8 @@
     const $landingStatus = document.getElementById('landing-status');
     const $ttlSelector   = document.getElementById('ttl-selector');
 
-    // Quick start — scaffold a blank notebook/docs project, skip the dropzone
+    // Quick start — scaffold a blank project, skip the dropzone
+    const $btnQuickstartWebsite  = document.getElementById('btn-quickstart-website');
     const $btnQuickstartNotebook = document.getElementById('btn-quickstart-notebook');
     const $btnQuickstartDocs     = document.getElementById('btn-quickstart-docs');
 
@@ -478,6 +484,8 @@
     const $menuShareEdit     = document.getElementById('menu-share-edit');
     const $menuShareEditLi   = document.getElementById('menu-share-edit-li');
     const $menuDownload      = document.getElementById('menu-download');
+    const $menuFork          = document.getElementById('menu-fork');
+    const $menuForkLi        = document.getElementById('menu-fork-li');
     const $menuDelete        = document.getElementById('menu-delete');
     const $menuDeleteLi      = document.getElementById('menu-delete-li');
 
@@ -1388,6 +1396,7 @@
 
       $btnCreate.addEventListener('click', handleCreate);
 
+      $btnQuickstartWebsite.addEventListener('click', () => handleQuickStart('website'));
       $btnQuickstartNotebook.addEventListener('click', () => handleQuickStart('notebook'));
       $btnQuickstartDocs.addEventListener('click', () => handleQuickStart('docs'));
     }
@@ -1427,22 +1436,83 @@
       'Start writing here — Markdown renders automatically.\n' +
       'Add more `.md` files for a sidebar with navigation, or a `SUMMARY.md` to control the order.\n';
 
+    // A small static page — also doubles as a live demo of lwid.store: the
+    // click counter is persisted and shared with everyone who opens the link.
+    const STARTER_WEBSITE = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo Page</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: linear-gradient(160deg, #1c2333, #0d1117);
+    color: #e6edf3; padding: 1.5rem; box-sizing: border-box;
+  }
+  .card {
+    max-width: 420px; text-align: center; padding: 2rem;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px; backdrop-filter: blur(6px);
+  }
+  h1 { margin: 0 0 0.75rem; font-size: 1.6rem; }
+  p { color: #9198a1; line-height: 1.6; font-size: 0.9rem; }
+  code { background: rgba(255,255,255,0.08); padding: 0.1em 0.4em; border-radius: 4px; }
+  button {
+    margin-top: 1rem; padding: 0.6rem 1.25rem; font-size: 0.9rem; font-weight: 600;
+    color: #fff; background: #58a6ff; border: none; border-radius: 999px; cursor: pointer;
+  }
+  button:hover { background: #79c0ff; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>👋 It works!</h1>
+    <p>This is a static site hosted on lwid — sandboxed HTML/CSS/JS, served straight from an encrypted blob. Replace <code>index.html</code> to make it yours.</p>
+    <button id="clickme">Clicked <span id="count">0</span> times</button>
+    <p>That count is stored in <code>lwid.store</code> — shared live with anyone who opens this link.</p>
+  </div>
+  <script>
+    (async () => {
+      const $count = document.getElementById('count');
+      let n = (await lwid.store.get('demo-clicks')) ?? 0;
+      $count.textContent = n;
+      document.getElementById('clickme').addEventListener('click', async () => {
+        n++;
+        $count.textContent = n;
+        await lwid.store.set('demo-clicks', n);
+      });
+    })();
+  <\/script>
+</body>
+</html>
+`;
+
+    const QUICKSTART = {
+      website:  { path: 'index.html',    content: STARTER_WEBSITE,  label: 'demo page' },
+      notebook: { path: 'notebook.ipynb', content: STARTER_NOTEBOOK, label: 'notebook' },
+      docs:     { path: 'README.md',      content: STARTER_DOCS,     label: 'docs page' },
+    };
+    const QUICKSTART_BUTTONS = () =>
+      [$btnQuickstartWebsite, $btnQuickstartNotebook, $btnQuickstartDocs];
+
     async function handleQuickStart(kind) {
-      $btnQuickstartNotebook.disabled = true;
-      $btnQuickstartDocs.disabled = true;
-      setStatus(kind === 'notebook' ? 'Creating notebook...' : 'Creating docs page...');
+      const { path, content, label } = QUICKSTART[kind];
+      for (const btn of QUICKSTART_BUTTONS()) btn.disabled = true;
+      setStatus(`Creating ${label}...`);
 
       try {
-        const path = kind === 'notebook' ? 'notebook.ipynb' : 'README.md';
-        const content = new TextEncoder().encode(kind === 'notebook' ? STARTER_NOTEBOOK : STARTER_DOCS);
-
         const readKey = generateReadKey();
         const { publicKeyBytes, privateKeyB64url: writeKey } = await generateWriteKeyPair();
         const pubkeyBase64 = toStandardBase64(publicKeyBytes);
         const storeToken = await deriveStoreToken(readKey);
         const { project_id: projectId } = await api.createProject(pubkeyBase64, selectedTtl, storeToken);
 
-        await pushVersion(api, projectId, readKey, writeKey, [{ path, content }]);
+        await pushVersion(api, projectId, readKey, writeKey, [
+          { path, content: new TextEncoder().encode(content) },
+        ]);
 
         saveProject(projectId, readKey, writeKey);
 
@@ -1451,8 +1521,7 @@
       } catch (err) {
         console.error('Quick start failed:', err);
         setStatus(`Error: ${err.message}`);
-        $btnQuickstartNotebook.disabled = false;
-        $btnQuickstartDocs.disabled = false;
+        for (const btn of QUICKSTART_BUTTONS()) btn.disabled = false;
       }
     }
 
@@ -1565,13 +1634,16 @@
       }
 
       // Everything below is an ownership concern — held out unless this link
-      // carries (or has ever carried) the write key.
+      // carries (or has ever carried) the write key. A visitor gets the
+      // opposite offer instead: fork it into a project of their own.
       if (writeKey) {
         show($menuShareEditLi);
         show($menuDeleteLi);
         show($sourceDropzone);
         show($btnExtend);
         show($btnHistory);
+      } else {
+        show($menuForkLi);
       }
 
       // --- Share split-button ---
@@ -1619,6 +1691,36 @@
       $menuDownload.addEventListener('click', () => {
         downloadAllFiles();
         closeAllMenus();
+      });
+
+      // Fork: a visitor has no write key for *this* project, so give them a
+      // project of their own instead — fresh keys, the current files pushed
+      // as its first version. Same create+push shape as a quick start.
+      $menuFork.addEventListener('click', async () => {
+        closeAllMenus();
+        if (!currentFiles || currentFiles.size === 0) {
+          showToast('Project is still loading — try again in a moment.');
+          return;
+        }
+        showToast('Forking project...');
+        try {
+          const readKey = generateReadKey();
+          const { publicKeyBytes, privateKeyB64url: writeKey } = await generateWriteKeyPair();
+          const pubkeyBase64 = toStandardBase64(publicKeyBytes);
+          const storeToken = await deriveStoreToken(readKey);
+          const { project_id: projectId } = await api.createProject(pubkeyBase64, selectedTtl, storeToken);
+
+          const fileData = Array.from(currentFiles, ([path, content]) => ({ path, content }));
+          await pushVersion(api, projectId, readKey, writeKey, fileData);
+
+          saveProject(projectId, readKey, writeKey);
+
+          const url = buildProjectUrl(window.location.origin, projectId, readKey, writeKey);
+          window.location.href = url;
+        } catch (err) {
+          console.error('Fork failed:', err);
+          showToast(`Fork failed: ${err.message}`);
+        }
       });
 
       $menuDelete.addEventListener('click', async () => {

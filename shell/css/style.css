@@ -308,6 +308,7 @@ button:disabled {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   text-align: center;
+  height: 100%;
 }
 
 .landing__cap-card svg {
@@ -325,6 +326,7 @@ button:disabled {
   font-size: 0.74rem;
   line-height: 1.5;
   color: var(--text-muted);
+  flex: 1 1 auto;
 }
 
 .landing__cap-card code {
@@ -333,42 +335,26 @@ button:disabled {
   color: var(--text);
 }
 
-/* Quick start — skip the drop, scaffold something and start editing */
+/* Quick start CTA — skip the drop, scaffold something and start editing */
 
-.landing__quickstart {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-top: 1.5rem;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.landing__quickstart-label {
-  font-size: 0.78rem;
-  color: var(--text-subtle);
-}
-
-.landing__quickstart-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 0.9rem;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--text);
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 9999px;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
-}
-.landing__quickstart-btn:hover:not(:disabled) {
-  border-color: var(--accent);
+.landing__cap-cta {
+  margin-top: 0.35rem;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.76rem;
+  font-weight: 600;
   color: var(--accent);
   background: var(--accent-dim);
+  border: 1px solid rgba(88, 166, 255, 0.25);
+  border-radius: 9999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.landing__quickstart-btn:disabled {
+.landing__cap-cta:hover:not(:disabled) {
+  background: rgba(88, 166, 255, 0.2);
+  border-color: var(--accent);
+}
+.landing__cap-cta:disabled {
   opacity: 0.6;
   cursor: default;
 }
