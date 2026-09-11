@@ -127,18 +127,42 @@ export async function decrypt(readKeyB64url, encrypted) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Error thrown when the browser's Web Crypto implementation doesn't
+ * recognize the "Ed25519" algorithm. Distinguished from other failures so
+ * callers can show a message that points at the actual cause instead of a
+ * raw DOMException.
+ */
+export class Ed25519UnsupportedError extends Error {
+  constructor() {
+    super(
+      "This browser's Web Crypto doesn't support Ed25519 key generation, " +
+      "which lwid needs to create, edit, or fork a project. Try a recent " +
+      "Chrome or Firefox, or use the CLI instead: `lwid push`.",
+    );
+    this.name = "Ed25519UnsupportedError";
+  }
+}
+
+/**
  * Generate an Ed25519 keypair.
  *
- * Requires browser support for the "Ed25519" algorithm name
- * (Chrome 113+, Firefox 130+).
+ * Requires browser support for the "Ed25519" Web Crypto algorithm name —
+ * shipped in recent Chrome and Firefox, but not universal yet. Throws
+ * {@link Ed25519UnsupportedError} (rather than a raw DOMException) when the
+ * browser doesn't recognize it.
  *
  * @returns {Promise<{ publicKeyBytes: Uint8Array, privateKeyB64url: string }>}
  */
 export async function generateWriteKeyPair() {
-  const keyPair = await crypto.subtle.generateKey("Ed25519", true, [
-    "sign",
-    "verify",
-  ]);
+  let keyPair;
+  try {
+    keyPair = await crypto.subtle.generateKey("Ed25519", true, [
+      "sign",
+      "verify",
+    ]);
+  } catch (err) {
+    throw new Ed25519UnsupportedError();
+  }
 
   const publicKeyRaw = await crypto.subtle.exportKey("raw", keyPair.publicKey);
 
@@ -177,11 +201,20 @@ async function importEd25519PrivateKey(privateKeyB64url) {
     pkcs8.set(keyData, 16);
     keyData = pkcs8;
   }
-  return crypto.subtle.importKey("pkcs8", keyData, "Ed25519", true, ["sign"]);
+  try {
+    return await crypto.subtle.importKey("pkcs8", keyData, "Ed25519", true, ["sign"]);
+  } catch (err) {
+    throw new Ed25519UnsupportedError();
+  }
 }
 
 /**
  * Sign a message with an Ed25519 private key.
+ *
+ * Throws {@link Ed25519UnsupportedError} on a browser that doesn't
+ * recognize "Ed25519" — every write operation (push, extend, delete, fork)
+ * needs this, so it's worth a message that says so rather than a raw
+ * DOMException.
  *
  * @param {string} privateKeyB64url — base64url-encoded PKCS8 private key
  * @param {Uint8Array} message
@@ -189,8 +222,12 @@ async function importEd25519PrivateKey(privateKeyB64url) {
  */
 export async function sign(privateKeyB64url, message) {
   const privateKey = await importEd25519PrivateKey(privateKeyB64url);
-  const signature = await crypto.subtle.sign("Ed25519", privateKey, message);
-  return new Uint8Array(signature);
+  try {
+    const signature = await crypto.subtle.sign("Ed25519", privateKey, message);
+    return new Uint8Array(signature);
+  } catch (err) {
+    throw new Ed25519UnsupportedError();
+  }
 }
 
 /**
