@@ -86,6 +86,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let app = app
+        // Sandbox hosts (<label>.<sandbox_base_domain>) answer only the
+        // bridge page and its SW. Inside the canonical-host redirect, so a
+        // legacy hostname that happens to sit under the sandbox base domain
+        // (www.<base>) is still redirected rather than 404'd.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            lwid_server::sandbox::gate_sandbox_hosts,
+        ))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             lwid_server::redirect::canonical_host,

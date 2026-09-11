@@ -72,7 +72,13 @@
   var swReadyPromise = null;
   function ensureSW() {
     if (swReadyPromise) return swReadyPromise;
-    swReadyPromise = (async () => {
+    // Cached only while pending/fulfilled — a failed registration must not
+    // poison every later attempt (including re-hydration) until reload.
+    swReadyPromise = ensureSWOnce().catch((err) => { swReadyPromise = null; throw err; });
+    return swReadyPromise;
+  }
+  function ensureSWOnce() {
+    return (async () => {
       if (!('serviceWorker' in navigator)) throw new Error('Service Workers not supported');
       await navigator.serviceWorker.register('/sandbox-sw.js', { scope: '/__lwid_sandbox__/' });
       await navigator.serviceWorker.ready;
@@ -88,7 +94,6 @@
       // lwid-sdk.js <script src> resolve to the right place.
       navigator.serviceWorker.controller.postMessage({ type: 'SET_SHELL_ORIGIN', origin: SHELL_ORIGIN });
     })();
-    return swReadyPromise;
   }
 
   function postFilesToSW(files, viewer, canEdit) {
@@ -161,6 +166,13 @@
       }
     }
   });
+
+  // Tell the shell we've booted. An <iframe> fires `load` even for a 404,
+  // so this — not the load event — is what the shell waits for before
+  // handing over files; its absence is the one signal that this page (or
+  // the origin it's on) isn't reachable, or that SHELL_ORIGIN doesn't
+  // match the page actually embedding us.
+  window.parent.postMessage({ type: 'LWID_SANDBOX_HELLO' }, SHELL_ORIGIN);
 })();
 </script>
 </body>

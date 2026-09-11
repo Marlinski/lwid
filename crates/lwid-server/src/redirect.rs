@@ -25,7 +25,7 @@ use crate::api::AppState;
 ///
 /// IPv6 literals are bracketed (`[::1]:8080`), so only split after the
 /// closing bracket.
-fn host_without_port(host: &str) -> &str {
+pub(crate) fn host_without_port(host: &str) -> &str {
     match host.rfind(']') {
         Some(end) => &host[..=end],
         None => host.split(':').next().unwrap_or(host),

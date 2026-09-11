@@ -1046,11 +1046,33 @@
       sandboxBridgeReady = (async () => {
         await sandboxConfigReady; // sandboxOrigin() below (and every later caller) needs this settled
         await new Promise((resolve, reject) => {
-          $sandboxFrame.addEventListener('load', () => resolve(), { once: true });
-          $sandboxFrame.addEventListener('error', () => reject(new Error('sandbox bridge failed to load')), { once: true });
+          // Wait for the bridge's own LWID_SANDBOX_HELLO, not the iframe's
+          // `load` — that fires for a 404 just the same, and `error` never
+          // fires for HTTP failures at all. HELLO only arrives if the page
+          // booted on the origin we expect AND believes we're its shell, so
+          // its absence pins the failure to the bridge rather than leaving
+          // it to surface later as a vague file-transfer timeout.
+          const expected = sandboxOrigin();
+          const onHello = (event) => {
+            if (event.source !== $sandboxFrame.contentWindow || event.origin !== expected) return;
+            if (event.data?.type !== 'LWID_SANDBOX_HELLO') return;
+            window.removeEventListener('message', onHello);
+            clearTimeout(timer);
+            resolve();
+          };
+          const timer = setTimeout(() => {
+            window.removeEventListener('message', onHello);
+            reject(new Error(`sandbox bridge did not boot on ${expected} — is that origin reachable and does it match the server's base_url?`));
+          }, 10000);
+          window.addEventListener('message', onHello);
           $sandboxFrame.src = `${location.origin}/api/sandbox/${encodeURIComponent(currentProjectId)}`;
         });
-      })();
+      })().catch((err) => {
+        // Cache only success: a transient failure must not leave every
+        // later call (re-hydration included) failing instantly until reload.
+        sandboxBridgeReady = null;
+        throw err;
+      });
       return sandboxBridgeReady;
     }
 

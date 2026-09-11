@@ -24,11 +24,13 @@
 //! sandbox-bootstrap request is affected, so old links keep working exactly
 //! as before regardless of whether this feature is on.
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Request, State};
 use axum::http::{header, StatusCode};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
 use crate::api::AppState;
+use crate::redirect::host_without_port;
 
 const BASE32_ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz234567";
 
@@ -152,9 +154,105 @@ pub async fn get_bridge(State(state): State<AppState>) -> Response {
         .into_response()
 }
 
+// ── Host gating ─────────────────────────────────────────────────────────────
+
+/// The only paths a sandbox host answers. Everything else a sandbox origin
+/// needs — viewers, the SDK — its Service Worker fetches from the *shell's*
+/// origin over CORS, so nothing else has any business being served there.
+/// Without this, the Host-agnostic static fallback would hand out the whole
+/// shell (index.html, /js, /css) and the API on every project's origin —
+/// not a leak, but a working copy of the product living on an origin whose
+/// entire purpose is to hold nothing a project's script could get at.
+const SANDBOX_HOST_PATHS: &[&str] = &[BRIDGE_PATH, "/sandbox-sw.js"];
+
+/// `host[:port]` of a URL.
+fn host_of(url: &str) -> &str {
+    let origin = origin_of(url);
+    origin.find("://").map_or(origin, |i| &origin[i + 3..])
+}
+
+/// True when `host_header` names a per-project sandbox origin: a strict
+/// subdomain of `base_domain` (ports ignored on both sides, matching
+/// case-insensitively) that is not one of the hosts the shell itself lives
+/// on. The latter exemption matters when the shell is *itself* under the
+/// sandbox base domain (`app.example.com` with base `example.com`).
+pub fn is_sandbox_host(host_header: &str, base_domain: &str, shell_hosts: &[&str]) -> bool {
+    let host = host_without_port(host_header);
+    let base = host_without_port(base_domain);
+    if !host.is_ascii() || !base.is_ascii() || base.is_empty() {
+        return false;
+    }
+    if shell_hosts
+        .iter()
+        .any(|h| host_without_port(h).eq_ignore_ascii_case(host))
+    {
+        return false;
+    }
+    // Need at least one label character plus the separating dot.
+    if host.len() < base.len() + 2 {
+        return false;
+    }
+    let (labels, tail) = host.split_at(host.len() - base.len());
+    labels.ends_with('.') && tail.eq_ignore_ascii_case(base)
+}
+
+/// Middleware: on a sandbox host, 404 everything but the bridge page and
+/// its Service Worker. A no-op when no `sandbox_base_domain` is configured
+/// (fallback mode has no sandbox hosts to gate).
+pub async fn gate_sandbox_hosts(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    if let Some(base) = &state.config.server.sandbox_base_domain {
+        let host = request
+            .headers()
+            .get(header::HOST)
+            .and_then(|v| v.to_str().ok());
+        if let Some(host) = host {
+            let shell_hosts: Vec<&str> = [
+                Some(host_of(&state.config.server.base_url)),
+                state.config.server.canonical_host.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            if is_sandbox_host(host, base, &shell_hosts)
+                && !SANDBOX_HOST_PATHS.contains(&request.uri().path())
+            {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+        }
+    }
+    next.run(request).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sandbox_host_detection() {
+        let shell = ["lookwhatidid.xyz"];
+        assert!(is_sandbox_host("mzxw6.lookwhatidid.xyz", "lookwhatidid.xyz", &shell));
+        assert!(is_sandbox_host("MZXW6.LookWhatIDid.xyz", "lookwhatidid.xyz", &shell));
+        // Ports on either side are ignored.
+        assert!(is_sandbox_host("mzxw6.localhost:8899", "localhost:8899", &["localhost:8899"]));
+        assert!(is_sandbox_host("mzxw6.localhost", "localhost:8899", &["localhost:8899"]));
+        // The shell's own host is never a sandbox host, even under the base.
+        assert!(!is_sandbox_host("lookwhatidid.xyz", "lookwhatidid.xyz", &shell));
+        assert!(!is_sandbox_host("app.example.com", "example.com", &["app.example.com"]));
+        // Lookalikes that merely end in the same characters are not subdomains.
+        assert!(!is_sandbox_host("evillookwhatidid.xyz", "lookwhatidid.xyz", &shell));
+        assert!(!is_sandbox_host(".lookwhatidid.xyz", "lookwhatidid.xyz", &shell));
+        // Unrelated hosts.
+        assert!(!is_sandbox_host("lookwhatidid.ovh", "lookwhatidid.xyz", &shell));
+        assert!(!is_sandbox_host("127.0.0.1:8899", "localhost:8899", &["localhost:8899"]));
+        // Degenerate config never gates anything.
+        assert!(!is_sandbox_host("anything", "", &shell));
+    }
+
+    #[test]
+    fn host_of_url() {
+        assert_eq!(host_of("https://lookwhatidid.xyz/"), "lookwhatidid.xyz");
+        assert_eq!(host_of("http://localhost:8899"), "localhost:8899");
+    }
 
     #[test]
     fn base32_matches_known_vectors() {
