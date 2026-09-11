@@ -335,28 +335,69 @@ button:disabled {
   color: var(--text);
 }
 
-/* Quick start CTA — skip the drop, scaffold something and start editing */
+/* Quick start CTA — skip the drop, scaffold something and start editing.
+ * Sits apart from the blurb (generous margin-top, not glued to the text),
+ * with a slow multicolor gradient chasing its own border — the two-layer
+ * background-clip trick: an opaque fill on padding-box hides the gradient
+ * everywhere except the ring at border-box, so only the "border" moves. */
+
+.landing__cap-card {
+  padding-bottom: 1.15rem;
+}
 
 .landing__cap-cta {
-  margin-top: 0.35rem;
-  padding: 0.4rem 0.8rem;
-  font-size: 0.76rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 1.1rem;
+  padding: 0.55rem 1.05rem 0.55rem 0.8rem;
+  font: inherit;
+  font-size: 0.8rem;
   font-weight: 600;
-  color: var(--accent);
-  background: var(--accent-dim);
-  border: 1px solid rgba(88, 166, 255, 0.25);
-  border-radius: 9999px;
-  cursor: pointer;
+  color: var(--text);
   white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  cursor: pointer;
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background:
+    linear-gradient(var(--bg-surface), var(--bg-surface)) padding-box,
+    linear-gradient(90deg, #58a6ff, #a36eff, #ff7ad9, #3fb950, #58a6ff) border-box;
+  background-size: 100% 100%, 300% 100%;
+  animation: cta-flow 6s linear infinite;
+  transition: transform 0.18s ease, box-shadow 0.25s ease;
 }
+
+.landing__cap-cta__plus {
+  font-size: 1.4em;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--accent);
+  transition: color 0.2s;
+}
+
 .landing__cap-cta:hover:not(:disabled) {
-  background: rgba(88, 166, 255, 0.2);
-  border-color: var(--accent);
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 0 0 1px rgba(163, 110, 255, 0.35), 0 10px 26px rgba(88, 166, 255, 0.3);
+  animation-duration: 1.4s;
+}
+.landing__cap-cta:hover:not(:disabled) .landing__cap-cta__plus {
+  color: #fff;
+}
+.landing__cap-cta:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
 }
 .landing__cap-cta:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: default;
+  animation-play-state: paused;
+}
+
+@keyframes cta-flow {
+  to { background-position: 0 0, -300% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing__cap-cta { animation: none; }
 }
 
 .landing__divider {
