@@ -64,6 +64,9 @@
     $content = document.createElement('iframe');
     $content.id = 'content';
     $content.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals');
+    // Permissions Policy: the outer #sandbox-frame delegates geolocation to
+    // this origin; pass it on to the content frame explicitly.
+    $content.setAttribute('allow', 'geolocation');
     $content.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;background:#fff;';
     document.body.appendChild($content);
     return $content;
