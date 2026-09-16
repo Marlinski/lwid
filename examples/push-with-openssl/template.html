@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AES-GCM with an openssl that refuses AES-GCM</title>
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --panel: #ffffff;
+    --ink: #1c1b19;
+    --ink-soft: #55514b;
+    --ink-faint: #8a847b;
+    --rule: #e6e1d8;
+    --accent: #9a3412;
+    --accent-soft: #fdf1e7;
+    --code-bg: #f6f4f0;
+    --ok: #3f6212;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --serif: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #171614;
+      --panel: #1f1e1b;
+      --ink: #eceae6;
+      --ink-soft: #b4afa6;
+      --ink-faint: #837d73;
+      --rule: #302e2a;
+      --accent: #f0a17a;
+      --accent-soft: #2a201a;
+      --code-bg: #131211;
+      --ok: #a3c057;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 47rem; margin: 0 auto; padding: 0 20px; }
+
+  /* ── Masthead ───────────────────────────────────────────── */
+  header { padding-block: 4.5rem 2.5rem; border-bottom: 1px solid var(--rule); }
+  .eyebrow {
+    font: 600 0.72rem/1 var(--mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1.1rem;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(1.9rem, 6vw, 2.9rem);
+    line-height: 1.12;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 1rem;
+  }
+  .standfirst { font-size: 1.1rem; color: var(--ink-soft); margin: 0; max-width: 34rem; }
+
+  /* ── Sections ───────────────────────────────────────────── */
+  section { padding-block: 2.75rem; border-bottom: 1px solid var(--rule); }
+  section:last-of-type { border-bottom: 0; }
+  h2 {
+    font-family: var(--serif);
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.25rem;
+  }
+  h2 .num {
+    font: 600 0.72rem/1 var(--mono);
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: 0.6rem;
+    letter-spacing: 0.08em;
+  }
+  h3 { font-size: 0.95rem; font-weight: 650; margin: 1.75rem 0 0.5rem; }
+  p { margin: 0.9rem 0; }
+  a { color: var(--accent); text-underline-offset: 0.2em; }
+  strong { font-weight: 650; }
+  code {
+    font-family: var(--mono);
+    font-size: 0.875em;
+    background: var(--code-bg);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+  }
+
+  /* ── Code blocks ────────────────────────────────────────── */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    margin: 1.2rem 0;
+    font-size: 0.83rem;
+    line-height: 1.6;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+  .term { color: var(--ink-soft); }
+  .term .cmd { color: var(--ink); }
+  .term .err { color: var(--accent); }
+
+  /* ── The identity callout ───────────────────────────────── */
+  .identity {
+    background: var(--accent-soft);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 1.15rem 1.25rem;
+    margin: 1.5rem 0;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    line-height: 1.9;
+    overflow-x: auto;
+  }
+  .identity .lbl { color: var(--ink-faint); display: inline-block; min-width: 10.5ch; }
+  .identity .hi { color: var(--accent); font-weight: 600; }
+
+  /* ── Tables ─────────────────────────────────────────────── */
+  .tw { overflow-x: auto; margin: 1.3rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-faint); font-weight: 600; }
+  td:first-child { white-space: nowrap; font-weight: 550; }
+  td code { white-space: nowrap; }
+
+  /* ── Verification list ──────────────────────────────────── */
+  .checks { list-style: none; padding: 0; margin: 1.2rem 0; }
+  .checks li {
+    padding-left: 1.75rem;
+    position: relative;
+    margin-bottom: 0.7rem;
+    color: var(--ink-soft);
+  }
+  .checks li::before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    top: -0.05em;
+    color: var(--ok);
+    font-weight: 700;
+  }
+  .checks b { color: var(--ink); font-weight: 600; }
+
+  /* ── Source listing ─────────────────────────────────────── */
+  .srchead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+  .srchead .path { font-family: var(--mono); font-size: 0.8rem; color: var(--ink-faint); }
+  button.copy {
+    font: 550 0.78rem var(--sans);
+    color: var(--ink-soft);
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 0.35rem 0.7rem;
+    cursor: pointer;
+  }
+  button.copy:hover { color: var(--ink); border-color: var(--ink-faint); }
+  #src { max-height: 32rem; overflow: auto; font-size: 0.78rem; }
+  #src .c { color: var(--ink-faint); font-style: italic; }
+  #src .s { color: var(--ok); }
+  #src .k { color: var(--accent); font-weight: 600; }
+
+  footer {
+    padding-block: 2.5rem 4rem;
+    color: var(--ink-faint);
+    font-size: 0.85rem;
+    border-top: 1px solid var(--rule);
+  }
+  .note {
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+    border-left: 2px solid var(--rule);
+    padding-left: 1rem;
+    margin: 1.3rem 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">lwid · protocol notes</div>
+  <h1>AES-GCM with an openssl that refuses AES-GCM</h1>
+  <p class="standfirst">
+    This page was encrypted and published by a bash script using nothing but
+    <code>curl</code> and <code>openssl</code> — no lwid binary. Getting there
+    meant rebuilding GCM out of parts.
+  </p>
+</header>
+
+<section>
+  <h2><span class="num">01</span>The obstacle</h2>
+  <p>
+    lwid encrypts everything client-side with AES-256-GCM. So a push needs
+    AES-256-GCM. And <code>openssl enc</code> — the obvious tool — simply
+    will not do it:
+  </p>
+<pre class="term"><code><span class="cmd">$ openssl enc -aes-256-gcm -K "$key" -iv "$iv" -in file</span>
+<span class="err">enc: AEAD ciphers not supported</span>
+enc: Use -help for summary.</code></pre>
+  <p>
+    This is deliberate, not a gap. <code>enc</code> streams data and has
+    nowhere sensible to put an authentication tag, nor any way to tell you
+    the tag failed to verify — so it declines the whole category. Nothing in
+    <code>openssl enc</code> will produce a GCM tag.
+  </p>
+  <p>
+    The tag is not optional. Skip it and the browser's
+    <code>crypto.subtle.decrypt</code> rejects the blob outright: in AEAD,
+    a wrong tag is indistinguishable from tampering.
+  </p>
+</section>
+
+<section>
+  <h2><span class="num">02</span>The half that's easy</h2>
+  <p>
+    GCM's <em>encryption</em> is not a mode of its own — it is plain CTR.
+    The only subtlety is where the counter starts. GCM reserves counter
+    block <code>J₀ = IV‖00000001</code> for the tag, so the plaintext
+    begins one block later:
+  </p>
+<pre><code>openssl enc -aes-256-ctr -K "$key" -iv "${iv}00000002" -in plain -out ct</code></pre>
+  <p>
+    That is the ciphertext, byte for byte, done. What remains is the
+    authenticator.
+  </p>
+</section>
+
+<section>
+  <h2><span class="num">03</span>The way in: GMAC</h2>
+  <p>
+    OpenSSL does expose GCM's authenticator — just not through
+    <code>enc</code>. It lives in the <code>mac</code> command, as
+    <strong>GMAC</strong>.
+  </p>
+  <p>
+    GMAC <em>is</em> GCM, with every byte fed as additional authenticated
+    data instead of as plaintext. Both compute the same shape:
+  </p>
+  <div class="identity">
+    tag = ( GHASH(data blocks) ⊕ <span class="hi">L</span> ) × H ⊕ E(K, IV‖00000001)
+  </div>
+  <p>
+    Same key, same IV, and — if I hand GMAC the ciphertext — the same data
+    blocks, so the same GHASH. The two differ in exactly one place:
+    <span class="hi" style="font-family:var(--mono)">L</span>, the trailing
+    block that encodes how much of the input was AAD and how much was
+    ciphertext.
+  </p>
+  <div class="identity">
+    <span class="lbl">GCM</span> L = u64(0) ‖ u64(bitlen)<br>
+    <span class="lbl">GMAC</span> L = u64(bitlen) ‖ u64(0)<br>
+    <span class="lbl">XOR</span> <span class="hi">bitlen ‖ bitlen</span>
+  </div>
+  <p>
+    And because multiplication in GF(2¹²⁸) distributes over XOR, that single
+    difference propagates cleanly through the multiply. The entire
+    discrepancy between the tag OpenSSL will give me and the tag I need is:
+  </p>
+  <div class="identity">
+    tag<sub>GCM</sub> = tag<sub>GMAC</sub> ⊕ ( <span class="hi">(bitlen ‖ bitlen)</span> × H )
+  </div>
+  <p>
+    <strong>One multiply.</strong> Not one per block — one, whatever the
+    file's size. OpenSSL still does every AES block and every GHASH block in
+    C; the shell contributes a single 128-bit carry-less multiply at the end
+    to correct the length block.
+  </p>
+  <p>
+    The subkey <code>H</code> is the one other thing needed, and it is just
+    the block cipher applied to zero:
+  </p>
+<pre><code>H=$(head -c 16 /dev/zero | openssl enc -aes-256-ecb -K "$key" -nopad | bin2hex)</code></pre>
+  <div class="note">
+    The multiply runs in pure shell arithmetic — two 64-bit halves, because
+    that is the widest integer a shell has. It is the only piece of
+    cryptography here not performed by OpenSSL, and therefore the only piece
+    worth reviewing with suspicion.
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">04</span>Everything else</h2>
+  <p>
+    With GCM solved, the rest of the protocol is ordinary primitives:
+  </p>
+  <div class="tw">
+  <table>
+    <thead><tr><th>Piece</th><th>How</th></tr></thead>
+    <tbody>
+      <tr><td>Ciphertext</td><td><code>openssl enc -aes-256-ctr</code>, counter at <code>IV‖00000002</code></td></tr>
+      <tr><td>GHASH subkey</td><td><code>openssl enc -aes-256-ecb -nopad</code> on a zero block</td></tr>
+      <tr><td>Authenticator</td><td><code>openssl mac -cipher aes-256-gcm GMAC</code></td></tr>
+      <tr><td>Length fixup</td><td>one GF(2¹²⁸) multiply, in bash</td></tr>
+      <tr><td>Content ID</td><td><code>openssl dgst -sha256</code>, then <code>base32</code></td></tr>
+      <tr><td>Write key</td><td><code>openssl genpkey -algorithm ED25519</code></td></tr>
+      <tr><td>Signature</td><td><code>openssl pkeyutl -sign -rawin</code> over the root CID</td></tr>
+      <tr><td>Store token</td><td><code>sha256("lwid-store-auth:" + readkey)</code></td></tr>
+      <tr><td>Transport</td><td><code>curl</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Two details that made this easier than expected</h3>
+  <p>
+    <strong>The manifest is plaintext JSON.</strong> Only paths and contents
+    are encrypted. The server needs file sizes and blob CIDs to enforce
+    quotas and garbage-collect, and those leak nothing once the rest is
+    ciphertext — so there is no encrypted index to construct.
+  </p>
+  <p>
+    <strong>The signature covers just the CID string.</strong> No nonce, no
+    timestamp, no canonical JSON — an Ed25519 signature over the root CID's
+    ASCII bytes. Nothing to get subtly wrong.
+  </p>
+  <p>
+    Extracting raw key material is a small trick of its own: lwid stores an
+    Ed25519 key as its bare 32-byte seed, and a PKCS#8 private key is a
+    fixed 16-byte header followed by exactly that seed — so the raw material
+    is the tail of the DER encoding.
+  </p>
+<pre><code>openssl pkey -in write.pem -outform DER         | tail -c 32   <span class="c"># seed</span>
+openssl pkey -in write.pem -pubout -outform DER | tail -c 32   <span class="c"># public key</span></code></pre>
+</section>
+
+<section>
+  <h2><span class="num">05</span>Whether it actually works</h2>
+  <p>
+    A cryptographic construction that is <em>almost</em> right produces
+    output indistinguishable from one that is right, until someone tries to
+    decrypt it. So the claim is not "this looks correct":
+  </p>
+  <ul class="checks">
+    <li><b>Byte-identical to a known-good GCM.</b> Compared against Node's
+      native <code>aes-256-gcm</code> at eight sizes, including empty and
+      exact block boundaries.</li>
+    <li><b>The real client reads it back.</b> Pushed with the script, then
+      <code>lwid clone</code>d — byte-identical at 0, 1, 15, 16, 17, 100 and
+      5000 bytes. The Rust client verifies the tag, so a successful
+      round-trip is proof the tag is right, not merely that the ciphertext
+      is.</li>
+    <li><b>The CID is checked on every upload.</b> The script derives each
+      blob's address locally and compares it to the server's, so a hashing
+      divergence fails loudly instead of yielding a manifest that points at
+      nothing.</li>
+    <li><b>This page.</b> You are reading it, which means Web Crypto
+      accepted the tag — and it refuses a bad one.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="num">06</span>The script</h2>
+  <div class="srchead">
+    <span class="path">scripts/push-with-openssl.sh</span>
+    <button class="copy" id="copy">Copy source</button>
+  </div>
+<pre id="src"><code>__SCRIPT__</code></pre>
+  <div class="note">
+    Deliberately a demonstration, not a replacement for <code>lwid push</code>:
+    no chunking, no deduplication, and <code>parent_cid</code> is always
+    <code>null</code>, so each run starts a fresh project rather than adding
+    a version to an existing one.
+  </div>
+</section>
+
+<footer>
+  Encrypted and published with <code>curl</code>, <code>openssl</code> and
+  coreutils. The decryption key never left the URL fragment, which browsers
+  do not send to servers — so the machine hosting this page cannot read it.
+</footer>
+
+</div>
+
+<script>
+(function () {
+  var btn = document.getElementById('copy');
+  var src = document.getElementById('src');
+  btn.addEventListener('click', function () {
+    var text = src.innerText;
+    var done = function (ok) {
+      btn.textContent = ok ? 'Copied' : 'Select and copy';
+      setTimeout(function () { btn.textContent = 'Copy source'; }, 1800);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+    } else {
+      done(false);
+    }
+  });
+})();
+</script>
+
+</body>
+</html>

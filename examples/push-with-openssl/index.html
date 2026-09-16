@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AES-GCM with an openssl that refuses AES-GCM</title>
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --panel: #ffffff;
+    --ink: #1c1b19;
+    --ink-soft: #55514b;
+    --ink-faint: #8a847b;
+    --rule: #e6e1d8;
+    --accent: #9a3412;
+    --accent-soft: #fdf1e7;
+    --code-bg: #f6f4f0;
+    --ok: #3f6212;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --serif: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #171614;
+      --panel: #1f1e1b;
+      --ink: #eceae6;
+      --ink-soft: #b4afa6;
+      --ink-faint: #837d73;
+      --rule: #302e2a;
+      --accent: #f0a17a;
+      --accent-soft: #2a201a;
+      --code-bg: #131211;
+      --ok: #a3c057;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 47rem; margin: 0 auto; padding: 0 20px; }
+
+  /* ── Masthead ───────────────────────────────────────────── */
+  header { padding-block: 4.5rem 2.5rem; border-bottom: 1px solid var(--rule); }
+  .eyebrow {
+    font: 600 0.72rem/1 var(--mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1.1rem;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(1.9rem, 6vw, 2.9rem);
+    line-height: 1.12;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 1rem;
+  }
+  .standfirst { font-size: 1.1rem; color: var(--ink-soft); margin: 0; max-width: 34rem; }
+
+  /* ── Sections ───────────────────────────────────────────── */
+  section { padding-block: 2.75rem; border-bottom: 1px solid var(--rule); }
+  section:last-of-type { border-bottom: 0; }
+  h2 {
+    font-family: var(--serif);
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.25rem;
+  }
+  h2 .num {
+    font: 600 0.72rem/1 var(--mono);
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: 0.6rem;
+    letter-spacing: 0.08em;
+  }
+  h3 { font-size: 0.95rem; font-weight: 650; margin: 1.75rem 0 0.5rem; }
+  p { margin: 0.9rem 0; }
+  a { color: var(--accent); text-underline-offset: 0.2em; }
+  strong { font-weight: 650; }
+  code {
+    font-family: var(--mono);
+    font-size: 0.875em;
+    background: var(--code-bg);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+  }
+
+  /* ── Code blocks ────────────────────────────────────────── */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    margin: 1.2rem 0;
+    font-size: 0.83rem;
+    line-height: 1.6;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+  .term { color: var(--ink-soft); }
+  .term .cmd { color: var(--ink); }
+  .term .err { color: var(--accent); }
+
+  /* ── The identity callout ───────────────────────────────── */
+  .identity {
+    background: var(--accent-soft);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 1.15rem 1.25rem;
+    margin: 1.5rem 0;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    line-height: 1.9;
+    overflow-x: auto;
+  }
+  .identity .lbl { color: var(--ink-faint); display: inline-block; min-width: 10.5ch; }
+  .identity .hi { color: var(--accent); font-weight: 600; }
+
+  /* ── Tables ─────────────────────────────────────────────── */
+  .tw { overflow-x: auto; margin: 1.3rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-faint); font-weight: 600; }
+  td:first-child { white-space: nowrap; font-weight: 550; }
+  td code { white-space: nowrap; }
+
+  /* ── Verification list ──────────────────────────────────── */
+  .checks { list-style: none; padding: 0; margin: 1.2rem 0; }
+  .checks li {
+    padding-left: 1.75rem;
+    position: relative;
+    margin-bottom: 0.7rem;
+    color: var(--ink-soft);
+  }
+  .checks li::before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    top: -0.05em;
+    color: var(--ok);
+    font-weight: 700;
+  }
+  .checks b { color: var(--ink); font-weight: 600; }
+
+  /* ── Source listing ─────────────────────────────────────── */
+  .srchead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+  .srchead .path { font-family: var(--mono); font-size: 0.8rem; color: var(--ink-faint); }
+  button.copy {
+    font: 550 0.78rem var(--sans);
+    color: var(--ink-soft);
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 0.35rem 0.7rem;
+    cursor: pointer;
+  }
+  button.copy:hover { color: var(--ink); border-color: var(--ink-faint); }
+  #src { max-height: 32rem; overflow: auto; font-size: 0.78rem; }
+  #src .c { color: var(--ink-faint); font-style: italic; }
+  #src .s { color: var(--ok); }
+  #src .k { color: var(--accent); font-weight: 600; }
+
+  footer {
+    padding-block: 2.5rem 4rem;
+    color: var(--ink-faint);
+    font-size: 0.85rem;
+    border-top: 1px solid var(--rule);
+  }
+  .note {
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+    border-left: 2px solid var(--rule);
+    padding-left: 1rem;
+    margin: 1.3rem 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">lwid · protocol notes</div>
+  <h1>AES-GCM with an openssl that refuses AES-GCM</h1>
+  <p class="standfirst">
+    This page was encrypted and published by a bash script using nothing but
+    <code>curl</code> and <code>openssl</code> — no lwid binary. Getting there
+    meant rebuilding GCM out of parts.
+  </p>
+</header>
+
+<section>
+  <h2><span class="num">01</span>The obstacle</h2>
+  <p>
+    lwid encrypts everything client-side with AES-256-GCM. So a push needs
+    AES-256-GCM. And <code>openssl enc</code> — the obvious tool — simply
+    will not do it:
+  </p>
+<pre class="term"><code><span class="cmd">$ openssl enc -aes-256-gcm -K "$key" -iv "$iv" -in file</span>
+<span class="err">enc: AEAD ciphers not supported</span>
+enc: Use -help for summary.</code></pre>
+  <p>
+    This is deliberate, not a gap. <code>enc</code> streams data and has
+    nowhere sensible to put an authentication tag, nor any way to tell you
+    the tag failed to verify — so it declines the whole category. Nothing in
+    <code>openssl enc</code> will produce a GCM tag.
+  </p>
+  <p>
+    The tag is not optional. Skip it and the browser's
+    <code>crypto.subtle.decrypt</code> rejects the blob outright: in AEAD,
+    a wrong tag is indistinguishable from tampering.
+  </p>
+</section>
+
+<section>
+  <h2><span class="num">02</span>The half that's easy</h2>
+  <p>
+    GCM's <em>encryption</em> is not a mode of its own — it is plain CTR.
+    The only subtlety is where the counter starts. GCM reserves counter
+    block <code>J₀ = IV‖00000001</code> for the tag, so the plaintext
+    begins one block later:
+  </p>
+<pre><code>openssl enc -aes-256-ctr -K "$key" -iv "${iv}00000002" -in plain -out ct</code></pre>
+  <p>
+    That is the ciphertext, byte for byte, done. What remains is the
+    authenticator.
+  </p>
+</section>
+
+<section>
+  <h2><span class="num">03</span>The way in: GMAC</h2>
+  <p>
+    OpenSSL does expose GCM's authenticator — just not through
+    <code>enc</code>. It lives in the <code>mac</code> command, as
+    <strong>GMAC</strong>.
+  </p>
+  <p>
+    GMAC <em>is</em> GCM, with every byte fed as additional authenticated
+    data instead of as plaintext. Both compute the same shape:
+  </p>
+  <div class="identity">
+    tag = ( GHASH(data blocks) ⊕ <span class="hi">L</span> ) × H ⊕ E(K, IV‖00000001)
+  </div>
+  <p>
+    Same key, same IV, and — if I hand GMAC the ciphertext — the same data
+    blocks, so the same GHASH. The two differ in exactly one place:
+    <span class="hi" style="font-family:var(--mono)">L</span>, the trailing
+    block that encodes how much of the input was AAD and how much was
+    ciphertext.
+  </p>
+  <div class="identity">
+    <span class="lbl">GCM</span> L = u64(0) ‖ u64(bitlen)<br>
+    <span class="lbl">GMAC</span> L = u64(bitlen) ‖ u64(0)<br>
+    <span class="lbl">XOR</span> <span class="hi">bitlen ‖ bitlen</span>
+  </div>
+  <p>
+    And because multiplication in GF(2¹²⁸) distributes over XOR, that single
+    difference propagates cleanly through the multiply. The entire
+    discrepancy between the tag OpenSSL will give me and the tag I need is:
+  </p>
+  <div class="identity">
+    tag<sub>GCM</sub> = tag<sub>GMAC</sub> ⊕ ( <span class="hi">(bitlen ‖ bitlen)</span> × H )
+  </div>
+  <p>
+    <strong>One multiply.</strong> Not one per block — one, whatever the
+    file's size. OpenSSL still does every AES block and every GHASH block in
+    C; the shell contributes a single 128-bit carry-less multiply at the end
+    to correct the length block.
+  </p>
+  <p>
+    The subkey <code>H</code> is the one other thing needed, and it is just
+    the block cipher applied to zero:
+  </p>
+<pre><code>H=$(head -c 16 /dev/zero | openssl enc -aes-256-ecb -K "$key" -nopad | bin2hex)</code></pre>
+  <div class="note">
+    The multiply runs in pure shell arithmetic — two 64-bit halves, because
+    that is the widest integer a shell has. It is the only piece of
+    cryptography here not performed by OpenSSL, and therefore the only piece
+    worth reviewing with suspicion.
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">04</span>Everything else</h2>
+  <p>
+    With GCM solved, the rest of the protocol is ordinary primitives:
+  </p>
+  <div class="tw">
+  <table>
+    <thead><tr><th>Piece</th><th>How</th></tr></thead>
+    <tbody>
+      <tr><td>Ciphertext</td><td><code>openssl enc -aes-256-ctr</code>, counter at <code>IV‖00000002</code></td></tr>
+      <tr><td>GHASH subkey</td><td><code>openssl enc -aes-256-ecb -nopad</code> on a zero block</td></tr>
+      <tr><td>Authenticator</td><td><code>openssl mac -cipher aes-256-gcm GMAC</code></td></tr>
+      <tr><td>Length fixup</td><td>one GF(2¹²⁸) multiply, in bash</td></tr>
+      <tr><td>Content ID</td><td><code>openssl dgst -sha256</code>, then <code>base32</code></td></tr>
+      <tr><td>Write key</td><td><code>openssl genpkey -algorithm ED25519</code></td></tr>
+      <tr><td>Signature</td><td><code>openssl pkeyutl -sign -rawin</code> over the root CID</td></tr>
+      <tr><td>Store token</td><td><code>sha256("lwid-store-auth:" + readkey)</code></td></tr>
+      <tr><td>Transport</td><td><code>curl</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Two details that made this easier than expected</h3>
+  <p>
+    <strong>The manifest is plaintext JSON.</strong> Only paths and contents
+    are encrypted. The server needs file sizes and blob CIDs to enforce
+    quotas and garbage-collect, and those leak nothing once the rest is
+    ciphertext — so there is no encrypted index to construct.
+  </p>
+  <p>
+    <strong>The signature covers just the CID string.</strong> No nonce, no
+    timestamp, no canonical JSON — an Ed25519 signature over the root CID's
+    ASCII bytes. Nothing to get subtly wrong.
+  </p>
+  <p>
+    Extracting raw key material is a small trick of its own: lwid stores an
+    Ed25519 key as its bare 32-byte seed, and a PKCS#8 private key is a
+    fixed 16-byte header followed by exactly that seed — so the raw material
+    is the tail of the DER encoding.
+  </p>
+<pre><code>openssl pkey -in write.pem -outform DER         | tail -c 32   <span class="c"># seed</span>
+openssl pkey -in write.pem -pubout -outform DER | tail -c 32   <span class="c"># public key</span></code></pre>
+</section>
+
+<section>
+  <h2><span class="num">05</span>Whether it actually works</h2>
+  <p>
+    A cryptographic construction that is <em>almost</em> right produces
+    output indistinguishable from one that is right, until someone tries to
+    decrypt it. So the claim is not "this looks correct":
+  </p>
+  <ul class="checks">
+    <li><b>Byte-identical to a known-good GCM.</b> Compared against Node's
+      native <code>aes-256-gcm</code> at eight sizes, including empty and
+      exact block boundaries.</li>
+    <li><b>The real client reads it back.</b> Pushed with the script, then
+      <code>lwid clone</code>d — byte-identical at 0, 1, 15, 16, 17, 100 and
+      5000 bytes. The Rust client verifies the tag, so a successful
+      round-trip is proof the tag is right, not merely that the ciphertext
+      is.</li>
+    <li><b>The CID is checked on every upload.</b> The script derives each
+      blob's address locally and compares it to the server's, so a hashing
+      divergence fails loudly instead of yielding a manifest that points at
+      nothing.</li>
+    <li><b>This page.</b> You are reading it, which means Web Crypto
+      accepted the tag — and it refuses a bad one.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="num">06</span>The script</h2>
+  <div class="srchead">
+    <span class="path">scripts/push-with-openssl.sh</span>
+    <button class="copy" id="copy">Copy source</button>
+  </div>
+<pre id="src"><code><span class="c">#!/usr/bin/env bash</span>
+<span class="c">#</span>
+<span class="c"># push-with-<span class="k">openssl</span>.sh — publish a project to lwid using only <span class="k">curl</span> and</span>
+<span class="c"># <span class="k">openssl</span>, with no lwid binary involved.</span>
+<span class="c">#</span>
+<span class="c">#   usage: scripts/push-with-<span class="k">openssl</span>.sh [-s SERVER] [-t TTL] FILE...</span>
+<span class="c">#   prints the share URL, keys and all</span>
+<span class="c">#</span>
+<span class="c"># This exists as executable documentation of the client side of the</span>
+<span class="c"># protocol. Everything the real client does to a file before it leaves the</span>
+<span class="c"># machine is here, in the order it happens, in about a hundred lines. If the</span>
+<span class="c"># Rust client and this script ever disagree, one of them has a bug.</span>
+<span class="c">#</span>
+<span class="c"># Requires: bash 4+, <span class="k">curl</span>, <span class="k">openssl</span> 3.x (<span class="k">for</span> `<span class="k">openssl</span> mac`), coreutils.</span>
+<span class="c">#</span>
+<span class="c"># Deliberately *not* a replacement <span class="k">for</span> `lwid push`: no chunking, no dedup,</span>
+<span class="c"># no incremental versions (every run starts a fresh project with</span>
+<span class="c"># parent_cid: null), and it shells out to <span class="k">openssl</span> once per file.</span>
+<span class="c">#</span>
+<span class="c"># ---------------------------------------------------------------------------</span>
+<span class="c"># On AES-GCM without AES-GCM</span>
+<span class="c"># ---------------------------------------------------------------------------</span>
+<span class="c"># lwid encrypts with AES-256-GCM, and <span class="k">openssl</span>'s `enc` <span class="k">command</span> refuses to <span class="k">do</span></span>
+<span class="c"># it at all:</span>
+<span class="c">#</span>
+<span class="c">#     $ <span class="k">openssl</span> enc -aes-256-gcm ...</span>
+<span class="c">#     enc: AEAD ciphers not supported</span>
+<span class="c">#</span>
+<span class="c"># So GCM gets assembled from the pieces <span class="k">openssl</span> does expose. The ciphertext</span>
+<span class="c"># is the easy half — GCM's encryption *is* CTR mode, starting at counter</span>
+<span class="c"># IV||00000002 (block 1 is reserved <span class="k">for</span> the tag). The authentication tag is</span>
+<span class="c"># the interesting half, and the way in is GMAC: GMAC is GCM with all the</span>
+<span class="c"># data fed as additional authenticated data instead of as plaintext. Both</span>
+<span class="c"># compute</span>
+<span class="c">#</span>
+<span class="c">#     tag = ((GHASH over the data blocks) xor L) * H  xor  E(K, IV||00000001)</span>
+<span class="c">#</span>
+<span class="c"># over identical data blocks, differing only in L, the trailing block</span>
+<span class="c"># encoding the two input lengths:</span>
+<span class="c">#</span>
+<span class="c">#     GCM  (all plaintext): L = u64(0)        || u64(bitlen)</span>
+<span class="c">#     GMAC (all AAD):       L = u64(bitlen)   || u64(0)</span>
+<span class="c">#</span>
+<span class="c"># Since multiplication in GF(2^128) distributes over xor, the whole</span>
+<span class="c"># difference between the two tags is</span>
+<span class="c">#</span>
+<span class="c">#     (L_gcm xor L_gmac) * H  ==  (bitlen || bitlen) * H</span>
+<span class="c">#</span>
+<span class="c"># which is one multiply, regardless of how big the message is. <span class="k">openssl</span> still</span>
+<span class="c"># does every AES block and every GHASH block; the shell does a single</span>
+<span class="c"># 128-bit carry-less multiply at the end to correct the length block.</span>
+<span class="c">#</span>
+<span class="k">set</span> -euo pipefail
+
+SERVER=${LWID_SERVER:-https://lookwhatidid.xyz}
+TTL=7d
+
+usage() {
+  <span class="k">cat</span> &lt;&lt;EOF
+usage: $0 [-s SERVER] [-t TTL] FILE...
+
+Encrypt FILEs and publish them as an lwid project, using only <span class="k">curl</span> and
+<span class="k">openssl</span>. Prints the share URL, with the read and write keys in the fragment.
+
+  -s SERVER   server base URL (default \$LWID_SERVER, <span class="k">else</span> $SERVER)
+  -t TTL      1h | 1d | 7d | 30d | never  (default $TTL)
+EOF
+}
+
+<span class="k">while</span> getopts ':s:t:h' opt; <span class="k">do</span>
+  <span class="k">case</span> $opt in
+    s) SERVER=$OPTARG ;;
+    t) TTL=$OPTARG ;;
+    h) usage; <span class="k">exit</span> 0 ;;
+    *) <span class="k">echo</span> "unknown option -$OPTARG (try -h)" &gt;&amp;2; <span class="k">exit</span> 2 ;;
+  <span class="k">esac</span>
+<span class="k">done</span>
+<span class="k">shift</span> $((OPTIND - 1))
+[ $# -gt 0 ] || { usage &gt;&amp;2; <span class="k">exit</span> 2; }
+
+<span class="k">for</span> tool in <span class="k">curl</span> <span class="k">openssl</span> <span class="k">base32</span> <span class="k">od</span>; <span class="k">do</span>
+  <span class="k">command</span> -v "$tool" &gt;/dev/null || { <span class="k">echo</span> "missing required tool: $tool" &gt;&amp;2; <span class="k">exit</span> 1; }
+<span class="k">done</span>
+<span class="k">openssl</span> list -mac-algorithms 2&gt;/dev/null | grep -q GMAC \
+  || { <span class="k">echo</span> "this <span class="k">openssl</span> has no GMAC; need <span class="k">openssl</span> 3.x" &gt;&amp;2; <span class="k">exit</span> 1; }
+
+<span class="c"># ---------------------------------------------------------------------------</span>
+<span class="c"># Encoding helpers</span>
+<span class="c"># ---------------------------------------------------------------------------</span>
+b64std()  { <span class="k">openssl</span> base64 -A; }                              <span class="c"># -&gt; standard base64</span>
+b64url()  { <span class="k">openssl</span> base64 -A | <span class="k">tr</span> '+/' '-_' | <span class="k">tr</span> -d '='; }   <span class="c"># -&gt; base64url, unpadded</span>
+bin2hex() { <span class="k">od</span> -An -v -tx1 | <span class="k">tr</span> -d ' \n'; }
+<span class="c"># Only ever used on a 12-byte IV and a 16-byte tag, so passing hex as an</span>
+<span class="c"># argument is safe; file contents stay binary from end to end.</span>
+hex2bin() { <span class="k">printf</span> '%b' "$(<span class="k">sed</span> 's/../\\x&amp;/g' &lt;&lt;&lt;"$1")"; }
+
+<span class="c"># CID: multibase-base32lower("b") of CIDv1 || raw codec || sha2-256 multihash.</span>
+<span class="c"># All four varints are single-byte, so the binary form is a fixed 4-byte</span>
+<span class="c"># prefix followed by the digest — 36 bytes, which <span class="k">base32</span> renders in 58</span>
+<span class="c"># characters with no padding.</span>
+cid_of() {
+  { <span class="k">printf</span> '\x01\x55\x12\x20'; <span class="k">openssl</span> dgst -sha256 -binary "$1"; } \
+    | <span class="k">base32</span> -w0 | <span class="k">tr</span> -d '=' | <span class="k">tr</span> 'A-Z' 'a-z' | <span class="k">sed</span> 's/^/b/'
+}
+
+<span class="c"># ---------------------------------------------------------------------------</span>
+<span class="c"># Multiplication in GF(2^128), GCM's bit convention (bit 0 is the MSB).</span>
+<span class="c"># Operands and result are 32-char hex strings, held as two 64-bit halves</span>
+<span class="c"># because that is the widest integer the shell has.</span>
+<span class="c"># ---------------------------------------------------------------------------</span>
+gf_mul() {
+  <span class="k">local</span> xh=$((0x${1:0:16})) xl=$((0x${1:16:16}))
+  <span class="k">local</span> vh=$((0x${2:0:16})) vl=$((0x${2:16:16}))
+  <span class="k">local</span> zh=0 zl=0 i bit lsb
+  <span class="k">for</span> ((i = 0; i &lt; 128; i++)); <span class="k">do</span>
+    <span class="k">if</span> ((i &lt; 64)); <span class="k">then</span> bit=$(((xh &gt;&gt; (63 - i)) &amp; 1)); <span class="k">else</span> bit=$(((xl &gt;&gt; (127 - i)) &amp; 1)); <span class="k">fi</span>
+    <span class="k">if</span> ((bit)); <span class="k">then</span> ((zh ^= vh, zl ^= vl)); <span class="k">fi</span>
+    lsb=$((vl &amp; 1))
+    <span class="c"># v &gt;&gt;= 1 across the full 128 bits. The mask turns the shell's</span>
+    <span class="c"># arithmetic <span class="k">shift</span> into the logical one this needs.</span>
+    vl=$((((vl &gt;&gt; 1) &amp; 0x7FFFFFFFFFFFFFFF) | ((vh &amp; 1) &lt;&lt; 63)))
+    vh=$(((vh &gt;&gt; 1) &amp; 0x7FFFFFFFFFFFFFFF))
+    <span class="c"># Reduce modulo the GCM polynomial when a 1 was shifted out.</span>
+    <span class="k">if</span> ((lsb)); <span class="k">then</span> ((vh ^= 0xe100000000000000)); <span class="k">fi</span>
+  <span class="k">done</span>
+  <span class="k">printf</span> '%016x%016x' "$zh" "$zl"
+}
+
+<span class="c"># ---------------------------------------------------------------------------</span>
+<span class="c"># AES-256-GCM. Writes iv || ciphertext || tag — exactly the blob layout lwid</span>
+<span class="c"># stores, and what the browser hands to crypto.subtle.decrypt.</span>
+<span class="c"># ---------------------------------------------------------------------------</span>
+gcm_encrypt() {
+  <span class="k">local</span> key_hex=$1 infile=$2 outfile=$3
+  <span class="k">local</span> iv h tag_gmac bitlen lenblock fix tag ct="$TMP/.ct"
+
+  iv=$(<span class="k">openssl</span> rand -hex 12)
+  <span class="c"># GCM's counter starts one past J0 = iv||00000001.</span>
+  <span class="k">openssl</span> enc -aes-256-ctr -K "$key_hex" -iv "${iv}00000002" -in "$infile" -out "$ct"
+  <span class="c"># H, the GHASH subkey: the cipher applied to a zero block.</span>
+  h=$(<span class="k">head</span> -c 16 /dev/zero | <span class="k">openssl</span> enc -aes-256-ecb -K "$key_hex" -nopad | bin2hex)
+  <span class="c"># GMAC does all the per-block GHASH work over the ciphertext.</span>
+  tag_gmac=$(<span class="k">openssl</span> mac -macopt "hexkey:$key_hex" -macopt "hexiv:$iv" \
+    -cipher aes-256-gcm -in "$ct" GMAC | <span class="k">tr</span> 'A-Z' 'a-z')
+
+  <span class="c"># Correct GMAC's length block into GCM's (see the header comment). CTR is a</span>
+  <span class="c"># stream mode, so the ciphertext is exactly as long as the plaintext.</span>
+  bitlen=$(( $(<span class="k">wc</span> -c &lt;"$ct") * 8 ))
+  lenblock=$(<span class="k">printf</span> '%016x%016x' "$bitlen" "$bitlen")
+  fix=$(gf_mul "$lenblock" "$h")
+  tag=$(<span class="k">printf</span> '%016x%016x' \
+    $(( 0x${tag_gmac:0:16} ^ 0x${fix:0:16} )) \
+    $(( 0x${tag_gmac:16:16} ^ 0x${fix:16:16} )) )
+
+  { hex2bin "$iv"; <span class="k">cat</span> "$ct"; hex2bin "$tag"; } &gt; "$outfile"
+  <span class="k">rm</span> -f "$ct"
+}
+
+TMP=$(<span class="k">mktemp</span> -d); trap '<span class="k">rm</span> -rf "$TMP"' EXIT
+
+<span class="c"># ---------------------------------------------------------------------------</span>
+<span class="c"># Keys. Neither of these ever reaches the server: they travel in the URL</span>
+<span class="c"># fragment, which browsers <span class="k">do</span> not send.</span>
+<span class="c"># ---------------------------------------------------------------------------</span>
+<span class="c"># Read key — the AES-256 key, shared with anyone given the link.</span>
+<span class="k">openssl</span> rand 32 &gt; "$TMP/read.key"
+READ_KEY_HEX=$(bin2hex &lt; "$TMP/read.key")
+READ_KEY=$(b64url &lt; "$TMP/read.key")
+
+<span class="c"># Write key — Ed25519. lwid keeps only the 32-byte seed; a PKCS#8 private key</span>
+<span class="c"># is a fixed 16-byte header followed by exactly that seed, and an SPKI public</span>
+<span class="c"># key a fixed 12-byte header followed by the 32-byte point, so the raw</span>
+<span class="c"># material is just the tail of each DER encoding.</span>
+<span class="k">openssl</span> genpkey -algorithm ED25519 -out "$TMP/write.pem" 2&gt;/dev/null
+WRITE_KEY=$(<span class="k">openssl</span> pkey -in "$TMP/write.pem" -outform DER | tail -c 32 | b64url)
+WRITE_PUBKEY=$(<span class="k">openssl</span> pkey -in "$TMP/write.pem" -pubout -outform DER | tail -c 32 | b64std)
+
+<span class="c"># Store token — authenticates the per-project key/value store. Derived from</span>
+<span class="c"># the read key so that holding the link is what grants access.</span>
+STORE_TOKEN=$(<span class="k">printf</span> 'lwid-store-auth:%s' "$READ_KEY" | <span class="k">openssl</span> dgst -sha256 -binary | b64std)
+
+json_field() { <span class="k">sed</span> -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"; }
+
+<span class="c"># ---------------------------------------------------------------------------</span>
+<span class="c"># 1. Create the project. The server learns the write public key (so it can</span>
+<span class="c">#    verify later updates) and nothing <span class="k">else</span> of consequence.</span>
+<span class="c"># ---------------------------------------------------------------------------</span>
+PROJECT_ID=$(<span class="k">curl</span> -fsS -X POST "$SERVER/api/projects" \
+  -H 'Content-Type: application/json' \
+  -d "$(<span class="k">printf</span> '{"write_pubkey":"%s","ttl":"%s","store_token":"%s","client_version":"push-with-<span class="k">openssl</span>"}' \
+        "$WRITE_PUBKEY" "$TTL" "$STORE_TOKEN")" | json_field project_id)
+[ -n "$PROJECT_ID" ] || { <span class="k">echo</span> "could not create project on $SERVER" &gt;&amp;2; <span class="k">exit</span> 1; }
+
+<span class="c"># ---------------------------------------------------------------------------</span>
+<span class="c"># 2. Encrypt and upload each file. Both the contents and the path are</span>
+<span class="c">#    ciphertext; only the size stays visible.</span>
+<span class="c"># ---------------------------------------------------------------------------</span>
+ENTRIES=""
+<span class="k">for</span> f in "$@"; <span class="k">do</span>
+  [ -f "$f" ] || { <span class="k">echo</span> "not a file: $f" &gt;&amp;2; <span class="k">exit</span> 1; }
+  rel=${f#./}
+
+  gcm_encrypt "$READ_KEY_HEX" "$f" "$TMP/blob.bin"
+  blob_cid=$(<span class="k">curl</span> -fsS -X POST "$SERVER/api/blobs" \
+    -H 'Content-Type: application/octet-stream' \
+    --data-binary "@$TMP/blob.bin" | json_field cid)
+
+  <span class="c"># The CID is a pure <span class="k">function</span> of the bytes, so both sides must derive the</span>
+  <span class="c"># same one. Checking it here turns a silent broken manifest into an error.</span>
+  local_cid=$(cid_of "$TMP/blob.bin")
+  [ "$blob_cid" = "$local_cid" ] \
+    || { <span class="k">echo</span> "CID mismatch <span class="k">for</span> $rel: server $blob_cid, <span class="k">local</span> $local_cid" &gt;&amp;2; <span class="k">exit</span> 1; }
+
+  <span class="k">printf</span> '%s' "$rel" &gt; "$TMP/path.txt"
+  gcm_encrypt "$READ_KEY_HEX" "$TMP/path.txt" "$TMP/path.enc"
+  enc_path=$(b64url &lt; "$TMP/path.enc")
+
+  ENTRIES="${ENTRIES:+$ENTRIES,}$(<span class="k">printf</span> '{"path":"%s","cid":"%s","size":%s}' \
+    "$enc_path" "$blob_cid" "$(<span class="k">wc</span> -c &lt;"$f" | <span class="k">tr</span> -d ' ')")"
+  <span class="k">echo</span> "  encrypted $rel -&gt; $blob_cid" &gt;&amp;2
+<span class="k">done</span>
+
+<span class="c"># ---------------------------------------------------------------------------</span>
+<span class="c"># 3. The manifest ties the version together. It is stored as plaintext JSON</span>
+<span class="c">#    on purpose: the server needs the sizes and blob CIDs to enforce quotas</span>
+<span class="c">#    and garbage-collect, and those leak nothing once paths and contents are</span>
+<span class="c">#    encrypted. Schema 100 is what marks the paths as encrypted.</span>
+<span class="c"># ---------------------------------------------------------------------------</span>
+<span class="k">printf</span> '{"version":100,"parent_cid":null,"timestamp":"%s","files":[%s]}' \
+  "$(<span class="k">date</span> -u +%Y-%m-%dT%H:%M:%SZ)" "$ENTRIES" &gt; "$TMP/manifest.json"
+ROOT_CID=$(<span class="k">curl</span> -fsS -X POST "$SERVER/api/blobs" \
+  -H 'Content-Type: application/octet-stream' \
+  --data-binary "@$TMP/manifest.json" | json_field cid)
+
+<span class="c"># ---------------------------------------------------------------------------</span>
+<span class="c"># 4. Publish it, signing the root CID with the write key. The signature is</span>
+<span class="c">#    over the CID's ASCII bytes and nothing <span class="k">else</span> — no nonce, no timestamp —</span>
+<span class="c">#    so there is no canonical form to get wrong.</span>
+<span class="c"># ---------------------------------------------------------------------------</span>
+<span class="k">printf</span> '%s' "$ROOT_CID" &gt; "$TMP/root.cid"
+<span class="c"># -rawin insists on a seekable input: Ed25519 signs in one shot, so <span class="k">openssl</span></span>
+<span class="c"># wants the length up front and will not read a pipe.</span>
+SIG=$(<span class="k">openssl</span> pkeyutl -sign -inkey "$TMP/write.pem" -rawin -in "$TMP/root.cid" | b64std)
+<span class="k">curl</span> -fsS -o /dev/null -X PUT "$SERVER/api/projects/$PROJECT_ID/root" \
+  -H 'Content-Type: application/json' \
+  -d "$(<span class="k">printf</span> '{"root_cid":"%s","signature":"%s"}' "$ROOT_CID" "$SIG")"
+
+<span class="k">printf</span> '%s/p/%s#%s:%s\n' "$SERVER" "$PROJECT_ID" "$READ_KEY" "$WRITE_KEY"
+</code></pre>
+  <div class="note">
+    Deliberately a demonstration, not a replacement for <code>lwid push</code>:
+    no chunking, no deduplication, and <code>parent_cid</code> is always
+    <code>null</code>, so each run starts a fresh project rather than adding
+    a version to an existing one.
+  </div>
+</section>
+
+<footer>
+  Encrypted and published with <code>curl</code>, <code>openssl</code> and
+  coreutils. The decryption key never left the URL fragment, which browsers
+  do not send to servers — so the machine hosting this page cannot read it.
+</footer>
+
+</div>
+
+<script>
+(function () {
+  var btn = document.getElementById('copy');
+  var src = document.getElementById('src');
+  btn.addEventListener('click', function () {
+    var text = src.innerText;
+    var done = function (ok) {
+      btn.textContent = ok ? 'Copied' : 'Select and copy';
+      setTimeout(function () { btn.textContent = 'Copy source'; }, 1800);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+    } else {
+      done(false);
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
