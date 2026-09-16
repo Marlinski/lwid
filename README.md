@@ -72,6 +72,29 @@ Edit:  /p/{project-id}#{read-key}:{write-key}
 
 Keys are base64url-encoded. The fragment is never sent to the server.
 
+## Pushing without the CLI
+
+Nothing about the client side needs the `lwid` binary — it is all standard
+primitives over plain HTTP. [`scripts/push-with-openssl.sh`](scripts/push-with-openssl.sh)
+is a complete push in about a hundred lines of `bash`, using only `curl`,
+`openssl` and coreutils:
+
+```sh
+scripts/push-with-openssl.sh -s https://lookwhatidid.xyz README.md data.csv
+# https://lookwhatidid.xyz/p/49YwbOFqaQuh#il5eA8Pi...:UFQQhUe_...
+```
+
+It doubles as executable documentation of the protocol — encryption, path
+encryption, CID derivation, the manifest, and the Ed25519 signature that
+publishes a version, in the order they happen. Projects it creates are
+readable by `lwid clone` and by the browser, which is how it is tested.
+
+One wrinkle worth knowing if you write your own client: `openssl enc`
+refuses AEAD ciphers outright (`enc: AEAD ciphers not supported`), so
+AES-256-GCM has to be assembled from `-aes-256-ctr` for the ciphertext plus
+`openssl mac ... GMAC` for the tag, with a single GF(2¹²⁸) multiply to
+correct GMAC's length block into GCM's. The script explains the derivation.
+
 ## Server configuration
 
 Configuration is resolved in order of priority: **CLI flags > environment variables > `config.toml` > defaults**.
@@ -158,7 +181,18 @@ shell/         Vanilla-JS SPA + Service Worker
 shell/viewers/ Per-file-type viewers (notebook, docs, file browser)
 ```
 
-The shell SPA is vanilla JS served by the Rust server. It intercepts navigation via a Service Worker and renders decrypted project content inside a sandboxed iframe.
+The shell SPA is vanilla JS served by the Rust server. It decrypts a project
+in the page, then hands the files to a Service Worker that serves them to a
+sandboxed iframe, so the project behaves like an ordinary static site.
+
+When `server.sandbox_base_domain` is configured, that iframe is served from a
+**per-project origin** (`<base32(project-id)>.<domain>`) rather than
+same-origin with the shell. This is what keeps one project's scripts away
+from the shell's `localStorage` — where other projects' write keys live —
+since a sandboxed iframe with `allow-scripts allow-same-origin` can reach
+anything on its own origin. The project URL is unaffected: the shell stays on
+`/p/{id}#key` and redirects only the iframe, so deployments without wildcard
+DNS/TLS simply leave it unset and serve the sandbox same-origin as before.
 
 ### Viewers
 
@@ -173,8 +207,8 @@ front-end shim picked from the file types (`shell/js/viewers.js`):
 | anything else | a browsable file listing |
 
 Viewer bundles live in `shell/viewers/` and are served to the sandbox by the
-Service Worker under reserved `/sandbox/__viewer__/` and `/sandbox/__shared__/`
-prefixes; the project's own files stay at their real paths. Editable links can
+Service Worker under reserved `/__viewer__/` and `/__shared__/` prefixes; the
+project's own files stay at their real paths. Editable links can
 publish a new version straight from the viewer. Notebook run-state is kept in
 the encrypted project store, so a shared link shows the last execution.
 
