@@ -283,9 +283,14 @@ async function synthesizeFilesJson() {
 const ENTRY_PREFIX = '__lwid_sandbox__/entry/';
 
 async function handleRequest(url) {
-  let path = url.pathname.replace(/^\//, '');
-  if (path.startsWith(ENTRY_PREFIX)) path = path.slice(ENTRY_PREFIX.length);
-  try { path = decodeURIComponent(path); } catch { /* keep the raw form */ }
+  let rawPath = url.pathname.replace(/^\//, '');
+  if (rawPath.startsWith(ENTRY_PREFIX)) rawPath = rawPath.slice(ENTRY_PREFIX.length);
+  // Decode for the lookup, but keep the raw form as a fallback. A file whose
+  // name literally contains "%20" would otherwise be looked up as though it
+  // contained a space, and a malformed escape — a bare '%' in a hand-written
+  // href — makes decodeURIComponent throw outright.
+  let path = rawPath;
+  try { path = decodeURIComponent(rawPath); } catch { /* malformed escape — raw only */ }
 
   // An empty cache means this SW instance has never been primed — either
   // brand new, or (far more often) just restarted after the browser
@@ -313,9 +318,10 @@ async function handleRequest(url) {
 
   if (path === '' || path.endsWith('/')) {
     path += 'index.html';
+    rawPath += 'index.html';
   }
 
-  const entry = fileCache.get(path);
+  const entry = fileCache.get(path) || (rawPath !== path ? fileCache.get(rawPath) : undefined);
 
   if (!entry && activeViewer && path === 'index.html') {
     return serveShellAsset(`/viewers/${activeViewer}/index.html`);

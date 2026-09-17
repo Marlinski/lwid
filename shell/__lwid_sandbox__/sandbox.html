@@ -58,6 +58,16 @@
   // regardless of their own path once the page itself is controlled.
   var ENTRY_PREFIX = '/__lwid_sandbox__/entry';
 
+  // sandbox-sw.js percent-DECODES the path it receives, so what we build
+  // here has to be percent-ENCODED — it is the other half of that pair, and
+  // the only caller that was missing it (the viewers all encode already).
+  // Raw, a '#' or '?' in a file name is parsed as the fragment/query and the
+  // SW never sees it at all, and a bare '%' makes its decodeURIComponent
+  // throw. Encoded per segment so '/' stays a real path separator.
+  function entryUrl(path) {
+    return ENTRY_PREFIX + String(path).split('/').map(encodeURIComponent).join('/');
+  }
+
   var $content = null;
   function ensureContentFrame() {
     if ($content) return $content;
@@ -144,7 +154,7 @@
           await postFilesToSW(msg.files, msg.viewer, msg.canEdit);
           // navigateTo is omitted on a re-hydration resend (files refreshed,
           // nothing should navigate) — only point/re-point content when given.
-          if (msg.navigateTo) ensureContentFrame().src = ENTRY_PREFIX + msg.navigateTo;
+          if (msg.navigateTo) ensureContentFrame().src = entryUrl(msg.navigateTo);
           window.parent.postMessage({ type: 'LWID_SANDBOX_FILES_READY' }, SHELL_ORIGIN);
         } catch (err) {
           window.parent.postMessage(
@@ -155,7 +165,7 @@
         return;
       }
       if (msg.type === 'LWID_SANDBOX_NAVIGATE') {
-        ensureContentFrame().src = ENTRY_PREFIX + msg.path;
+        ensureContentFrame().src = entryUrl(msg.path);
         return;
       }
       // Anything else addressed to the real content — same-origin hop, so
