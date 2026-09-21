@@ -26,7 +26,10 @@ set -eu
 if [ -n "${UMAMI_WEBSITE_ID:-}" ]; then
   SHELL_DIR="${LWID_SERVER__SHELL_DIR:-/shell}"
   URL="${UMAMI_SCRIPT_URL:-https://stats.marlinski.org/script.js}"
-  SNIPPET="<script defer src=\"${URL}\" data-website-id=\"${UMAMI_WEBSITE_ID}\"></script>"
+  # data-exclude-hash is load-bearing here, not hygiene: a project URL is
+  # /p/<id>#<decryption key>, and without it Umami records the whole thing and
+  # the server learns every key it was built never to see.
+  SNIPPET="<script defer src=\"${URL}\" data-website-id=\"${UMAMI_WEBSITE_ID}\" data-exclude-hash=\"true\"></script>"
 
   for page in index.html docs.html terms.html; do
     f="${SHELL_DIR}/${page}"
