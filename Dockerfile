@@ -34,6 +34,10 @@ COPY --chown=lwid:lwid shell/ /shell/
 # Copy the compiled binary
 COPY --from=builder /build/target/release/lwid-server /usr/local/bin/lwid-server
 
+# Optional analytics injection into the shell's own pages; a no-op unless
+# UMAMI_WEBSITE_ID is set. Never touches the sandbox or the viewers.
+COPY --chmod=0755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+
 # Environment
 ENV LWID_STORAGE__DATA_DIR=/storage
 ENV LWID_SERVER__SHELL_DIR=/shell
@@ -42,4 +46,4 @@ EXPOSE 8080
 
 USER lwid
 
-ENTRYPOINT ["lwid-server"]
+ENTRYPOINT ["docker-entrypoint.sh"]
