@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
   packages: write
+  # download-artifact@v4 calls the Actions API to list artifacts. A permissions
+  # block is exhaustive, so without this `actions` is none and the release job
+  # fails with 403 Forbidden on ListArtifacts, which skips the image build.
+  actions: read
 
 env:
   CARGO_TERM_COLOR: always
