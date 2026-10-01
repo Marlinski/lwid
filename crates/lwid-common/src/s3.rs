@@ -40,7 +40,7 @@ use crate::cid::Cid;
 use crate::kv::{validate_key, KvError, KvStore};
 use crate::limits::{MAX_STORE_TOTAL_SIZE, MAX_STORE_VALUE_SIZE};
 use crate::project::{Project, ProjectError, ProjectStore};
-use crate::store::{BlobStore, StoreError};
+use crate::store::{BlobStore, StoreError, StoreUsage};
 
 /// Maximum number of keys S3 accepts in a single `DeleteObjects` request.
 const DELETE_BATCH_SIZE: usize = 1000;
@@ -320,6 +320,20 @@ impl BlobStore for S3BlobStore {
             .map_err(|e| io_err(&format!("delete_object {key}"), e))?;
 
         Ok(())
+    }
+
+    async fn usage(&self) -> Result<StoreUsage, StoreError> {
+        // One paginated LIST over the blob prefix — object sizes come back in
+        // the listing itself, so no per-object HEAD or GET is needed.
+        let prefix = format!("{}blobs/", self.prefix);
+        let listed = list_all(&self.client, &self.bucket, &prefix)
+            .await
+            .map_err(|e| io_err(&format!("list_objects {prefix}"), e))?;
+
+        Ok(StoreUsage {
+            objects: listed.len() as u64,
+            bytes: listed.iter().map(|o| o.size).sum(),
+        })
     }
 }
 

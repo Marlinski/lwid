@@ -31,6 +31,19 @@ pub enum StoreError {
 }
 
 // ---------------------------------------------------------------------------
+// Usage
+// ---------------------------------------------------------------------------
+
+/// Aggregate size of a blob store, as reported by [`BlobStore::usage`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct StoreUsage {
+    /// Number of stored blobs.
+    pub objects: u64,
+    /// Total bytes occupied by those blobs.
+    pub bytes: u64,
+}
+
+// ---------------------------------------------------------------------------
 // Trait
 // ---------------------------------------------------------------------------
 
@@ -57,6 +70,15 @@ pub trait BlobStore: Send + Sync {
     ///
     /// Returns [`StoreError::NotFound`] if the blob does not exist.
     async fn delete(&self, cid: &Cid) -> Result<(), StoreError>;
+
+    /// Total object count and byte size of the store.
+    ///
+    /// This is a full enumeration — a directory walk for [`FsBlobStore`], a
+    /// paginated `ListObjectsV2` for the S3 backend — so it costs O(objects)
+    /// and issues real network calls. It exists for periodic reporting (the
+    /// server's metrics exporter caches it) and must never be called from a
+    /// request path.
+    async fn usage(&self) -> Result<StoreUsage, StoreError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +158,33 @@ impl BlobStore for FsBlobStore {
         fs::remove_file(&path)?;
         Ok(())
     }
+
+    async fn usage(&self) -> Result<StoreUsage, StoreError> {
+        fn walk(dir: &std::path::Path, acc: &mut StoreUsage) -> Result<(), std::io::Error> {
+            let entries = match fs::read_dir(dir) {
+                Ok(entries) => entries,
+                // A store that has never been written to may have no tree at
+                // all. That is an empty store, not a failure.
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+                Err(e) => return Err(e),
+            };
+            for entry in entries {
+                let entry = entry?;
+                let meta = entry.metadata()?;
+                if meta.is_dir() {
+                    walk(&entry.path(), acc)?;
+                } else {
+                    acc.objects += 1;
+                    acc.bytes += meta.len();
+                }
+            }
+            Ok(())
+        }
+
+        let mut usage = StoreUsage::default();
+        walk(&self.base_dir, &mut usage)?;
+        Ok(usage)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +202,30 @@ mod tests {
         let store =
             FsBlobStore::new(dir.path().join("blobs")).expect("failed to create FsBlobStore");
         (store, dir)
+    }
+
+    #[tokio::test]
+    async fn usage_counts_objects_and_bytes() {
+        let (store, _dir) = tmp_store();
+        assert_eq!(store.usage().await.unwrap(), StoreUsage::default());
+
+        store.put(b"hello").await.unwrap();
+        store.put(b"worldly").await.unwrap();
+        let usage = store.usage().await.unwrap();
+        assert_eq!(usage.objects, 2);
+        assert_eq!(usage.bytes, 5 + 7);
+
+        // Content addressing means a duplicate put adds nothing.
+        store.put(b"hello").await.unwrap();
+        assert_eq!(store.usage().await.unwrap(), usage);
+    }
+
+    #[tokio::test]
+    async fn usage_of_absent_tree_is_empty_not_an_error() {
+        let dir = TempDir::new().expect("temp dir");
+        let store = FsBlobStore::new(dir.path().join("blobs")).expect("store");
+        std::fs::remove_dir_all(dir.path().join("blobs")).expect("remove tree");
+        assert_eq!(store.usage().await.unwrap(), StoreUsage::default());
     }
 
     #[tokio::test]

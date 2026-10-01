@@ -169,6 +169,57 @@ Building without the S3 backend (drops the AWS SDK dependency):
 cargo build --release -p lwid-server --no-default-features
 ```
 
+## Metrics
+
+A Prometheus exporter is available at `GET /metrics` on its **own listener**,
+off by default:
+
+```toml
+[metrics]
+enabled = true
+listen  = "0.0.0.0:9100"
+```
+
+It is deliberately never mounted on `server.listen`. These numbers describe the
+whole deployment — user counts, storage totals — and an origin that also serves
+untrusted project content is the wrong place for them. Bind it to loopback or
+to the pod IP, and keep it out of your Ingress.
+
+| Metric | Labels | Meaning |
+|--------|--------|---------|
+| `lwid_build_info` | `version` | Always 1; carries the running version |
+| `lwid_users_total` | `provider`, `tier` | Registered users |
+| `lwid_sessions_active` | `kind` | Unexpired sessions |
+| `lwid_signed_in_users` | — | Distinct users with an unexpired session |
+| `lwid_project_owners_total` | — | Projects claimed by a user |
+| `lwid_projects_total` | — | All projects, live and expired |
+| `lwid_projects_with_content` | — | Projects with a published version |
+| `lwid_projects_expiring` / `_expired` | — | Future deadline / past it, awaiting the reaper |
+| `lwid_project_blob_refs` | — | Blob references across all projects |
+| `lwid_projects_by_version` | `created_with` | Projects by creating client version |
+| `lwid_blobs_total` | — | Blobs in the content-addressed store |
+| `lwid_storage_bytes` | — | Bytes those blobs occupy |
+| `lwid_project_detail_enabled` | — | 1 when the per-project breakdown is being collected |
+| `lwid_metrics_scrape_duration_seconds` | — | Cost of the last uncached refresh |
+
+Anonymous (unclaimed) projects are `lwid_projects_total -
+lwid_project_owners_total`; there is no separate metric for it.
+
+The auth metrics are absent entirely when no auth provider is configured —
+there is no database then, and exporting zeros would assert something false.
+
+**Cost.** Every scrape is answered from a 60-second memoised snapshot, so a
+tight scrape interval cannot amplify into a storm of storage calls. Behind that
+cache one refresh is four grouped `COUNT`s, one `ProjectStore::list()`, and one
+`BlobStore::usage()` (a single paginated `ListObjectsV2` on S3). The
+per-project breakdown is the one group that costs a read *per project*, which
+is why it has its own switch and a `project_detail_limit` ceiling that disables
+it rather than letting it grow without bound.
+
+HTTP request rate, latency and status are intentionally **not** exported — the
+ingress already produces those per host, and a second in-process source would
+only ever disagree with it.
+
 ## Architecture
 
 Rust workspace with three crates:

@@ -264,3 +264,55 @@ pub async fn count_live_projects(
     let count: i64 = q.fetch_one(pool).await?;
     Ok(count as usize)
 }
+
+// ── Metrics queries ──────────────────────────────────────────────────────────
+//
+// Read-only aggregates for the /metrics exporter (see `crate::metrics`). Each
+// is a single grouped COUNT; none of them read user content.
+
+/// `(provider, tier, count)` over the `users` table.
+pub async fn count_users_by_provider_tier(
+    pool: &SqlitePool,
+) -> Result<Vec<(String, String, i64)>, sqlx::Error> {
+    sqlx::query_as::<_, (String, String, i64)>(
+        "SELECT provider, tier, COUNT(*) FROM users GROUP BY provider, tier",
+    )
+    .fetch_all(pool)
+    .await
+}
+
+/// `(kind, count)` over sessions that have not yet expired.
+pub async fn count_active_sessions_by_kind(
+    pool: &SqlitePool,
+) -> Result<Vec<(String, i64)>, sqlx::Error> {
+    let now = Utc::now().to_rfc3339();
+    sqlx::query_as::<_, (String, i64)>(
+        "SELECT kind, COUNT(*) FROM sessions WHERE expires_at > ?1 GROUP BY kind",
+    )
+    .bind(now)
+    .fetch_all(pool)
+    .await
+}
+
+/// Distinct users holding at least one unexpired session — "signed-in users".
+///
+/// Deliberately not the same as the session count: one person with a browser
+/// session and a CLI token is one signed-in user, not two.
+pub async fn count_signed_in_users(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
+    let now = Utc::now().to_rfc3339();
+    sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(DISTINCT user_id) FROM sessions WHERE expires_at > ?1",
+    )
+    .bind(now)
+    .fetch_one(pool)
+    .await
+}
+
+/// Total rows in `project_owners` — i.e. projects claimed by a user.
+///
+/// Subtracting this from the project total gives the anonymous ones.
+pub async fn count_project_owners(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM project_owners")
+        .fetch_one(pool)
+        .await
+}
