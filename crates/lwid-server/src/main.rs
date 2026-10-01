@@ -104,6 +104,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start background reaper for expired projects.
     reaper::spawn(state.projects.clone(), state.blobs.clone(), state.kv.clone());
 
+    // Prometheus exporter on its own listener. Separate from the public one
+    // by design — see the module docs — and a failure to bind it is fatal
+    // rather than logged: a metrics port that silently never came up looks
+    // exactly like a healthy deployment with nothing to say.
+    if config.metrics.enabled {
+        let metrics_listener = tokio::net::TcpListener::bind(&config.metrics.listen).await?;
+        info!("metrics listening on {}/metrics", config.metrics.listen);
+        let metrics_app = lwid_server::metrics::router(state.clone());
+        tokio::spawn(async move {
+            if let Err(e) = axum::serve(metrics_listener, metrics_app)
+                .with_graceful_shutdown(shutdown_signal())
+                .await
+            {
+                tracing::error!(error = %e, "metrics server stopped");
+            }
+        });
+    }
+
     let listener = tokio::net::TcpListener::bind(&config.server.listen).await?;
     info!("listening on {}", config.server.listen);
     info!("shell dir: {}", config.server.shell_dir.display());

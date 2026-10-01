@@ -70,6 +70,7 @@ pub struct Config {
     pub server: ServerConfig,
     pub policy: PolicyConfig,
     pub auth: AuthConfig,
+    pub metrics: MetricsConfig,
 }
 
 /// Which backend holds blobs, project metadata and the KV store.
@@ -261,6 +262,7 @@ impl Default for Config {
             server: ServerConfig::default(),
             policy: PolicyConfig::default(),
             auth: AuthConfig::default(),
+            metrics: MetricsConfig::default(),
         }
     }
 }
@@ -272,6 +274,51 @@ impl Default for StorageConfig {
             data_dir: PathBuf::from(DEFAULT_DATA_DIR),
             db_path: None,
             s3: S3Config::default(),
+        }
+    }
+}
+
+/// Prometheus exporter settings.
+///
+/// The exporter listens on its **own** address, separate from
+/// [`ServerConfig::listen`], and defaults to loopback. These numbers describe
+/// the whole deployment, so they must not share a listener with the one
+/// serving untrusted project content: anything reachable there is reachable
+/// by a project's own scripts.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct MetricsConfig {
+    /// Whether to start the exporter at all.
+    pub enabled: bool,
+
+    /// Address for the metrics listener. Loopback by default; in Kubernetes
+    /// set `0.0.0.0:9100` so a scraper in the cluster can reach the pod, and
+    /// leave it out of the Ingress.
+    pub listen: String,
+
+    /// Collect the per-project breakdown (`lwid_projects_with_content`,
+    /// `_expiring`, `_expired`, `_blob_refs`, `_by_version`).
+    ///
+    /// This is the only group that costs a store read per project, so it is
+    /// the only one with a switch.
+    pub project_detail: bool,
+
+    /// Stop collecting the per-project breakdown once there are more projects
+    /// than this, however `project_detail` is set.
+    ///
+    /// A ceiling rather than an assumption: the breakdown is worth its cost
+    /// at a few hundred projects and is not worth it at a hundred thousand,
+    /// and discovering that should not require shipping a new binary.
+    pub project_detail_limit: usize,
+}
+
+impl Default for MetricsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            listen: "127.0.0.1:9100".to_owned(),
+            project_detail: true,
+            project_detail_limit: 5_000,
         }
     }
 }
@@ -553,6 +600,31 @@ impl Config {
         if let Ok(val) = std::env::var("LWID_SERVER__SANDBOX_BASE_DOMAIN") {
             let val = val.trim().to_owned();
             self.server.sandbox_base_domain = if val.is_empty() { None } else { Some(val) };
+        }
+
+        // Metrics overrides
+        if let Ok(val) = std::env::var("LWID_METRICS__ENABLED") {
+            self.metrics.enabled = val.parse::<bool>().map_err(|e| ConfigError::EnvVar {
+                key: "LWID_METRICS__ENABLED",
+                reason: e.to_string(),
+            })?;
+        }
+        if let Ok(val) = std::env::var("LWID_METRICS__LISTEN") {
+            self.metrics.listen = val;
+        }
+        if let Ok(val) = std::env::var("LWID_METRICS__PROJECT_DETAIL") {
+            self.metrics.project_detail =
+                val.parse::<bool>().map_err(|e| ConfigError::EnvVar {
+                    key: "LWID_METRICS__PROJECT_DETAIL",
+                    reason: e.to_string(),
+                })?;
+        }
+        if let Ok(val) = std::env::var("LWID_METRICS__PROJECT_DETAIL_LIMIT") {
+            self.metrics.project_detail_limit =
+                val.parse::<usize>().map_err(|e| ConfigError::EnvVar {
+                    key: "LWID_METRICS__PROJECT_DETAIL_LIMIT",
+                    reason: e.to_string(),
+                })?;
         }
 
         // Policy tier overrides

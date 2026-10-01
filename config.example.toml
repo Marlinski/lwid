@@ -207,3 +207,32 @@ from_address = "noreply@example.com"
 # How long a magic link is valid, in minutes. Default: 15.
 # Env: (not yet exposed as env var — set in config file)
 magic_link_ttl_minutes = 15
+
+# ── Metrics ───────────────────────────────────────────────────────────────────
+# Prometheus exporter at GET /metrics, on its OWN listener.
+#
+# It is never mounted on `server.listen`: these numbers describe the whole
+# deployment, and nothing about them belongs on an origin that also serves
+# untrusted project content. Keep this port off your Ingress — bind it to
+# loopback, or to the pod IP so only an in-cluster scraper can reach it.
+#
+# A scrape is answered from a 60-second memoised snapshot, so a tight scrape
+# interval cannot amplify into a storm of storage calls.
+
+[metrics]
+# Env: LWID_METRICS__ENABLED
+enabled = false
+# Env: LWID_METRICS__LISTEN
+listen = "127.0.0.1:9100"
+
+# Per-project breakdown (lwid_projects_with_content / _expiring / _expired /
+# _blob_refs / _by_version). This is the only group that costs one store read
+# per project; everything else is a handful of queries regardless of size.
+# Env: LWID_METRICS__PROJECT_DETAIL
+project_detail = true
+
+# Stop collecting that breakdown past this many projects, whatever
+# project_detail says — so growth degrades the exporter's detail rather than
+# its cost.
+# Env: LWID_METRICS__PROJECT_DETAIL_LIMIT
+project_detail_limit = 5000
