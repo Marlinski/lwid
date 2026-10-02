@@ -52,7 +52,7 @@ The server listens on `0.0.0.0:8080` by default and serves the shell SPA, which 
 
 | Command          | Description                                                                      |
 |------------------|----------------------------------------------------------------------------------|
-| `lwid push`      | Encrypt and upload a directory to the server. Returns the project URL.           |
+| `lwid push`      | Encrypt and upload a directory to the server. Returns the project URL. `--name` sets the display name. |
 | `lwid pull`      | Download and decrypt a project into the current directory (requires `.lwid.json`). |
 | `lwid clone <url>` | Clone a project from a share URL into a new directory.                         |
 | `lwid info`      | Display project ID, server, edit URL, and view-only URL.                         |
@@ -62,6 +62,29 @@ The server listens on `0.0.0.0:8080` by default and serves the shell SPA, which 
 | `lwid logout`    | Remove the saved authentication token.                                           |
 
 Project config is saved to `.lwid.json` in the project directory — add it to `.gitignore` immediately, it contains your encryption and signing keys.
+
+## Project names
+
+A project can carry a human-readable name, so the projects dropdown shows
+"Admin Console" rather than `LDVWqY9uDWSt`. The name is AES-256-GCM encrypted
+with the read key and stored in the manifest, exactly like file paths — the
+server only ever sees ciphertext.
+
+It is set in the manifest, not the KV store, because the store token is derived
+from the *read* key: anyone holding a view-only link can write to the store, and
+a name that any visitor could rewrite would be worth little. A manifest is
+published under the write key's signature, so renaming is an owner action by
+construction.
+
+```sh
+lwid push --name "Admin Console"
+```
+
+With no `--name`, a new project takes the `<title>` of its entry page, falling
+back to the directory name. Later pushes carry the existing name forward. In
+the browser, click the project name in the toolbar to rename it (edit links
+only); that publishes a new version containing the same files and the new name,
+so it re-uploads nothing.
 
 ## URL scheme
 

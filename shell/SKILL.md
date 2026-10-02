@@ -33,6 +33,18 @@ Generates AES-256-GCM read + Ed25519 write keys, encrypts and uploads all files,
 
 **Add `.lwid.json` to `.gitignore` immediately** — it contains encryption and signing keys. Losing it means losing write access.
 
+### Naming a project
+
+```sh
+lwid push --name "Admin Console"
+```
+
+Give every project a name — it is what the owner sees in their projects list
+instead of a random ID, and you are better placed to write a good one than any
+default. Without `--name`, the project takes the `<title>` of its entry page,
+then the directory name. The name is encrypted with everything else; the server
+never sees it.
+
 ### Subsequent pushes
 
 ```sh

@@ -160,6 +160,92 @@ fn validate_sizes(files: &[CollectedFile]) -> Result<(), String> {
     Ok(())
 }
 
+// ── Project name ────────────────────────────────────────────────────────────
+
+/// Longest stored project name, in characters. Must match MAX_NAME_LENGTH in
+/// shell/js/manifest.js — both write the same field.
+const MAX_NAME_LENGTH: usize = 80;
+
+/// Normalise a name before storing it: drop control characters, collapse
+/// whitespace, cap the length. Mirrors `sanitizeName()` in the shell so a name
+/// set by the CLI and one set in the browser are stored identically.
+fn sanitize_name(name: &str) -> Option<String> {
+    let mut out = String::new();
+    let mut last_was_space = false;
+    for c in name.chars() {
+        if is_name_space(c) {
+            if !last_was_space && !out.is_empty() {
+                out.push(' ');
+            }
+            last_was_space = true;
+            continue;
+        }
+        // Every other control character is dropped outright.
+        if c.is_control() || ('\u{80}'..='\u{9f}').contains(&c) {
+            continue;
+        }
+        out.push(c);
+        last_was_space = false;
+    }
+    let trimmed: String = out.trim().chars().take(MAX_NAME_LENGTH).collect();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+/// The characters [`sanitize_name`] treats as whitespace, written out rather
+/// than inherited from `char::is_whitespace`.
+///
+/// Rust and JavaScript do not agree on the edges — U+0085 is whitespace to
+/// `char::is_whitespace` but not to a JS `\s` regex, and U+FEFF is the
+/// reverse — and a name set here must normalise identically to one set in the
+/// browser, since both land in the same manifest field. Must match SPACE_RE in
+/// shell/js/manifest.js.
+fn is_name_space(c: char) -> bool {
+    matches!(
+        c,
+        '\u{9}' | '\u{a}' | '\u{b}' | '\u{c}' | '\u{d}' | '\u{20}'
+            | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}'
+            | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}'
+    )
+}
+
+/// Extract the text of the first `<title>` element, if any.
+///
+/// Deliberately a scan rather than a parser dependency: this reads one tag out
+/// of a file the user wrote, and a wrong answer costs a default label.
+fn html_title(html: &str) -> Option<String> {
+    let lower = html.to_ascii_lowercase();
+    let open = lower.find("<title")?;
+    let gt = lower[open..].find('>')? + open + 1;
+    let close = lower[gt..].find("</title>")? + gt;
+    sanitize_name(&html[gt..close])
+}
+
+/// Guess a display name for a new project from its own files.
+///
+/// `<title>` of the entry page, else the directory name. Runs client-side
+/// because it needs plaintext — the server never sees any of this.
+fn derive_name(files: &[CollectedFile], dir: &Path) -> Option<String> {
+    let entry = files
+        .iter()
+        .find(|f| f.path == "index.html")
+        .or_else(|| files.iter().find(|f| f.path.ends_with(".html")));
+
+    if let Some(entry) = entry
+        && let Ok(text) = std::str::from_utf8(&entry.content)
+        && let Some(title) = html_title(text)
+    {
+        return Some(title);
+    }
+
+    dir.file_name()
+        .and_then(|n| n.to_str())
+        .and_then(sanitize_name)
+}
+
 // ── Push logic ──────────────────────────────────────────────────────────────
 
 pub async fn run(
@@ -169,6 +255,7 @@ pub async fn run(
     force: bool,
     paths: &[String],
     ttl: Option<&str>,
+    name: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir_path = std::fs::canonicalize(dir)?;
 
@@ -291,12 +378,33 @@ pub async fn run(
 
     let version = SCHEMA_ENCRYPTED_PATHS;
 
-    let manifest = serde_json::json!({
+    // Name resolution, in order: --name, then whatever the previous version was
+    // called, then a guess from the content. Carrying the old name forward is
+    // what stops an ordinary push from silently un-naming a project, since the
+    // name lives in the manifest and a manifest is a whole snapshot.
+    let resolved_name: Option<String> = match name {
+        Some(explicit) => sanitize_name(explicit),
+        None => {
+            let inherited = match parent_cid.as_deref() {
+                Some(pcid) => read_manifest_name(&client, pcid, &read_key).await,
+                None => None,
+            };
+            inherited.or_else(|| derive_name(&files, &dir_path))
+        }
+    };
+
+    let mut manifest = serde_json::json!({
         "version": version,
         "parent_cid": parent_cid,
         "timestamp": chrono::Utc::now().to_rfc3339(),
         "files": manifest_files,
     });
+
+    if let Some(ref plain) = resolved_name {
+        let encrypted = crypto::encrypt_path(&read_key, plain)?;
+        manifest["name"] = serde_json::Value::String(encrypted);
+        eprintln!("Name: {plain}");
+    }
 
     // Manifest is uploaded as plaintext JSON (not encrypted).
     let manifest_bytes = serde_json::to_vec(&manifest)?;
@@ -327,6 +435,22 @@ pub async fn run(
     );
 
     Ok(())
+}
+
+/// Read and decrypt the `name` of an existing manifest, if it has one.
+///
+/// Never fails a push: an unreadable name is a missing label, not an error.
+async fn read_manifest_name(
+    client: &Client,
+    manifest_cid: &str,
+    read_key: &[u8; 32],
+) -> Option<String> {
+    let bytes = client.get_blob(manifest_cid).await.ok()?;
+    let manifest: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    let encoded = manifest.get("name")?.as_str()?;
+    crypto::decrypt_path(read_key, encoded)
+        .ok()
+        .and_then(|n| sanitize_name(&n))
 }
 
 /// Merge newly pushed files with the existing manifest.
@@ -429,4 +553,86 @@ async fn create_new_project(
     eprintln!("Saved .lwid.json");
 
     Ok(cfg)
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn html_title_is_extracted_and_normalised() {
+        assert_eq!(
+            html_title("<html><head><title>  My   Console </title></head>"),
+            Some("My Console".to_string()),
+        );
+        // Attributes on the tag, and case, must not matter.
+        assert_eq!(
+            html_title(r#"<TITLE lang="en">Admin</TITLE>"#),
+            Some("Admin".to_string()),
+        );
+        assert_eq!(html_title("<html><body>no title</body></html>"), None);
+        assert_eq!(html_title("<title></title>"), None);
+    }
+
+    /// The same cases the browser asserts in tests/project-names.test.mjs.
+    ///
+    /// A name set here and one set in the shell land in the same manifest
+    /// field, so the two implementations must agree character for character.
+    /// Sharing the fixture is the only thing keeping two hand-written
+    /// normalisers in step — this test caught them diverging on a bare
+    /// newline once already.
+    #[test]
+    fn sanitize_matches_the_shared_fixture() {
+        const FIXTURE: &str = include_str!("../../../tests/fixtures/project-name-cases.json");
+        let cases: Vec<serde_json::Value> = serde_json::from_str(FIXTURE).expect("fixture parses");
+        assert!(!cases.is_empty(), "fixture must not be empty");
+
+        for case in &cases {
+            let input = case["input"].as_str().expect("input is a string");
+            let expected = case["expected"].as_str().map(str::to_owned);
+            assert_eq!(
+                sanitize_name(input),
+                expected,
+                "input: {input:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn sanitize_matches_the_shell_rules() {
+        assert_eq!(sanitize_name("  spaced   out  "), Some("spaced out".into()));
+        assert_eq!(sanitize_name("line\nbreak"), Some("line break".into()));
+        assert_eq!(sanitize_name("\u{0}evil"), Some("evil".into()));
+        assert_eq!(sanitize_name("   "), None);
+        assert_eq!(sanitize_name(""), None);
+        assert_eq!(
+            sanitize_name(&"x".repeat(200)).map(|n| n.chars().count()),
+            Some(MAX_NAME_LENGTH),
+        );
+    }
+
+    #[test]
+    fn derive_falls_back_to_the_directory_name() {
+        let files = vec![CollectedFile {
+            path: "data.csv".into(),
+            content: b"a,b".to_vec(),
+        }];
+        assert_eq!(
+            derive_name(&files, Path::new("/tmp/my-project")),
+            Some("my-project".to_string()),
+        );
+    }
+
+    #[test]
+    fn derive_prefers_the_entry_title() {
+        let files = vec![CollectedFile {
+            path: "index.html".into(),
+            content: b"<title>Dashboard</title>".to_vec(),
+        }];
+        assert_eq!(
+            derive_name(&files, Path::new("/tmp/my-project")),
+            Some("Dashboard".to_string()),
+        );
+    }
 }

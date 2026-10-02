@@ -52,6 +52,21 @@ pub struct Manifest {
     pub timestamp: String,
     /// The files included in this version.
     pub files: Vec<FileEntry>,
+
+    /// Human-readable project name, AES-256-GCM encrypted with the project
+    /// read key and base64url-encoded — the same wire format as
+    /// [`FileEntry::path`].
+    ///
+    /// Encrypted for the same reason paths are: the server stores manifests
+    /// as plaintext JSON so it can read sizes and CIDs, and a name is content.
+    /// It lives here rather than in the KV store because the store token is
+    /// derived from the *read* key, so a view-only link could rewrite it;
+    /// a manifest is published under the write key's signature.
+    ///
+    /// `None` on manifests written before names existed, and on projects
+    /// whose name was never set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 impl Manifest {
@@ -82,6 +97,7 @@ mod tests {
             version: 1,
             parent_cid: None,
             timestamp: "2026-03-20T12:00:00Z".to_string(),
+            name: None,
             files: vec![
                 FileEntry {
                     path: "index.html".to_string(),
@@ -107,6 +123,27 @@ mod tests {
     fn blob_cids_lists_all() {
         let m = sample_manifest();
         assert_eq!(m.blob_cids(), vec!["bafk1", "bafk2"]);
+    }
+
+    #[test]
+    fn name_is_optional_and_omitted_when_absent() {
+        // Old clients must not see a null `name` they do not expect, and a
+        // manifest written before names existed must still parse.
+        let m = sample_manifest();
+        let json = serde_json::to_string(&m).unwrap();
+        assert!(!json.contains("name"));
+
+        let parsed: Manifest = serde_json::from_str(&json).unwrap();
+        assert!(parsed.name.is_none());
+    }
+
+    #[test]
+    fn name_roundtrips_when_present() {
+        let mut m = sample_manifest();
+        m.name = Some("ZW5jcnlwdGVk".to_string());
+        let json = serde_json::to_string(&m).unwrap();
+        let parsed: Manifest = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.name.as_deref(), Some("ZW5jcnlwdGVk"));
     }
 
     #[test]
