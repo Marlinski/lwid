@@ -25,6 +25,7 @@ import {
   createManifest,
   serializeManifest,
   deserializeManifest,
+  sanitizeName,
   walkVersionChain,
 } from "./manifest.js";
 
@@ -95,7 +96,7 @@ export async function createNewProject(api) {
  * @param {Array<{ path: string, content: Uint8Array }>} files — files to include in this version
  * @returns {Promise<{ manifestCid: string, version: number }>}
  */
-export async function pushVersion(api, projectId, readKey, writeKey, files) {
+export async function pushVersion(api, projectId, readKey, writeKey, files, name = undefined) {
   // 1. Encrypt each file, compute CID, upload if needed
   /** @type {Array<{ path: string, cid: string, size: number }>} */
   const fileEntries = [];
@@ -121,8 +122,19 @@ export async function pushVersion(api, projectId, readKey, writeKey, files) {
     parentCid = project.root_cid;
   }
 
+  // 2b. Carry the existing name forward unless the caller supplied one.
+  // The name lives in the manifest, and a manifest is a whole snapshot — so
+  // without this every ordinary push would silently un-name the project.
+  // Pass null explicitly to clear it.
+  const effectiveName =
+    name === undefined
+      ? parentCid
+        ? await readManifestName(api, parentCid, readKey)
+        : null
+      : name;
+
   // 3. Build, serialize, and upload the new manifest (paths encrypted)
-  const manifest = await createManifest(fileEntries, parentCid, readKey);
+  const manifest = await createManifest(fileEntries, parentCid, readKey, effectiveName);
   const manifestBytes = serializeManifest(manifest);
   const manifestCid = await computeCid(manifestBytes);
   await api.uploadBlob(manifestBytes);
@@ -134,6 +146,75 @@ export async function pushVersion(api, projectId, readKey, writeKey, files) {
   await api.updateRoot(projectId, manifestCid, signatureBase64);
 
   return { manifestCid, version: manifest.version };
+}
+
+/**
+ * Read the (decrypted) name out of a manifest, or null if it has none.
+ *
+ * Never throws: a project whose name cannot be read is still a project, and
+ * failing a push because of a label would be a poor trade.
+ *
+ * @param {import('./api.js').ApiClient} api
+ * @param {string} manifestCid
+ * @param {string} readKey
+ * @returns {Promise<string | null>}
+ */
+async function readManifestName(api, manifestCid, readKey) {
+  try {
+    const blob = await api.getBlob(manifestCid);
+    const manifest = await deserializeManifest(new Uint8Array(blob), readKey);
+    return manifest.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Rename a project, publishing a new version that differs only in its name.
+ *
+ * Requires the write key — the new manifest is published under its signature,
+ * which is what makes a name something only the owner can change (the store
+ * token, by contrast, is derived from the read key, so anyone holding a
+ * view-only link could rewrite a name kept there).
+ *
+ * Re-uses the current manifest's file entries verbatim, so this uploads one
+ * small manifest blob and nothing else: no file is re-encrypted and no blob is
+ * re-sent, however large the project.
+ *
+ * @param {import('./api.js').ApiClient} api
+ * @param {string} projectId
+ * @param {string} readKey
+ * @param {CryptoKey} writeKey
+ * @param {string | null} name — the new name, or null to clear it
+ * @returns {Promise<{ manifestCid: string, name: string | null }>}
+ */
+export async function renameProject(api, projectId, readKey, writeKey, name) {
+  const project = await api.getProject(projectId);
+  if (!project.root_cid) {
+    throw new Error("project has no published version to rename");
+  }
+
+  const blob = await api.getBlob(project.root_cid);
+  const current = await deserializeManifest(new Uint8Array(blob), readKey);
+
+  // Paths come back decrypted; createManifest re-encrypts them. Fresh nonces
+  // mean the new ciphertext differs from the old, which is fine — the CIDs of
+  // the file blobs are unchanged, so nothing is re-uploaded.
+  const entries = current.files.map((f) => ({
+    path: f.path,
+    cid: f.cid,
+    size: f.size,
+  }));
+
+  const manifest = await createManifest(entries, project.root_cid, readKey, name);
+  const manifestBytes = serializeManifest(manifest);
+  const manifestCid = await computeCid(manifestBytes);
+  await api.uploadBlob(manifestBytes);
+
+  const signature = await sign(writeKey, new TextEncoder().encode(manifestCid));
+  await api.updateRoot(projectId, manifestCid, toStandardBase64(signature));
+
+  return { manifestCid, name: sanitizeName(name) };
 }
 
 // ---------------------------------------------------------------------------

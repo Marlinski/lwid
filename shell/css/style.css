@@ -2189,3 +2189,38 @@ button:disabled {
   background: var(--accent);
   color: #fff;
 }
+
+/* Project name in the toolbar + dropdown ---------------------------------- */
+
+.toolbar__doc-title--editable {
+  cursor: pointer;
+}
+
+.toolbar__doc-title--editable:hover {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+/* Two-line dropdown item: name on top, id beneath. Only rendered when the
+   project has a name; unnamed projects keep the original single id line. */
+.projects-dropdown__label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.projects-dropdown__name {
+  font-size: 0.825rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projects-dropdown__label .projects-dropdown__id {
+  flex: none;
+  font-size: 0.7rem;
+  color: var(--text-subtle);
+}

@@ -1,0 +1,62 @@
+[
+  {
+    "input": "My Admin Console",
+    "expected": "My Admin Console"
+  },
+  {
+    "input": "  spaced   out  ",
+    "expected": "spaced out"
+  },
+  {
+    "input": "line\nbreak",
+    "expected": "line break"
+  },
+  {
+    "input": "tab\there",
+    "expected": "tab here"
+  },
+  {
+    "input": "\u0000evil",
+    "expected": "evil"
+  },
+  {
+    "input": "",
+    "expected": null
+  },
+  {
+    "input": "   ",
+    "expected": null
+  },
+  {
+    "input": "ab",
+    "expected": "ab"
+  },
+  {
+    "input": "a﻿b",
+    "expected": "a﻿b"
+  },
+  {
+    "input": "a b",
+    "expected": "a b"
+  },
+  {
+    "input": "a b",
+    "expected": "a b"
+  },
+  {
+    "input": "a​b",
+    "expected": "a​b"
+  },
+  {
+    "input": "<img src=x onerror=alert(1)>",
+    "expected": "<img src=x onerror=alert(1)>"
+  },
+  {
+    "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "expected": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+    "input": "Café — résumé",
+    "expected": "Café — résumé"
+  }
+]
