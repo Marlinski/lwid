@@ -152,14 +152,15 @@ export async function pushVersion(api, projectId, readKey, writeKey, files, name
  * Read the (decrypted) name out of a manifest, or null if it has none.
  *
  * Never throws: a project whose name cannot be read is still a project, and
- * failing a push because of a label would be a poor trade.
+ * failing a push — or a dropdown render — because of a label would be a poor
+ * trade.
  *
  * @param {import('./api.js').ApiClient} api
  * @param {string} manifestCid
  * @param {string} readKey
  * @returns {Promise<string | null>}
  */
-async function readManifestName(api, manifestCid, readKey) {
+export async function readManifestName(api, manifestCid, readKey) {
   try {
     const blob = await api.getBlob(manifestCid);
     const manifest = await deserializeManifest(new Uint8Array(blob), readKey);

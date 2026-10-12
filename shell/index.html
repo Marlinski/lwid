@@ -443,6 +443,7 @@
     import {
       pushVersion,
       pullVersion,
+      readManifestName,
       renameProject,
       getVersionHistory,
       buildProjectUrl,
@@ -617,30 +618,49 @@
     }
 
     function saveProject(id, readKey, writeKey, name = undefined) {
-      const existing = getSavedProjects().find(p => p.id === id);
-      const projects = getSavedProjects().filter(p => p.id !== id);
-      // The name is authoritative in the manifest; this copy only exists so the
-      // dropdown can render without fetching and decrypting every project. Keep
-      // whatever we already knew when the caller has nothing newer to say.
-      const keptName = name === undefined ? (existing ? existing.name ?? null : null) : name;
-      projects.unshift({
-        id,
-        readKey,
-        writeKey: writeKey || null,
-        name: keptName,
-        lastVisited: Date.now(),
-      });
+      const all = getSavedProjects();
+      const existing = all.find(p => p.id === id);
+      const projects = all.filter(p => p.id !== id);
+
+      // The name is authoritative in the manifest; this copy exists so the
+      // dropdown can render without fetching and decrypting every project.
+      //
+      // Three states, and the difference matters to the backfill below:
+      //   absent  — never looked
+      //   null    — looked, and the project has no name
+      //   string  — the name
+      // So an unknown name must stay *absent* rather than being written as
+      // null, or the backfill would conclude it had already looked.
+      const record = { id, readKey, writeKey: writeKey || null, lastVisited: Date.now() };
+      if (name === undefined) {
+        if (existing && 'name' in existing) record.name = existing.name;
+        if (existing && existing.nameFrom) record.nameFrom = existing.nameFrom;
+      } else {
+        record.name = name;
+      }
+      projects.unshift(record);
+
       // Keep at most 50 projects
       if (projects.length > 50) projects.length = 50;
       localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
     }
 
-    /** Update just the cached display name of an already-saved project. */
-    function cacheProjectName(id, name) {
+    /**
+     * Update the cached display name of an already-saved project.
+     *
+     * `fromCid` records which manifest the name was read out of, so the
+     * backfill can tell "already looked at this version" from "not looked
+     * yet" and re-read only when a new version appears.
+     */
+    function cacheProjectName(id, name, fromCid = undefined) {
       const projects = getSavedProjects();
       const entry = projects.find(p => p.id === id);
-      if (!entry || (entry.name ?? null) === (name ?? null)) return;
+      if (!entry) return;
+      const sameName = 'name' in entry && (entry.name ?? null) === (name ?? null);
+      const sameFrom = fromCid === undefined || entry.nameFrom === fromCid;
+      if (sameName && sameFrom) return;
       entry.name = name ?? null;
+      if (fromCid !== undefined) entry.nameFrom = fromCid;
       try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects)); } catch { /* quota */ }
     }
 
@@ -674,10 +694,12 @@
      * a flaky network must not make someone's projects disappear.
      */
     async function refreshProjectMeta(ids) {
+      const saved = new Map(getSavedProjects().map(p => [p.id, p]));
       await Promise.all(ids.map(async (id) => {
         try {
           const p = await api.getProject(id);
           projectMeta[id] = { created_at: p.created_at, expires_at: p.expires_at ?? null };
+          await backfillProjectName(saved.get(id), p);
         } catch (err) {
           if (err && err.status === 404) projectMeta[id] = GONE;
         }
@@ -686,6 +708,31 @@
       const keep = new Set(getSavedProjects().map(p => p.id));
       for (const id of Object.keys(projectMeta)) if (!keep.has(id)) delete projectMeta[id];
       saveProjectMeta();
+    }
+
+    /**
+     * Learn a project's name without having to open it.
+     *
+     * The name lives in the manifest, so the only way to know it is to fetch
+     * and decrypt one — which is why the dropdown cannot simply read it. But
+     * this refresh already asks the server about every saved project, and the
+     * reply carries `root_cid`, so the manifest is one more request away.
+     * Without this, a name only ever appeared for projects opened since the
+     * feature shipped: someone with twenty projects pushed from the CLI would
+     * still face twenty nanoids, which is the thing names exist to fix.
+     *
+     * `nameFrom` keeps it to one manifest read per version rather than one per
+     * dropdown open, and still notices a rename made elsewhere, since that
+     * changes `root_cid`. Failures are silent — a missing label must never
+     * stop the list from rendering.
+     */
+    async function backfillProjectName(saved, project) {
+      if (!saved || !project.root_cid) return;
+      if (saved.nameFrom === project.root_cid) return;
+      try {
+        const name = await readManifestName(api, project.root_cid, saved.readKey);
+        cacheProjectName(saved.id, name, project.root_cid);
+      } catch { /* leave the id showing */ }
     }
 
     /** Render project list into a dropdown menu element. */
@@ -1338,9 +1385,17 @@
 
       try {
         showToast('Renaming...');
-        await renameProject(api, currentProjectId, currentReadKey, currentWriteKey, next);
+        const { manifestCid } = await renameProject(
+          api, currentProjectId, currentReadKey, currentWriteKey, next,
+        );
+        // A rename publishes a new manifest, so the open project's CID moves.
+        // Leaving it stale would point "set as entry point" at the previous
+        // manifest (the key is entry:{manifestCid}, so the choice would not
+        // survive a reload) and make version history mark the wrong row as
+        // current.
+        currentManifestCid = manifestCid;
         currentProjectName = next;
-        cacheProjectName(currentProjectId, next);
+        cacheProjectName(currentProjectId, next, manifestCid);
         renderDocTitle();
         showToast(next ? `Renamed to "${next}"` : 'Name cleared');
       } catch (err) {
@@ -2525,7 +2580,7 @@
         // The manifest is the source of truth; the localStorage copy exists
         // only so the dropdown can render without fetching every project.
         currentProjectName = result.manifest.name ?? null;
-        cacheProjectName(currentProjectId, currentProjectName);
+        cacheProjectName(currentProjectId, currentProjectName, currentManifestCid);
         renderDocTitle();
         currentFiles = result.files;
 

@@ -88,7 +88,7 @@ const SPACE_RUN_RE = new RegExp(SPACE_RE.source + '+', 'g');
  */
 export function sanitizeName(name) {
   if (typeof name !== 'string') return null;
-  const clean = Array.from(name)
+  const collapsed = Array.from(name)
     .filter((ch) => {
       // Whitespace survives to be collapsed below; dropping it here would glue
       // the words either side together ("line\nbreak" -> "linebreak").
@@ -98,8 +98,14 @@ export function sanitizeName(name) {
     })
     .join('')
     .replace(SPACE_RUN_RE, ' ')
-    .trim()
-    .slice(0, MAX_NAME_LENGTH);
+    .trim();
+  // Cap by code point, not by String.slice: slice counts UTF-16 code units,
+  // so a surrogate pair straddling the limit is cut in half and the stored
+  // name ends in a lone surrogate — which TextEncoder then turns into U+FFFD.
+  // Rust's .chars().take() counts code points, so slicing here would also put
+  // the two implementations out of step. Trim again because the cut can land
+  // on a space.
+  const clean = Array.from(collapsed).slice(0, MAX_NAME_LENGTH).join('').trim();
   return clean.length > 0 ? clean : null;
 }
 

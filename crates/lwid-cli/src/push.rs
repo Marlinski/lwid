@@ -187,11 +187,14 @@ fn sanitize_name(name: &str) -> Option<String> {
         out.push(c);
         last_was_space = false;
     }
-    let trimmed: String = out.trim().chars().take(MAX_NAME_LENGTH).collect();
+    // `take` counts chars (code points), matching Array.from(...).slice() in
+    // shell/js/manifest.js. Trim again because the cut can land on a space.
+    let capped: String = out.trim().chars().take(MAX_NAME_LENGTH).collect();
+    let trimmed = capped.trim();
     if trimmed.is_empty() {
         None
     } else {
-        Some(trimmed)
+        Some(trimmed.to_owned())
     }
 }
 

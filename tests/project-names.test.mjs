@@ -33,8 +33,29 @@ test('sanitizeName rejects non-strings rather than throwing', () => {
   }
 });
 
-test('sanitizeName caps length', () => {
-  assert.equal(sanitizeName('x'.repeat(500)).length, MAX_NAME_LENGTH);
+test('sanitizeName caps length by code point, never splitting a surrogate pair', () => {
+  assert.equal(Array.from(sanitizeName('x'.repeat(500))).length, MAX_NAME_LENGTH);
+
+  // String.slice would cut this emoji in half, leaving a lone surrogate that
+  // TextEncoder then stores as U+FFFD — and Rust, which caps by code point,
+  // would disagree about the result.
+  for (const input of ['x'.repeat(79) + '\u{1F600}', '\u{1F600}'.repeat(100)]) {
+    const out = sanitizeName(input);
+    assert.equal(Array.from(out).length, MAX_NAME_LENGTH);
+    for (const unit of out) {
+      const c = unit.charCodeAt(0);
+      assert.ok(
+        !(c >= 0xd800 && c <= 0xdfff) || unit.length === 2,
+        `lone surrogate in ${JSON.stringify(out)}`,
+      );
+    }
+    // Survives a UTF-8 round trip unchanged — no replacement characters.
+    assert.equal(new TextDecoder().decode(new TextEncoder().encode(out)), out);
+  }
+});
+
+test('sanitizeName does not leave a trailing space when the cap lands on one', () => {
+  assert.equal(sanitizeName('x'.repeat(79) + ' tail'), 'x'.repeat(79));
 });
 
 test('sanitizeName does NOT escape HTML — that is the renderer\'s job', () => {
