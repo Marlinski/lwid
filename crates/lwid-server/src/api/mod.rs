@@ -130,6 +130,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/projects/{id}", get(projects::get_project).delete(projects::delete_project))
         .route("/api/projects/{id}/root", put(projects::update_root))
         .route("/api/projects/{id}/ttl", put(projects::extend_ttl))
+        .route("/api/projects/{id}/name", put(projects::update_name))
         .route("/api/projects/{id}/store", get(store::list_keys))
         .route(
             "/api/projects/{id}/store/{*key}",

@@ -65,9 +65,11 @@ export class ApiClient {
    * @returns {Promise<{ project_id: string }>}
    * @throws {ApiError}
    */
-  async createProject(writePublicKeyBase64, ttl = '7d', storeToken = null) {
+  async createProject(writePublicKeyBase64, ttl = '7d', storeToken = null, encryptedName = null) {
     const body = { write_pubkey: writePublicKeyBase64, ttl };
     if (storeToken) body.store_token = storeToken;
+    // Sent at creation so a new project arrives named, with no second trip.
+    if (encryptedName) body.name = encryptedName;
     const res = await fetch(`${this.baseUrl}/api/projects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -155,6 +157,25 @@ export class ApiClient {
    * @returns {Promise<{ id: string, expires_at: string|null }>}
    * @throws {ApiError}
    */
+  /**
+   * Set or clear a project's display name.
+   *
+   * @param {string} id
+   * @param {string} encryptedName - base64url ciphertext, or '' to clear it.
+   * @param {string} signatureBase64 - Ed25519 signature over the *ciphertext*
+   *   bytes, which is the only form of the name the server ever holds.
+   * @returns {Promise<object>} the updated project record
+   */
+  async updateName(id, encryptedName, signatureBase64) {
+    const res = await fetch(`${this.baseUrl}/api/projects/${encodeURIComponent(id)}/name`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: encryptedName, signature: signatureBase64 }),
+    });
+    if (!res.ok) throw await errorFromResponse(res);
+    return res.json();
+  }
+
   async extendTtl(id, ttl, signatureBase64) {
     const res = await fetch(`${this.baseUrl}/api/projects/${encodeURIComponent(id)}/ttl`, {
       method: 'PUT',

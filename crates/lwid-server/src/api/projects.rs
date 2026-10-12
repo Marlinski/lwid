@@ -55,6 +55,14 @@ impl From<AuthError> for AppError {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Longest accepted encrypted name, in bytes of base64url.
+///
+/// The plaintext cap is 80 characters; AES-GCM adds a 12-byte nonce and a
+/// 16-byte tag, and base64 inflates by 4/3 — so even 80 four-byte code points
+/// stays under 500. This is a sanity bound on an untrusted field, not a
+/// product limit; the real cap is enforced client-side where the plaintext is.
+pub const MAX_ENCRYPTED_NAME_LEN: usize = 512;
+
 /// Convert a [`Project`] into a [`wire::ProjectResponse`].
 fn project_to_response(project: &Project) -> wire::ProjectResponse {
     wire::ProjectResponse {
@@ -63,6 +71,7 @@ fn project_to_response(project: &Project) -> wire::ProjectResponse {
         created_at: project.created_at.to_rfc3339(),
         updated_at: project.updated_at.to_rfc3339(),
         expires_at: project.expires_at.map(|t| t.to_rfc3339()),
+        name: project.name.clone(),
     }
 }
 
@@ -173,7 +182,13 @@ pub async fn create_project(
     let created_with = req.client_version.unwrap_or_else(|| env!("LWID_VERSION").to_string());
     let project = state
         .projects
-        .create(&pubkey, expires_at, req.store_token, Some(created_with.clone()))
+        .create(
+            &pubkey,
+            expires_at,
+            req.store_token,
+            Some(created_with.clone()),
+            req.name.filter(|n| !n.is_empty()),
+        )
         .await?;
 
     // Record ownership if the user is logged in.
@@ -289,6 +304,56 @@ pub async fn update_root(
         files = manifest.files.len(),
         "updated project root",
     );
+
+    Ok(Json(project_to_response(&updated)))
+}
+
+/// Set or clear a project's encrypted display name.
+///
+/// The caller provides the name already encrypted with the project read key
+/// (base64url), plus an Ed25519 signature over that ciphertext string, signed
+/// with the write key. Signing the ciphertext rather than the plaintext is
+/// forced by the design and is also sufficient: the ciphertext is the only
+/// form the server ever holds, so it is the thing whose authorship matters.
+///
+/// An empty `name` clears it.
+///
+/// This exists so renaming costs one small signed write instead of publishing
+/// a new version: a name describes the project, not one snapshot of it, and
+/// restoring an old version should not rename anything.
+///
+/// # Errors
+///
+/// - `404 Not Found` if the project does not exist.
+/// - `400 Bad Request` if the signature is not valid base64, or the name is
+///   longer than [`MAX_ENCRYPTED_NAME_LEN`].
+/// - `401 Unauthorized` if signature verification fails.
+pub async fn update_name(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<wire::UpdateNameRequest>,
+) -> Result<Json<wire::ProjectResponse>, AppError> {
+    let project = state.projects.get(&id).await?;
+
+    // Bound it before anything else: this is attacker-controlled and lands in
+    // a record the server rewrites on every push.
+    if req.name.len() > MAX_ENCRYPTED_NAME_LEN {
+        return Err(AppError::BadRequest(format!(
+            "encrypted name too long: {} bytes, limit {MAX_ENCRYPTED_NAME_LEN}",
+            req.name.len(),
+        )));
+    }
+
+    let signature_bytes = BASE64_STANDARD
+        .decode(&req.signature)
+        .map_err(|e| AppError::BadRequest(format!("invalid base64 for signature: {e}")))?;
+
+    auth::verify_signature(&project.write_pubkey, req.name.as_bytes(), &signature_bytes)?;
+
+    let name = if req.name.is_empty() { None } else { Some(req.name) };
+    let updated = state.projects.update_name(&id, name).await?;
+
+    info!(project_id = %id, named = updated.name.is_some(), "updated project name");
 
     Ok(Json(project_to_response(&updated)))
 }

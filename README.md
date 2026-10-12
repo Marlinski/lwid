@@ -65,26 +65,27 @@ Project config is saved to `.lwid.json` in the project directory — add it to `
 
 ## Project names
 
-A project can carry a human-readable name, so the projects dropdown shows
+A project can carry a human-readable name, so the projects list shows
 "Admin Console" rather than `LDVWqY9uDWSt`. The name is AES-256-GCM encrypted
-with the read key and stored in the manifest, exactly like file paths — the
-server only ever sees ciphertext.
+with the read key and stored on the project record — the server holds
+ciphertext it cannot read, exactly as it holds the store token and write
+pubkey.
 
-It is set in the manifest, not the KV store, because the store token is derived
-from the *read* key: anyone holding a view-only link can write to the store, and
-a name that any visitor could rewrite would be worth little. A manifest is
-published under the write key's signature, so renaming is an owner action by
-construction.
+It lives on the project rather than inside a manifest because a name describes
+the project, not one snapshot of it: restoring an old version should not drag
+an old name back, and renaming should not have to publish a version. So
+renaming is a single signed `PUT /api/projects/{id}/name`, carrying the
+ciphertext and an Ed25519 signature over it — which is what makes renaming an
+owner-only action. It also means a client listing projects learns their names
+from the `GET /api/projects/{id}` it already makes, with no manifest fetch.
 
 ```sh
 lwid push --name "Admin Console"
 ```
 
 With no `--name`, a new project takes the `<title>` of its entry page, falling
-back to the directory name. Later pushes carry the existing name forward. In
-the browser, click the project name in the toolbar to rename it (edit links
-only); that publishes a new version containing the same files and the new name,
-so it re-uploads nothing.
+back to the directory name; later pushes leave an existing name alone. In the
+browser, click the project name in the toolbar to rename it (edit links only).
 
 ## URL scheme
 

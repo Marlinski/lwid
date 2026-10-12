@@ -42,8 +42,8 @@ lwid push --name "Admin Console"
 Give every project a name — it is what the owner sees in their projects list
 instead of a random ID, and you are better placed to write a good one than any
 default. Without `--name`, the project takes the `<title>` of its entry page,
-then the directory name. The name is encrypted with everything else; the server
-never sees it.
+then the directory name; later pushes leave an existing name alone. The name is
+encrypted with the read key, so the server never sees it.
 
 ### Subsequent pushes
 

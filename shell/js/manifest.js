@@ -28,7 +28,7 @@ const SCHEMA_ENCRYPTED_PATHS = 100;
  * @param {string} readKey — base64url-encoded AES-256 key used to encrypt paths
  * @returns {Promise<{ version: number, parent_cid: string | null, timestamp: string, files: Array<{ path: string, cid: string, size: number }> }>}
  */
-export async function createManifest(files, parentCid, readKey, name = null) {
+export async function createManifest(files, parentCid, readKey) {
   const encryptedFiles = await Promise.all(
     files.map(async (file) => {
       const pathBytes = new TextEncoder().encode(file.path);
@@ -37,20 +37,12 @@ export async function createManifest(files, parentCid, readKey, name = null) {
       return { path: encryptedPath, cid: file.cid, size: file.size };
     })
   );
-  const manifest = {
+  return {
     version: SCHEMA_ENCRYPTED_PATHS,
     parent_cid: parentCid ?? null,
     timestamp: new Date().toISOString(),
     files: encryptedFiles,
   };
-
-  // Omitted entirely rather than written as null, so a manifest from a client
-  // that has never heard of names keeps the same shape as one that has.
-  const clean = sanitizeName(name);
-  if (clean) {
-    manifest.name = toBase64Url(await encrypt(readKey, new TextEncoder().encode(clean)));
-  }
-  return manifest;
 }
 
 /** Longest stored project name, in characters. */
@@ -159,20 +151,6 @@ export async function deserializeManifest(uint8Array, readKey) {
         return { ...entry, path };
       })
     );
-  }
-
-  // A name that fails to decrypt must not sink the whole project: the files
-  // are independently encrypted and perfectly readable without it, so a
-  // damaged name degrades to "unnamed" rather than to an unopenable project.
-  if (typeof manifest.name === 'string' && readKey) {
-    try {
-      const plain = await decrypt(readKey, fromBase64Url(manifest.name));
-      manifest.name = sanitizeName(new TextDecoder().decode(plain));
-    } catch {
-      manifest.name = null;
-    }
-  } else {
-    manifest.name = null;
   }
 
   return manifest;

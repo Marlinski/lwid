@@ -71,6 +71,7 @@ impl Client {
                 ttl: ttl.map(|s| s.to_string()),
                 store_token: store_token.map(|s| s.to_string()),
                 client_version: Some(env!("LWID_VERSION").to_string()),
+                            name: None,
             })
             .send()
             .await?;
@@ -154,6 +155,34 @@ impl Client {
     }
 
     /// PUT /api/projects/{id}/root — update root CID with signature.
+    /// Set (or clear, with an empty `encrypted_name`) the project's display
+    /// name. `signature_b64` signs the encrypted name's bytes.
+    pub async fn update_name(
+        &self,
+        id: &str,
+        encrypted_name: &str,
+        signature_b64: &str,
+    ) -> Result<ProjectResponse, ApiError> {
+        let resp = self
+            .auth(
+                self.http
+                    .put(format!("{}/api/projects/{}/name", self.base_url, id)),
+            )
+            .json(&UpdateNameRequest {
+                name: encrypted_name.to_string(),
+                signature: signature_b64.to_string(),
+            })
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ApiError::Server { status, body });
+        }
+        Ok(resp.json().await?)
+    }
+
     pub async fn update_root(
         &self,
         id: &str,

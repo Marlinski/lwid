@@ -365,6 +365,7 @@ pub async fn run(
     // 5. Build manifest
     let project = client.get_project(&cfg.project_id).await?;
     let parent_cid = project.root_cid;
+    let project_name = project.name;
 
     // If this is a selective push and there's an existing manifest, merge with it
     let manifest_files = if !paths.is_empty() && parent_cid.is_some() {
@@ -381,33 +382,12 @@ pub async fn run(
 
     let version = SCHEMA_ENCRYPTED_PATHS;
 
-    // Name resolution, in order: --name, then whatever the previous version was
-    // called, then a guess from the content. Carrying the old name forward is
-    // what stops an ordinary push from silently un-naming a project, since the
-    // name lives in the manifest and a manifest is a whole snapshot.
-    let resolved_name: Option<String> = match name {
-        Some(explicit) => sanitize_name(explicit),
-        None => {
-            let inherited = match parent_cid.as_deref() {
-                Some(pcid) => read_manifest_name(&client, pcid, &read_key).await,
-                None => None,
-            };
-            inherited.or_else(|| derive_name(&files, &dir_path))
-        }
-    };
-
-    let mut manifest = serde_json::json!({
+    let manifest = serde_json::json!({
         "version": version,
         "parent_cid": parent_cid,
         "timestamp": chrono::Utc::now().to_rfc3339(),
         "files": manifest_files,
     });
-
-    if let Some(ref plain) = resolved_name {
-        let encrypted = crypto::encrypt_path(&read_key, plain)?;
-        manifest["name"] = serde_json::Value::String(encrypted);
-        eprintln!("Name: {plain}");
-    }
 
     // Manifest is uploaded as plaintext JSON (not encrypted).
     let manifest_bytes = serde_json::to_vec(&manifest)?;
@@ -427,7 +407,28 @@ pub async fn run(
         .update_root(&cfg.project_id, &manifest_cid_str, &sig_b64)
         .await?;
 
-    // 7. Print URL
+    // 7. Name the project.
+    //
+    // A separate signed call rather than a manifest field: the name describes
+    // the project, not this snapshot, so it does not belong in a version and
+    // a later rename should not have to publish one. Only sent when the user
+    // asked for a name or the project does not have one yet — an ordinary
+    // push must never quietly rewrite a name the owner chose.
+    let desired = match name {
+        Some(explicit) => sanitize_name(explicit),
+        None if project_name.is_none() => derive_name(&files, &dir_path),
+        None => None,
+    };
+    if let Some(plain) = desired {
+        let encrypted = crypto::encrypt_path(&read_key, &plain)?;
+        let sig = signing_key.sign(encrypted.as_bytes());
+        client
+            .update_name(&cfg.project_id, &encrypted, &BASE64_STANDARD.encode(sig.to_bytes()))
+            .await?;
+        eprintln!("Name: {plain}");
+    }
+
+    // 8. Print URL
     let read_key_b64 = BASE64_URL_SAFE_NO_PAD.encode(&cfg.read_key);
     let write_key_b64 = BASE64_URL_SAFE_NO_PAD.encode(&cfg.write_key);
 
@@ -438,22 +439,6 @@ pub async fn run(
     );
 
     Ok(())
-}
-
-/// Read and decrypt the `name` of an existing manifest, if it has one.
-///
-/// Never fails a push: an unreadable name is a missing label, not an error.
-async fn read_manifest_name(
-    client: &Client,
-    manifest_cid: &str,
-    read_key: &[u8; 32],
-) -> Option<String> {
-    let bytes = client.get_blob(manifest_cid).await.ok()?;
-    let manifest: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
-    let encoded = manifest.get("name")?.as_str()?;
-    crypto::decrypt_path(read_key, encoded)
-        .ok()
-        .and_then(|n| sanitize_name(&n))
 }
 
 /// Merge newly pushed files with the existing manifest.

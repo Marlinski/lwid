@@ -443,8 +443,6 @@
     import {
       pushVersion,
       pullVersion,
-      readManifestName,
-      renameProject,
       getVersionHistory,
       buildProjectUrl,
     } from '/js/project.js';
@@ -617,51 +615,12 @@
       } catch { return []; }
     }
 
-    function saveProject(id, readKey, writeKey, name = undefined) {
-      const all = getSavedProjects();
-      const existing = all.find(p => p.id === id);
-      const projects = all.filter(p => p.id !== id);
-
-      // The name is authoritative in the manifest; this copy exists so the
-      // dropdown can render without fetching and decrypting every project.
-      //
-      // Three states, and the difference matters to the backfill below:
-      //   absent  — never looked
-      //   null    — looked, and the project has no name
-      //   string  — the name
-      // So an unknown name must stay *absent* rather than being written as
-      // null, or the backfill would conclude it had already looked.
-      const record = { id, readKey, writeKey: writeKey || null, lastVisited: Date.now() };
-      if (name === undefined) {
-        if (existing && 'name' in existing) record.name = existing.name;
-        if (existing && existing.nameFrom) record.nameFrom = existing.nameFrom;
-      } else {
-        record.name = name;
-      }
-      projects.unshift(record);
-
+    function saveProject(id, readKey, writeKey) {
+      const projects = getSavedProjects().filter(p => p.id !== id);
+      projects.unshift({ id, readKey, writeKey: writeKey || null, lastVisited: Date.now() });
       // Keep at most 50 projects
       if (projects.length > 50) projects.length = 50;
       localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
-    }
-
-    /**
-     * Update the cached display name of an already-saved project.
-     *
-     * `fromCid` records which manifest the name was read out of, so the
-     * backfill can tell "already looked at this version" from "not looked
-     * yet" and re-read only when a new version appears.
-     */
-    function cacheProjectName(id, name, fromCid = undefined) {
-      const projects = getSavedProjects();
-      const entry = projects.find(p => p.id === id);
-      if (!entry) return;
-      const sameName = 'name' in entry && (entry.name ?? null) === (name ?? null);
-      const sameFrom = fromCid === undefined || entry.nameFrom === fromCid;
-      if (sameName && sameFrom) return;
-      entry.name = name ?? null;
-      if (fromCid !== undefined) entry.nameFrom = fromCid;
-      try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects)); } catch { /* quota */ }
     }
 
     function removeSavedProject(id) {
@@ -698,8 +657,15 @@
       await Promise.all(ids.map(async (id) => {
         try {
           const p = await api.getProject(id);
-          projectMeta[id] = { created_at: p.created_at, expires_at: p.expires_at ?? null };
-          await backfillProjectName(saved.get(id), p);
+          // The name rides along in this response, so listing projects by name
+          // costs nothing beyond the request already being made. Decrypted
+          // here, with that project's own read key, because the menu renders
+          // synchronously and cannot await.
+          projectMeta[id] = {
+            created_at: p.created_at,
+            expires_at: p.expires_at ?? null,
+            name: await decryptName(p.name, saved.get(id)?.readKey),
+          };
         } catch (err) {
           if (err && err.status === 404) projectMeta[id] = GONE;
         }
@@ -711,28 +677,26 @@
     }
 
     /**
-     * Learn a project's name without having to open it.
+     * Decrypt a project's display name.
      *
-     * The name lives in the manifest, so the only way to know it is to fetch
-     * and decrypt one — which is why the dropdown cannot simply read it. But
-     * this refresh already asks the server about every saved project, and the
-     * reply carries `root_cid`, so the manifest is one more request away.
-     * Without this, a name only ever appeared for projects opened since the
-     * feature shipped: someone with twenty projects pushed from the CLI would
-     * still face twenty nanoids, which is the thing names exist to fix.
-     *
-     * `nameFrom` keeps it to one manifest read per version rather than one per
-     * dropdown open, and still notices a rename made elsewhere, since that
-     * changes `root_cid`. Failures are silent — a missing label must never
-     * stop the list from rendering.
+     * Returns null for anything unreadable rather than throwing: a name is a
+     * label, and a project with a damaged one is still a project.
      */
-    async function backfillProjectName(saved, project) {
-      if (!saved || !project.root_cid) return;
-      if (saved.nameFrom === project.root_cid) return;
+    async function decryptName(encrypted, readKey) {
+      if (!encrypted || !readKey) return null;
       try {
-        const name = await readManifestName(api, project.root_cid, saved.readKey);
-        cacheProjectName(saved.id, name, project.root_cid);
-      } catch { /* leave the id showing */ }
+        const plain = await decrypt(readKey, fromBase64Url(encrypted));
+        return sanitizeName(new TextDecoder().decode(plain));
+      } catch {
+        return null;
+      }
+    }
+
+    /** Encrypt a display name for storage, or '' to clear it. */
+    async function encryptName(name, readKey) {
+      const clean = sanitizeName(name);
+      if (!clean) return '';
+      return toBase64Url(await encrypt(readKey, new TextEncoder().encode(clean)));
     }
 
     /** Render project list into a dropdown menu element. */
@@ -763,13 +727,14 @@
           : '';
         // escapeHtml, not textContent, because this is a template string — and
         // the name is the one value here that a person typed.
-        const label = p.name
+        const name = projectMeta[p.id] && projectMeta[p.id] !== GONE ? projectMeta[p.id].name : null;
+        const label = name
           ? `<span class="projects-dropdown__label">
-               <span class="projects-dropdown__name">${escapeHtml(p.name)}</span>
+               <span class="projects-dropdown__name">${escapeHtml(name)}</span>
                <span class="projects-dropdown__id">${truncateId(p.id)}</span>
              </span>`
           : `<span class="projects-dropdown__id">${truncateId(p.id)}</span>`;
-        return `<a href="${href}" class="projects-dropdown__item${isCurrent ? ' projects-dropdown__item--active' : ''}" data-project-id="${p.id}" title="${escapeHtml(p.name || p.id)}">
+        return `<a href="${href}" class="projects-dropdown__item${isCurrent ? ' projects-dropdown__item--active' : ''}" data-project-id="${p.id}" title="${escapeHtml(name || p.id)}">
           ${label}
           ${life}
           <span class="projects-dropdown__badge ${accessClass}">${access}</span>
@@ -1368,9 +1333,16 @@
     }
 
     /**
-     * Rename the open project. Only reachable with a write key: the new name
-     * travels in a signed manifest, so this is an owner action by construction
-     * rather than by a check in the UI.
+     * Rename the open project.
+     *
+     * One signed PUT against the project record — not a new version. A name
+     * describes the project rather than any one snapshot of it, so renaming
+     * leaves the manifest chain, the version history and the current
+     * manifest CID untouched, and restoring an old version does not drag an
+     * old name back with it.
+     *
+     * Only reachable with a write key, and the server checks the signature
+     * too: the guarantee is the architecture's, not the interface's.
      */
     async function promptRename() {
       if (!currentWriteKey || !currentProjectId) return;
@@ -1384,18 +1356,15 @@
       if (next === currentProjectName) return;
 
       try {
-        showToast('Renaming...');
-        const { manifestCid } = await renameProject(
-          api, currentProjectId, currentReadKey, currentWriteKey, next,
-        );
-        // A rename publishes a new manifest, so the open project's CID moves.
-        // Leaving it stale would point "set as entry point" at the previous
-        // manifest (the key is entry:{manifestCid}, so the choice would not
-        // survive a reload) and make version history mark the wrong row as
-        // current.
-        currentManifestCid = manifestCid;
+        const encrypted = await encryptName(next, currentReadKey);
+        // Sign the ciphertext: it is what the server stores and the only form
+        // it can see.
+        const signature = await sign(currentWriteKey, new TextEncoder().encode(encrypted));
+        await api.updateName(currentProjectId, encrypted, toStandardBase64(signature));
+
         currentProjectName = next;
-        cacheProjectName(currentProjectId, next, manifestCid);
+        const meta = projectMeta[currentProjectId];
+        if (meta && meta !== GONE) { meta.name = next; saveProjectMeta(); }
         renderDocTitle();
         showToast(next ? `Renamed to "${next}"` : 'Name cleared');
       } catch (err) {
@@ -1885,19 +1854,22 @@
         const { publicKeyBytes, privateKeyB64url: writeKey } = await generateWriteKeyPair();
         const pubkeyBase64 = toStandardBase64(publicKeyBytes);
         const storeToken = await deriveStoreToken(readKey);
-        const { project_id: projectId } = await api.createProject(pubkeyBase64, selectedTtl, storeToken);
-
         const starterFiles = files.map(
           ({ path, content }) => ({ path, content: new TextEncoder().encode(content) }),
         );
+        const starterMap = new Map(starterFiles.map((f) => [f.path, f.content]));
         const starterName = deriveProjectName(
-          new Map(starterFiles.map((f) => [f.path, f.content])),
-          await resolveEntryPoint(new Map(starterFiles.map((f) => [f.path, f.content])), null),
+          starterMap,
+          await resolveEntryPoint(starterMap, null),
         );
 
-        await pushVersion(api, projectId, readKey, writeKey, starterFiles, starterName);
+        const { project_id: projectId } = await api.createProject(
+          pubkeyBase64, selectedTtl, storeToken, await encryptName(starterName, readKey),
+        );
 
-        saveProject(projectId, readKey, writeKey, starterName);
+        await pushVersion(api, projectId, readKey, writeKey, starterFiles);
+
+        saveProject(projectId, readKey, writeKey);
 
         const url = buildProjectUrl(window.location.origin, projectId, readKey, writeKey);
         window.location.href = url;
@@ -1932,22 +1904,24 @@
         const { publicKeyBytes, privateKeyB64url: writeKey } = await generateWriteKeyPair();
         const pubkeyBase64 = toStandardBase64(publicKeyBytes);
         const storeToken = await deriveStoreToken(readKey);
-        const { project_id: projectId } = await api.createProject(pubkeyBase64, selectedTtl, storeToken);
-
-        setStatus('Encrypting and uploading files...');
-
-        // 3. Push files as version 1
         const uploadMap = new Map(fileData.map((f) => [f.path, f.content]));
         const uploadName = deriveProjectName(
           uploadMap,
           await resolveEntryPoint(uploadMap, null),
         );
-        await pushVersion(api, projectId, readKey, writeKey, fileData, uploadName);
+        const { project_id: projectId } = await api.createProject(
+          pubkeyBase64, selectedTtl, storeToken, await encryptName(uploadName, readKey),
+        );
+
+        setStatus('Encrypting and uploading files...');
+
+        // 3. Push files as version 1
+        await pushVersion(api, projectId, readKey, writeKey, fileData);
 
         setStatus('Done! Redirecting...');
 
         // 4. Save to My Projects
-        saveProject(projectId, readKey, writeKey, uploadName);
+        saveProject(projectId, readKey, writeKey);
 
         // 5. Redirect to project view with keys in fragment
         const url = buildProjectUrl(window.location.origin, projectId, readKey, writeKey);
@@ -2103,7 +2077,12 @@
           const { publicKeyBytes, privateKeyB64url: writeKey } = await generateWriteKeyPair();
           const pubkeyBase64 = toStandardBase64(publicKeyBytes);
           const storeToken = await deriveStoreToken(readKey);
-          const { project_id: projectId } = await api.createProject(pubkeyBase64, selectedTtl, storeToken);
+          // A fork carries the name over — re-encrypted under the fork's own
+          // read key, since the two projects share no keys.
+          const forkName = currentProjectName ? sanitizeName(currentProjectName + ' (fork)') : null;
+          const { project_id: projectId } = await api.createProject(
+            pubkeyBase64, selectedTtl, storeToken, await encryptName(forkName, readKey),
+          );
 
           const fileData = Array.from(currentFiles, ([path, content]) => ({ path, content }));
           await pushVersion(api, projectId, readKey, writeKey, fileData);
@@ -2567,6 +2546,9 @@
             return;
           }
           currentManifestCid = project.root_cid;
+          // The name travels on the record, so it is already here — no extra
+          // request, and it does not change when the version does.
+          currentProjectName = await decryptName(project.name, currentReadKey);
           result = await pullVersion(api, currentReadKey, project.root_cid);
         }
 
@@ -2577,10 +2559,6 @@
         }
 
         currentManifest = result.manifest;
-        // The manifest is the source of truth; the localStorage copy exists
-        // only so the dropdown can render without fetching every project.
-        currentProjectName = result.manifest.name ?? null;
-        cacheProjectName(currentProjectId, currentProjectName, currentManifestCid);
         renderDocTitle();
         currentFiles = result.files;
 

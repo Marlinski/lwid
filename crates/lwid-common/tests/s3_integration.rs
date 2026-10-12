@@ -130,7 +130,7 @@ async fn project_lifecycle() {
 
     let pubkey = [7u8; 32];
     let created = projects
-        .create(&pubkey, None, Some("token".to_owned()), Some("test".to_owned()))
+        .create(&pubkey, None, Some("token".to_owned()), Some("test".to_owned()), None)
         .await
         .expect("create");
 
@@ -273,7 +273,7 @@ async fn project_list_spans_multiple_pages() {
 
     let pubkey = [3u8; 32];
     let created: Vec<String> =
-        futures::stream::iter((0..COUNT).map(|_| projects.create(&pubkey, None, None, None)))
+        futures::stream::iter((0..COUNT).map(|_| projects.create(&pubkey, None, None, None, None)))
             .buffer_unordered(CONCURRENCY)
             .map(|r| r.expect("create").id)
             .collect()
