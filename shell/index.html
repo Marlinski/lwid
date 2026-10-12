@@ -187,11 +187,21 @@
         Source
       </button>
 
-      <!-- The document currently open in the viewer — a shell-owned label
-           (not a viewer-declared toolbar item) so it sits next to Source the
-           same way for every shim. Truncates; full name on hover. See
-           LWID_TITLE_SET below. Empty (and collapsed) for a plain site. -->
+      <!-- The project's name — shell-owned, and the same label whatever is
+           open inside. A viewer's current file (notebook.ipynb, README.md)
+           does NOT belong here: this slot answers "which project am I in",
+           which is the question a toolbar is for, and the viewer's own file
+           name goes to the browser tab instead. Truncates; full name on
+           hover. -->
       <span id="toolbar-doc-title" class="toolbar__doc-title"></span>
+
+      <!-- Rename — owner-only. Sits beside the name it edits rather than in
+           the Source panel: the name is chrome, not a file operation. -->
+      <button id="btn-rename" class="toolbar__btn toolbar__btn--icon hidden" title="Rename this project" aria-label="Rename this project">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11.5 2.5a1.77 1.77 0 0 1 2.5 2.5L5.5 13.5 2 14l.5-3.5 9-8z"/>
+        </svg>
+      </button>
 
       <!-- Viewer-specific controls (populated by the active viewer over
            postMessage — see LWID_TOOLBAR_SET below). Empty for a plain site. -->
@@ -446,6 +456,7 @@
       getVersionHistory,
       buildProjectUrl,
     } from '/js/project.js';
+    import { MAX_NAME_LENGTH, sanitizeName } from '/js/manifest.js';
     import { scanFiles } from '/js/detect-secrets.js';
     import { GONE, selectVisibleProjects } from '/js/projects.js';
     import { detectViewer } from '/js/viewers.js';
@@ -484,6 +495,7 @@
     const $toolbarViewerSlot = document.getElementById('toolbar-viewer-slot');
     // Current document name, next to Source (see the LWID_TITLE_SET bridge below)
     const $toolbarDocTitle = document.getElementById('toolbar-doc-title');
+    const $btnRename       = document.getElementById('btn-rename');
 
     // Add files — a drop target inside the Source panel, owner-only
     const $sourceDropzone  = document.getElementById('source-add-dropzone');
@@ -652,10 +664,19 @@
      * a flaky network must not make someone's projects disappear.
      */
     async function refreshProjectMeta(ids) {
+      const saved = new Map(getSavedProjects().map(p => [p.id, p]));
       await Promise.all(ids.map(async (id) => {
         try {
           const p = await api.getProject(id);
-          projectMeta[id] = { created_at: p.created_at, expires_at: p.expires_at ?? null };
+          // The name rides along in this response, so listing projects by name
+          // costs nothing beyond the request already being made. Decrypted
+          // here, with that project's own read key, because the menu renders
+          // synchronously and cannot await.
+          projectMeta[id] = {
+            created_at: p.created_at,
+            expires_at: p.expires_at ?? null,
+            name: await decryptName(p.name, saved.get(id)?.readKey),
+          };
         } catch (err) {
           if (err && err.status === 404) projectMeta[id] = GONE;
         }
@@ -664,6 +685,29 @@
       const keep = new Set(getSavedProjects().map(p => p.id));
       for (const id of Object.keys(projectMeta)) if (!keep.has(id)) delete projectMeta[id];
       saveProjectMeta();
+    }
+
+    /**
+     * Decrypt a project's display name.
+     *
+     * Returns null for anything unreadable rather than throwing: a name is a
+     * label, and a project with a damaged one is still a project.
+     */
+    async function decryptName(encrypted, readKey) {
+      if (!encrypted || !readKey) return null;
+      try {
+        const plain = await decrypt(readKey, fromBase64Url(encrypted));
+        return sanitizeName(new TextDecoder().decode(plain));
+      } catch {
+        return null;
+      }
+    }
+
+    /** Encrypt a display name for storage, or '' to clear it. */
+    async function encryptName(name, readKey) {
+      const clean = sanitizeName(name);
+      if (!clean) return '';
+      return toBase64Url(await encrypt(readKey, new TextEncoder().encode(clean)));
     }
 
     /** Render project list into a dropdown menu element. */
@@ -692,8 +736,17 @@
         const life = p.lifetime
           ? `<span class="projects-dropdown__life projects-dropdown__life--${p.lifetime.tone}">${p.lifetime.label}</span>`
           : '';
-        return `<a href="${href}" class="projects-dropdown__item${isCurrent ? ' projects-dropdown__item--active' : ''}" data-project-id="${p.id}">
-          <span class="projects-dropdown__id">${truncateId(p.id)}</span>
+        // escapeHtml, not textContent, because this is a template string — and
+        // the name is the one value here that a person typed.
+        const name = projectMeta[p.id] && projectMeta[p.id] !== GONE ? projectMeta[p.id].name : null;
+        const label = name
+          ? `<span class="projects-dropdown__label">
+               <span class="projects-dropdown__name">${escapeHtml(name)}</span>
+               <span class="projects-dropdown__id">${truncateId(p.id)}</span>
+             </span>`
+          : `<span class="projects-dropdown__id">${truncateId(p.id)}</span>`;
+        return `<a href="${href}" class="projects-dropdown__item${isCurrent ? ' projects-dropdown__item--active' : ''}" data-project-id="${p.id}" title="${escapeHtml(name || p.id)}">
+          ${label}
           ${life}
           <span class="projects-dropdown__badge ${accessClass}">${access}</span>
           <button class="projects-dropdown__remove" data-remove-id="${p.id}" title="Remove from list">&times;</button>
@@ -763,6 +816,28 @@
 
     function truncateId(id, len = 12) {
       return id.length > len ? id.slice(0, len) + '...' : id;
+    }
+
+    /**
+     * Escape a string for interpolation into an innerHTML template.
+     *
+     * Everything this shell has ever interpolated has been a nanoid, a number
+     * or a string it generated itself. A project name is the first free-form
+     * value to reach that markup, and it reaches it on the *shell's* origin —
+     * which is where every other project's write key lives in localStorage,
+     * and the exact boundary the per-project sandbox origin exists to defend.
+     * So a name must never arrive as markup.
+     *
+     * Prefer textContent where there is an element to hand; use this only
+     * where a template string is genuinely the shape of the code.
+     */
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
     function showToast(msg, duration = 2500) {
@@ -943,6 +1018,42 @@
       }
       if (files.length > 0) show($list);
       else hide($list);
+    }
+
+    /**
+     * Guess a display name for a project from its own content.
+     *
+     * Runs only where plaintext exists — here in the page, or in the CLI —
+     * never on the server, which is the whole reason this is a guess made by
+     * the client and then *written down* rather than something the server
+     * derives on demand.
+     *
+     * Written once, at creation. Deliberately not recomputed on every load:
+     * a project whose name silently changed because someone edited a heading
+     * would be worse than one with a slightly stale name.
+     *
+     * @param {Map<string, Uint8Array>} files
+     * @param {string} entryPoint — path chosen by resolveEntryPoint()
+     * @returns {string | null}
+     */
+    function deriveProjectName(files, entryPoint) {
+      const bytes = files.get(entryPoint);
+      if (!bytes || !/\.html?$/i.test(entryPoint)) {
+        // Not an HTML entry: the file name is still better than a nanoid.
+        return sanitizeName(entryPoint ? entryPoint.replace(/\.[^.]+$/, '') : null);
+      }
+      let doc;
+      try {
+        // DOMParser does not execute scripts or load subresources, so this is
+        // safe to run over a project's own HTML before anything else sees it.
+        doc = new DOMParser().parseFromString(new TextDecoder().decode(bytes), 'text/html');
+      } catch {
+        return null;
+      }
+      const title = sanitizeName(doc.title);
+      if (title) return title;
+      const h1 = doc.querySelector('h1');
+      return sanitizeName(h1 && h1.textContent) ?? null;
     }
 
     /**
@@ -1200,14 +1311,90 @@
       $toolbarViewerSlot.innerHTML = '';
     }
 
-    // The document a viewer currently has open — shell-owned so it sits next
-    // to Source the same way for every shim, rather than being one more
-    // viewer-declared item lost among action buttons. Protocol: viewer ->
-    // shell 'LWID_TITLE_SET' { title }. Truncated by CSS; full name on hover.
+    // The name of the project currently open, decrypted from its record.
+    let currentProjectName = null;
+    // The file a viewer currently has open, pushed over 'LWID_TITLE_SET'.
+    // It no longer competes for the toolbar: a notebook showing
+    // "analysis.ipynb" where the project's name should be answers a question
+    // nobody asked of the chrome, and it left the owner with no stable thing
+    // to rename. It goes to the browser tab, where it costs nothing and is
+    // still useful for telling two open tabs apart.
+    let viewerDocTitle = null;
+
     function setDocTitle(title) {
-      $toolbarDocTitle.textContent = title || '';
-      $toolbarDocTitle.title = title || '';
+      viewerDocTitle = title || null;
+      renderDocTitle();
     }
+
+    function renderDocTitle() {
+      const shown = currentProjectName || '';
+      // textContent, not innerHTML: this string came from a person.
+      $toolbarDocTitle.textContent = shown;
+      $toolbarDocTitle.title = shown;
+
+      // The pen is the whole affordance — shown to anyone who can actually
+      // rename, whatever viewer happens to be open.
+      const renamable = !!currentWriteKey && !!currentProjectId;
+      $btnRename.classList.toggle('hidden', !renamable);
+      $btnRename.title = currentProjectName ? 'Rename this project' : 'Name this project';
+      // An unnamed project shows nothing at all otherwise, leaving the pen
+      // floating next to Source with no object.
+      if (renamable && !shown) {
+        $toolbarDocTitle.textContent = 'Untitled';
+        $toolbarDocTitle.classList.add('toolbar__doc-title--muted');
+      } else {
+        $toolbarDocTitle.classList.remove('toolbar__doc-title--muted');
+      }
+
+      // Tab: the open file first, since that is what distinguishes two tabs
+      // of the same project, then the project, then the product.
+      document.title = [viewerDocTitle, currentProjectName, 'lwid']
+        .filter(Boolean)
+        .join(' · ');
+    }
+
+    /**
+     * Rename the open project.
+     *
+     * One signed PUT against the project record — not a new version. A name
+     * describes the project rather than any one snapshot of it, so renaming
+     * leaves the manifest chain, the version history and the current
+     * manifest CID untouched, and restoring an old version does not drag an
+     * old name back with it.
+     *
+     * Only reachable with a write key, and the server checks the signature
+     * too: the guarantee is the architecture's, not the interface's.
+     */
+    async function promptRename() {
+      if (!currentWriteKey || !currentProjectId) return;
+      const entered = window.prompt(
+        `Name this project (up to ${MAX_NAME_LENGTH} characters, blank to clear):`,
+        currentProjectName || '',
+      );
+      if (entered === null) return; // cancelled
+
+      const next = sanitizeName(entered);
+      if (next === currentProjectName) return;
+
+      try {
+        const encrypted = await encryptName(next, currentReadKey);
+        // Sign the ciphertext: it is what the server stores and the only form
+        // it can see.
+        const signature = await sign(currentWriteKey, new TextEncoder().encode(encrypted));
+        await api.updateName(currentProjectId, encrypted, toStandardBase64(signature));
+
+        currentProjectName = next;
+        const meta = projectMeta[currentProjectId];
+        if (meta && meta !== GONE) { meta.name = next; saveProjectMeta(); }
+        renderDocTitle();
+        showToast(next ? `Renamed to "${next}"` : 'Name cleared');
+      } catch (err) {
+        console.error('Rename failed:', err);
+        showToast(`Rename failed: ${err.message}`);
+      }
+    }
+
+    $btnRename.addEventListener('click', promptRename);
 
     // Fixed, shell-owned icon set for toolbar buttons (see item.icon in
     // renderToolbarItems) — same outline style as the rest of the chrome
@@ -1686,10 +1873,20 @@
         const { publicKeyBytes, privateKeyB64url: writeKey } = await generateWriteKeyPair();
         const pubkeyBase64 = toStandardBase64(publicKeyBytes);
         const storeToken = await deriveStoreToken(readKey);
-        const { project_id: projectId } = await api.createProject(pubkeyBase64, selectedTtl, storeToken);
+        const starterFiles = files.map(
+          ({ path, content }) => ({ path, content: new TextEncoder().encode(content) }),
+        );
+        const starterMap = new Map(starterFiles.map((f) => [f.path, f.content]));
+        const starterName = deriveProjectName(
+          starterMap,
+          await resolveEntryPoint(starterMap, null),
+        );
 
-        await pushVersion(api, projectId, readKey, writeKey,
-          files.map(({ path, content }) => ({ path, content: new TextEncoder().encode(content) })));
+        const { project_id: projectId } = await api.createProject(
+          pubkeyBase64, selectedTtl, storeToken, await encryptName(starterName, readKey),
+        );
+
+        await pushVersion(api, projectId, readKey, writeKey, starterFiles);
 
         saveProject(projectId, readKey, writeKey);
 
@@ -1726,7 +1923,14 @@
         const { publicKeyBytes, privateKeyB64url: writeKey } = await generateWriteKeyPair();
         const pubkeyBase64 = toStandardBase64(publicKeyBytes);
         const storeToken = await deriveStoreToken(readKey);
-        const { project_id: projectId } = await api.createProject(pubkeyBase64, selectedTtl, storeToken);
+        const uploadMap = new Map(fileData.map((f) => [f.path, f.content]));
+        const uploadName = deriveProjectName(
+          uploadMap,
+          await resolveEntryPoint(uploadMap, null),
+        );
+        const { project_id: projectId } = await api.createProject(
+          pubkeyBase64, selectedTtl, storeToken, await encryptName(uploadName, readKey),
+        );
 
         setStatus('Encrypting and uploading files...');
 
@@ -1892,7 +2096,12 @@
           const { publicKeyBytes, privateKeyB64url: writeKey } = await generateWriteKeyPair();
           const pubkeyBase64 = toStandardBase64(publicKeyBytes);
           const storeToken = await deriveStoreToken(readKey);
-          const { project_id: projectId } = await api.createProject(pubkeyBase64, selectedTtl, storeToken);
+          // A fork carries the name over — re-encrypted under the fork's own
+          // read key, since the two projects share no keys.
+          const forkName = currentProjectName ? sanitizeName(currentProjectName + ' (fork)') : null;
+          const { project_id: projectId } = await api.createProject(
+            pubkeyBase64, selectedTtl, storeToken, await encryptName(forkName, readKey),
+          );
 
           const fileData = Array.from(currentFiles, ([path, content]) => ({ path, content }));
           await pushVersion(api, projectId, readKey, writeKey, fileData);
@@ -2356,6 +2565,9 @@
             return;
           }
           currentManifestCid = project.root_cid;
+          // The name travels on the record, so it is already here — no extra
+          // request, and it does not change when the version does.
+          currentProjectName = await decryptName(project.name, currentReadKey);
           result = await pullVersion(api, currentReadKey, project.root_cid);
         }
 
@@ -2366,6 +2578,7 @@
         }
 
         currentManifest = result.manifest;
+        renderDocTitle();
         currentFiles = result.files;
 
         // Build source tree

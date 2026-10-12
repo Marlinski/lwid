@@ -45,6 +45,63 @@ export async function createManifest(files, parentCid, readKey) {
   };
 }
 
+/** Longest stored project name, in characters. */
+export const MAX_NAME_LENGTH = 80;
+
+/**
+ * The characters treated as whitespace by {@link sanitizeName}, written out
+ * rather than inherited from the language.
+ *
+ * `\s` in JavaScript and `char::is_whitespace` in Rust do not agree — U+0085
+ * is whitespace to Rust and not to a JS regex, U+FEFF is the reverse — and a
+ * name set in the browser must normalise identically to one set by
+ * `lwid push --name`, because they land in the same manifest field. Spelling
+ * the set out is what makes that promise checkable rather than hopeful; the
+ * shared fixture in tests/fixtures/project-name-cases.json checks it.
+ */
+const SPACE_RE = /[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
+const SPACE_RUN_RE = new RegExp(SPACE_RE.source + '+', 'g');
+
+/**
+ * Normalise a project name before it is stored.
+ *
+ * Applied where a name is *set*, never where it is displayed, so there is one
+ * definition of what a stored name may contain. Control characters are
+ * stripped (they have no business in a label and break single-line layout),
+ * whitespace is collapsed, and the result is capped — an unbounded name would
+ * wreck the dropdown and then sit inside every future manifest.
+ *
+ * This is normalisation, not escaping. It does not make a name safe to
+ * interpolate into HTML; nothing here removes angle brackets, and callers
+ * must still render with textContent. See escapeHtml() in index.html.
+ *
+ * @param {string | null | undefined} name
+ * @returns {string | null} the cleaned name, or null if nothing survives
+ */
+export function sanitizeName(name) {
+  if (typeof name !== 'string') return null;
+  const collapsed = Array.from(name)
+    .filter((ch) => {
+      // Whitespace survives to be collapsed below; dropping it here would glue
+      // the words either side together ("line\nbreak" -> "linebreak").
+      if (SPACE_RE.test(ch)) return true;
+      const c = ch.codePointAt(0);
+      return !(c < 0x20 || c === 0x7f || (c >= 0x80 && c <= 0x9f));
+    })
+    .join('')
+    .replace(SPACE_RUN_RE, ' ')
+    .trim();
+  // Cap by code point, not by String.slice: slice counts UTF-16 code units,
+  // so a surrogate pair straddling the limit is cut in half and the stored
+  // name ends in a lone surrogate — which TextEncoder then turns into U+FFFD.
+  // Rust's .chars().take() counts code points, so slicing here would also put
+  // the two implementations out of step. Trim again because the cut can land
+  // on a space.
+  const clean = Array.from(collapsed).slice(0, MAX_NAME_LENGTH).join('').trim();
+  return clean.length > 0 ? clean : null;
+}
+
+
 // ---------------------------------------------------------------------------
 // Serialization
 // ---------------------------------------------------------------------------

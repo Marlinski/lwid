@@ -392,6 +392,7 @@ impl ProjectStore for S3ProjectStore {
         expires_at: Option<DateTime<Utc>>,
         store_token: Option<String>,
         created_with: Option<String>,
+        name: Option<String>,
     ) -> Result<Project, ProjectError> {
         let now = Utc::now();
         let project = Project {
@@ -404,6 +405,7 @@ impl ProjectStore for S3ProjectStore {
             blob_cids: BTreeSet::new(),
             store_token,
             created_with,
+            name,
         };
 
         self.write(&project).await?;
@@ -477,6 +479,20 @@ impl ProjectStore for S3ProjectStore {
         let mut project = self.get(id).await?;
 
         project.expires_at = expires_at;
+        project.updated_at = Utc::now();
+
+        self.write(&project).await?;
+        Ok(project)
+    }
+
+    async fn update_name(
+        &self,
+        id: &str,
+        name: Option<String>,
+    ) -> Result<Project, ProjectError> {
+        let mut project = self.get(id).await?;
+
+        project.name = name;
         project.updated_at = Utc::now();
 
         self.write(&project).await?;

@@ -18,6 +18,10 @@ pub struct CreateProjectRequest {
     /// lwid version of the client that created this project (e.g. git short hash).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_version: Option<String>,
+    /// Encrypted display name (base64url). Set at creation so a new project
+    /// arrives named, with no second round trip.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 /// Response body for `POST /api/projects`.
@@ -36,6 +40,14 @@ pub struct ProjectResponse {
     /// ISO 8601 expiry timestamp, or `null` if the project never expires.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<String>,
+    /// Encrypted display name (base64url), or absent if the project has none.
+    ///
+    /// Ciphertext: readable only with the project's read key, which never
+    /// reaches the server. It rides along here so a client listing projects
+    /// learns their names from the request it already makes, without
+    /// fetching and decrypting a manifest each.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 /// Request body for `PUT /api/projects/{id}/root`.
@@ -50,6 +62,18 @@ pub struct UpdateRootRequest {
 pub struct ExtendTtlRequest {
     pub ttl: String,
     /// Base64-encoded Ed25519 signature over the TTL string bytes.
+    pub signature: String,
+}
+
+/// Request body for `PUT /api/projects/{id}/name`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateNameRequest {
+    /// Encrypted display name (base64url), or an empty string to clear it.
+    pub name: String,
+    /// Base64-encoded Ed25519 signature over the `name` string bytes.
+    ///
+    /// Over the ciphertext, not the plaintext — the ciphertext is what the
+    /// server stores and the only form it ever sees.
     pub signature: String,
 }
 

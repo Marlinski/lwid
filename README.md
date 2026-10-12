@@ -52,7 +52,7 @@ The server listens on `0.0.0.0:8080` by default and serves the shell SPA, which 
 
 | Command          | Description                                                                      |
 |------------------|----------------------------------------------------------------------------------|
-| `lwid push`      | Encrypt and upload a directory to the server. Returns the project URL.           |
+| `lwid push`      | Encrypt and upload a directory to the server. Returns the project URL. `--name` sets the display name. |
 | `lwid pull`      | Download and decrypt a project into the current directory (requires `.lwid.json`). |
 | `lwid clone <url>` | Clone a project from a share URL into a new directory.                         |
 | `lwid info`      | Display project ID, server, edit URL, and view-only URL.                         |
@@ -62,6 +62,30 @@ The server listens on `0.0.0.0:8080` by default and serves the shell SPA, which 
 | `lwid logout`    | Remove the saved authentication token.                                           |
 
 Project config is saved to `.lwid.json` in the project directory — add it to `.gitignore` immediately, it contains your encryption and signing keys.
+
+## Project names
+
+A project can carry a human-readable name, so the projects list shows
+"Admin Console" rather than `LDVWqY9uDWSt`. The name is AES-256-GCM encrypted
+with the read key and stored on the project record — the server holds
+ciphertext it cannot read, exactly as it holds the store token and write
+pubkey.
+
+It lives on the project rather than inside a manifest because a name describes
+the project, not one snapshot of it: restoring an old version should not drag
+an old name back, and renaming should not have to publish a version. So
+renaming is a single signed `PUT /api/projects/{id}/name`, carrying the
+ciphertext and an Ed25519 signature over it — which is what makes renaming an
+owner-only action. It also means a client listing projects learns their names
+from the `GET /api/projects/{id}` it already makes, with no manifest fetch.
+
+```sh
+lwid push --name "Admin Console"
+```
+
+With no `--name`, a new project takes the `<title>` of its entry page, falling
+back to the directory name; later pushes leave an existing name alone. In the
+browser, click the project name in the toolbar to rename it (edit links only).
 
 ## URL scheme
 

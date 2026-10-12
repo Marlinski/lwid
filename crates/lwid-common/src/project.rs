@@ -87,6 +87,20 @@ pub struct Project {
     /// lwid version that created this project (client_version from the create request).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_with: Option<String>,
+
+    /// Human-readable project name, AES-256-GCM encrypted with the project
+    /// read key and base64url-encoded.
+    ///
+    /// Ciphertext, so this record staying server-readable costs nothing: the
+    /// server holds the bytes and cannot read them, exactly as it holds
+    /// `store_token` and `write_pubkey`.
+    ///
+    /// It lives on the project rather than in a manifest because a name
+    /// describes the project, not one snapshot of it — restoring an old
+    /// version should not rename anything — and because renaming then costs
+    /// a small signed write instead of publishing a version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 impl Project {
@@ -113,6 +127,7 @@ pub trait ProjectStore: Send + Sync {
         expires_at: Option<DateTime<Utc>>,
         store_token: Option<String>,
         created_with: Option<String>,
+        name: Option<String>,
     ) -> Result<Project, ProjectError>;
 
     /// Retrieve a project by its identifier.
@@ -141,6 +156,15 @@ pub trait ProjectStore: Send + Sync {
         &self,
         id: &str,
         expires_at: Option<DateTime<Utc>>,
+    ) -> Result<Project, ProjectError>;
+
+    /// Update the encrypted display name, or clear it with `None`.
+    ///
+    /// `name` is opaque ciphertext to this layer; callers encrypt it.
+    async fn update_name(
+        &self,
+        id: &str,
+        name: Option<String>,
     ) -> Result<Project, ProjectError>;
 
     /// List the identifiers of all known projects.
@@ -188,6 +212,7 @@ impl ProjectStore for FsProjectStore {
         expires_at: Option<DateTime<Utc>>,
         store_token: Option<String>,
         created_with: Option<String>,
+        name: Option<String>,
     ) -> Result<Project, ProjectError> {
         let id = nanoid::nanoid!(12);
         let now = Utc::now();
@@ -202,6 +227,7 @@ impl ProjectStore for FsProjectStore {
             blob_cids: BTreeSet::new(),
             store_token,
             created_with,
+            name,
         };
 
         let json = serde_json::to_string_pretty(&project)?;
@@ -266,6 +292,23 @@ impl ProjectStore for FsProjectStore {
         Ok(project)
     }
 
+    async fn update_name(
+        &self,
+        id: &str,
+        name: Option<String>,
+    ) -> Result<Project, ProjectError> {
+        let mut project = self.get(id).await?;
+
+        project.name = name;
+        project.updated_at = Utc::now();
+
+        let json = serde_json::to_string_pretty(&project)?;
+        self.ensure_dir()?;
+        fs::write(self.project_path(id), json)?;
+
+        Ok(project)
+    }
+
     async fn list(&self) -> Result<Vec<String>, ProjectError> {
         self.ensure_dir()?;
         let mut ids = Vec::new();
@@ -313,7 +356,7 @@ mod tests {
         let pubkey = test_pubkey();
 
         let created = store
-            .create(&pubkey, None, None, None)
+            .create(&pubkey, None, None, None, None)
             .await
             .expect("create should succeed");
 
@@ -342,7 +385,7 @@ mod tests {
         let expires = Utc::now() + chrono::Duration::hours(1);
 
         let created = store
-            .create(&pubkey, Some(expires), None, None)
+            .create(&pubkey, Some(expires), None, None, None)
             .await
             .expect("create should succeed");
 
@@ -377,7 +420,7 @@ mod tests {
         let pubkey = test_pubkey();
 
         let created = store
-            .create(&pubkey, None, None, None)
+            .create(&pubkey, None, None, None, None)
             .await
             .expect("create should succeed");
         assert!(created.root_cid.is_none());
@@ -413,7 +456,7 @@ mod tests {
         let pubkey = test_pubkey();
 
         let created = store
-            .create(&pubkey, None, None, None)
+            .create(&pubkey, None, None, None, None)
             .await
             .expect("create should succeed");
         let deleted = store.delete(&created.id).await.expect("delete should succeed");
@@ -431,9 +474,9 @@ mod tests {
         let (store, _dir) = tmp_store();
         let pubkey = test_pubkey();
 
-        let p1 = store.create(&pubkey, None, None, None).await.expect("create p1");
-        let p2 = store.create(&pubkey, None, None, None).await.expect("create p2");
-        let p3 = store.create(&pubkey, None, None, None).await.expect("create p3");
+        let p1 = store.create(&pubkey, None, None, None, None).await.expect("create p1");
+        let p2 = store.create(&pubkey, None, None, None, None).await.expect("create p2");
+        let p3 = store.create(&pubkey, None, None, None, None).await.expect("create p3");
 
         let mut ids = store.list().await.expect("list should succeed");
         ids.sort();

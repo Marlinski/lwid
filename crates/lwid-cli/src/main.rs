@@ -41,6 +41,12 @@ enum Commands {
         #[arg(long, default_value = "7d")]
         ttl: String,
 
+        /// Display name for the project. Encrypted like everything else — the
+        /// server never sees it. Defaults to the entry page's <title>, then
+        /// the directory name; carried forward on later pushes.
+        #[arg(long)]
+        name: Option<String>,
+
         /// Paths to push (default: entire directory)
         paths: Vec<String>,
     },
@@ -97,10 +103,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             yes,
             force,
             ttl,
+            name,
             paths,
         }) => {
             let server = server.unwrap_or_else(global_config::default_server);
-            push::run(&dir, &server, yes, force, &paths, Some(&ttl)).await?;
+            push::run(&dir, &server, yes, force, &paths, Some(&ttl), name.as_deref()).await?;
         }
         Some(Commands::Pull) => {
             pull::run(".").await?;
@@ -144,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         None => {
             // Default: push current dir
-            push::run(".", &global_config::default_server(), false, false, &[], Some("7d")).await?;
+            push::run(".", &global_config::default_server(), false, false, &[], Some("7d"), None).await?;
         }
     }
 

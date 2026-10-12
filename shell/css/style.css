@@ -2189,3 +2189,47 @@ button:disabled {
   background: var(--accent);
   color: #fff;
 }
+
+/* Project name in the toolbar + dropdown ---------------------------------- */
+
+/* An unnamed project still needs a label for the pen to point at. */
+.toolbar__doc-title--muted {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-style: italic;
+}
+
+/* Icon-only toolbar button: square, no gap, no label. */
+.toolbar__btn--icon {
+  padding: 0.35rem;
+  gap: 0;
+  color: var(--text-muted);
+}
+
+.toolbar__btn--icon:hover:not(:disabled) {
+  color: var(--text);
+}
+
+/* Two-line dropdown item: name on top, id beneath. Only rendered when the
+   project has a name; unnamed projects keep the original single id line. */
+.projects-dropdown__label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.projects-dropdown__name {
+  font-size: 0.825rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projects-dropdown__label .projects-dropdown__id {
+  flex: none;
+  font-size: 0.7rem;
+  color: var(--text-subtle);
+}

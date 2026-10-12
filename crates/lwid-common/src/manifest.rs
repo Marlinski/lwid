@@ -52,6 +52,7 @@ pub struct Manifest {
     pub timestamp: String,
     /// The files included in this version.
     pub files: Vec<FileEntry>,
+
 }
 
 impl Manifest {
