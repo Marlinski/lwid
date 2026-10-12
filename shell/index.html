@@ -187,11 +187,21 @@
         Source
       </button>
 
-      <!-- The document currently open in the viewer — a shell-owned label
-           (not a viewer-declared toolbar item) so it sits next to Source the
-           same way for every shim. Truncates; full name on hover. See
-           LWID_TITLE_SET below. Empty (and collapsed) for a plain site. -->
+      <!-- The project's name — shell-owned, and the same label whatever is
+           open inside. A viewer's current file (notebook.ipynb, README.md)
+           does NOT belong here: this slot answers "which project am I in",
+           which is the question a toolbar is for, and the viewer's own file
+           name goes to the browser tab instead. Truncates; full name on
+           hover. -->
       <span id="toolbar-doc-title" class="toolbar__doc-title"></span>
+
+      <!-- Rename — owner-only. Sits beside the name it edits rather than in
+           the Source panel: the name is chrome, not a file operation. -->
+      <button id="btn-rename" class="toolbar__btn toolbar__btn--icon hidden" title="Rename this project" aria-label="Rename this project">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11.5 2.5a1.77 1.77 0 0 1 2.5 2.5L5.5 13.5 2 14l.5-3.5 9-8z"/>
+        </svg>
+      </button>
 
       <!-- Viewer-specific controls (populated by the active viewer over
            postMessage — see LWID_TOOLBAR_SET below). Empty for a plain site. -->
@@ -485,6 +495,7 @@
     const $toolbarViewerSlot = document.getElementById('toolbar-viewer-slot');
     // Current document name, next to Source (see the LWID_TITLE_SET bridge below)
     const $toolbarDocTitle = document.getElementById('toolbar-doc-title');
+    const $btnRename       = document.getElementById('btn-rename');
 
     // Add files — a drop target inside the Source panel, owner-only
     const $sourceDropzone  = document.getElementById('source-add-dropzone');
@@ -1300,15 +1311,14 @@
       $toolbarViewerSlot.innerHTML = '';
     }
 
-    // The document a viewer currently has open — shell-owned so it sits next
-    // to Source the same way for every shim, rather than being one more
-    // viewer-declared item lost among action buttons. Protocol: viewer ->
-    // shell 'LWID_TITLE_SET' { title }. Truncated by CSS; full name on hover.
-    // The name of the project currently open, decrypted from its manifest.
+    // The name of the project currently open, decrypted from its record.
     let currentProjectName = null;
-    // A title pushed by a viewer (LWID_TITLE_SET). Takes precedence while that
-    // viewer is open — "README.md" is more useful than the project name when
-    // you are looking at README.md — and renaming is hidden while it does.
+    // The file a viewer currently has open, pushed over 'LWID_TITLE_SET'.
+    // It no longer competes for the toolbar: a notebook showing
+    // "analysis.ipynb" where the project's name should be answers a question
+    // nobody asked of the chrome, and it left the owner with no stable thing
+    // to rename. It goes to the browser tab, where it costs nothing and is
+    // still useful for telling two open tabs apart.
     let viewerDocTitle = null;
 
     function setDocTitle(title) {
@@ -1317,19 +1327,30 @@
     }
 
     function renderDocTitle() {
-      const shown = viewerDocTitle || currentProjectName || '';
+      const shown = currentProjectName || '';
       // textContent, not innerHTML: this string came from a person.
       $toolbarDocTitle.textContent = shown;
+      $toolbarDocTitle.title = shown;
 
-      const renamable = !viewerDocTitle && !!currentWriteKey && !!currentProjectId;
-      $toolbarDocTitle.title = renamable
-        ? (shown ? `${shown} — click to rename` : 'Click to name this project')
-        : shown;
-      $toolbarDocTitle.classList.toggle('toolbar__doc-title--editable', renamable);
-      // An unnamed project still needs something clickable to name it.
-      if (renamable && !shown) $toolbarDocTitle.textContent = 'Name this project';
+      // The pen is the whole affordance — shown to anyone who can actually
+      // rename, whatever viewer happens to be open.
+      const renamable = !!currentWriteKey && !!currentProjectId;
+      $btnRename.classList.toggle('hidden', !renamable);
+      $btnRename.title = currentProjectName ? 'Rename this project' : 'Name this project';
+      // An unnamed project shows nothing at all otherwise, leaving the pen
+      // floating next to Source with no object.
+      if (renamable && !shown) {
+        $toolbarDocTitle.textContent = 'Untitled';
+        $toolbarDocTitle.classList.add('toolbar__doc-title--muted');
+      } else {
+        $toolbarDocTitle.classList.remove('toolbar__doc-title--muted');
+      }
 
-      document.title = currentProjectName ? `${currentProjectName} · lwid` : 'lwid';
+      // Tab: the open file first, since that is what distinguishes two tabs
+      // of the same project, then the project, then the product.
+      document.title = [viewerDocTitle, currentProjectName, 'lwid']
+        .filter(Boolean)
+        .join(' · ');
     }
 
     /**
@@ -1373,9 +1394,7 @@
       }
     }
 
-    $toolbarDocTitle.addEventListener('click', () => {
-      if (!viewerDocTitle && currentWriteKey) promptRename();
-    });
+    $btnRename.addEventListener('click', promptRename);
 
     // Fixed, shell-owned icon set for toolbar buttons (see item.icon in
     // renderToolbarItems) — same outline style as the rest of the chrome
