@@ -365,9 +365,10 @@ impl BlobStore for S3BlobStore {
         // One paginated LIST over the blob prefix — object sizes come back in
         // the listing itself, so no per-object HEAD or GET is needed.
         let prefix = format!("{}blobs/", self.prefix);
-        list_usage(&self.client, &self.bucket, &prefix)
+        let usage = list_usage(&self.client, &self.bucket, &prefix)
             .await
-            .map_err(|e| io_err(&format!("list_objects {prefix}"), e))
+            .map_err(|e| io_err(&format!("list_objects {prefix}"), e))?;
+        Ok(usage)
     }
 }
 
