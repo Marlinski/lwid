@@ -297,7 +297,8 @@ pub struct MetricsConfig {
     pub listen: String,
 
     /// Collect the per-project breakdown (`lwid_projects_with_content`,
-    /// `_expiring`, `_expired`, `_blob_refs`, `_by_version`).
+    /// `_expiring`, `_expired`, `_no_expiry`, `_blob_refs`, `_by_version`,
+    /// `_by_age_days`, `_by_expiry_days`).
     ///
     /// This is the only group that costs a store read per project, so it is
     /// the only one with a switch.

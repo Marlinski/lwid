@@ -18,7 +18,9 @@
 //! - one `ProjectStore::list()`;
 //! - one `BlobStore::usage()` — a single paginated LIST;
 //! - and, when [`MetricsConfig::project_detail`] is on, one `get()` per
-//!   project, which is the only part that grows with the deployment.
+//!   project, which is the only part that grows with the deployment. Those
+//!   reads run with bounded concurrency, so a few hundred projects refresh in
+//!   a couple of seconds instead of serially.
 //!
 //! That last group is why `project_detail` exists as a switch and why it
 //! stops fanning out past [`MetricsConfig::project_detail_limit`]: the
@@ -26,6 +28,11 @@
 //! up until the point where producing it is the most expensive thing the
 //! server does, and that crossover should not require a code change to
 //! survive.
+//!
+//! The age / expiry histograms are gauges over the current population, not
+//! Prometheus histograms: one sample per day bucket, labelled with its range
+//! and signed offset from now, so Grafana can lay them out as bars around
+//! "now".
 //!
 //! HTTP request rate/latency/status are intentionally absent — the ingress
 //! already exports those per host, and duplicating them in-process adds
@@ -40,7 +47,8 @@ use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
+use lwid_common::project::Project;
 use tokio::sync::Mutex;
 use tracing::warn;
 
@@ -48,6 +56,33 @@ use crate::api::AppState;
 
 /// How long a rendered snapshot is served before it is recomputed.
 pub const CACHE_TTL: Duration = Duration::from_secs(60);
+
+/// Number of one-day buckets in the age / expiry distributions. Everything
+/// at or past this many days falls into the overflow bucket.
+const DAY_BUCKETS: usize = 30;
+
+/// Index of the one-day bucket `days` falls into, or `None` for the overflow.
+///
+/// Negative values (a clock that is slightly ahead of the server) are counted
+/// as today rather than dropped.
+fn day_index(days: f64) -> Option<usize> {
+    if days < 0.0 {
+        Some(0)
+    } else if days < DAY_BUCKETS as f64 {
+        Some(days.floor() as usize)
+    } else {
+        None
+    }
+}
+
+/// Human-readable range for bucket `i`, e.g. `00-01d` or `30+d`.
+fn bucket_label(i: usize) -> String {
+    if i < DAY_BUCKETS {
+        format!("{i:02}-{:02}d", i + 1)
+    } else {
+        format!("{DAY_BUCKETS}+d")
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Exposition format
@@ -216,6 +251,32 @@ async fn collect_db(state: &AppState, e: &mut Exposition) {
     }
 }
 
+/// Fetch every project record, with bounded concurrency.
+///
+/// A project can be reaped between the list and the get; that is ordinary,
+/// not an error worth failing the whole scrape over, so failed reads are
+/// simply skipped. The bound keeps a large deployment from opening hundreds
+/// of simultaneous S3 requests.
+async fn fetch_projects(state: &AppState, ids: &[String]) -> Vec<Project> {
+    const CONCURRENCY: usize = 32;
+
+    let mut projects = Vec::with_capacity(ids.len());
+    for chunk in ids.chunks(CONCURRENCY) {
+        let mut set = tokio::task::JoinSet::new();
+        for id in chunk {
+            let store = state.projects.clone();
+            let id = id.clone();
+            set.spawn(async move { store.get(&id).await });
+        }
+        while let Some(joined) = set.join_next().await {
+            if let Ok(Ok(project)) = joined {
+                projects.push(project);
+            }
+        }
+    }
+    projects
+}
+
 /// Project counts. The totals are one `list()`; the breakdown costs a `get()`
 /// per project and is gated by config and by a size ceiling.
 async fn collect_projects(state: &AppState, e: &mut Exposition) {
@@ -256,25 +317,36 @@ async fn collect_projects(state: &AppState, e: &mut Exposition) {
     }
 
     let now = Utc::now();
-    let (mut with_content, mut expiring, mut expired, mut blob_refs) = (0u64, 0u64, 0u64, 0u64);
+    let (mut with_content, mut expiring, mut expired, mut no_expiry, mut blob_refs) =
+        (0u64, 0u64, 0u64, 0u64, 0u64);
     let mut by_version: std::collections::BTreeMap<String, u64> = Default::default();
+    let mut by_age = vec![0u64; DAY_BUCKETS + 1];
+    let mut by_expiry = vec![0u64; DAY_BUCKETS + 1];
 
-    for id in &ids {
-        let project = match state.projects.get(id).await {
-            Ok(p) => p,
-            // A project can be reaped between the list and the get; that is
-            // ordinary, not an error worth failing the whole scrape over.
-            Err(_) => continue,
-        };
-
+    for project in fetch_projects(state, &ids).await {
         if project.root_cid.is_some() {
             with_content += 1;
         }
+
+        let age_days = (now - project.created_at).num_seconds() as f64 / 86_400.0;
+        match day_index(age_days) {
+            Some(i) => by_age[i] += 1,
+            None => by_age[DAY_BUCKETS] += 1,
+        }
+
         match project.expires_at {
             Some(exp) if exp <= now => expired += 1,
-            Some(_) => expiring += 1,
-            None => {}
+            Some(exp) => {
+                expiring += 1;
+                let days_left = (exp - now).num_seconds() as f64 / 86_400.0;
+                match day_index(days_left) {
+                    Some(i) => by_expiry[i] += 1,
+                    None => by_expiry[DAY_BUCKETS] += 1,
+                }
+            }
+            None => no_expiry += 1,
         }
+
         blob_refs += project.blob_cids.len() as u64;
         *by_version
             .entry(project.created_with.unwrap_or_else(|| "unknown".to_owned()))
@@ -297,6 +369,11 @@ async fn collect_projects(state: &AppState, e: &mut Exposition) {
         expired as f64,
     );
     e.gauge(
+        "lwid_projects_no_expiry",
+        "Projects that never expire.",
+        no_expiry as f64,
+    );
+    e.gauge(
         "lwid_project_blob_refs",
         "Total blob references held across all projects; counts shared blobs \
          once per referencing project, so it exceeds lwid_blobs_total.",
@@ -310,6 +387,36 @@ async fn collect_projects(state: &AppState, e: &mut Exposition) {
             .into_iter()
             .map(|(v, n)| (vec![v], n as f64))
             .collect::<Vec<_>>(),
+    );
+
+    // Day `-1` is the last 24h, `-30` is 29-30 days ago, `-31` is everything
+    // older. The sign keeps the past on the left of a chart centred on now.
+    let age_samples: Vec<(Vec<String>, f64)> = (0..=DAY_BUCKETS)
+        .map(|i| {
+            let day = -((i as i64) + 1);
+            (vec![bucket_label(i), day.to_string()], by_age[i] as f64)
+        })
+        .collect();
+    e.gauge_vec(
+        "lwid_projects_by_age_days",
+        "Projects by age in one-day buckets; `day` is negative days from now.",
+        &["bucket", "day"],
+        &age_samples,
+    );
+
+    // Same layout, mirrored: `+1` expires in the next 24h, `+31` in over 30
+    // days. Already-expired and never-expiring projects are separate gauges.
+    let expiry_samples: Vec<(Vec<String>, f64)> = (0..=DAY_BUCKETS)
+        .map(|i| {
+            let day = (i as i64) + 1;
+            (vec![bucket_label(i), day.to_string()], by_expiry[i] as f64)
+        })
+        .collect();
+    e.gauge_vec(
+        "lwid_projects_by_expiry_days",
+        "Projects by time to expiry in one-day buckets; `day` is days from now.",
+        &["bucket", "day"],
+        &expiry_samples,
     );
 }
 
@@ -438,6 +545,26 @@ mod tests {
         let out = e.finish();
         assert!(out.contains("lwid_users_total{provider=\"github\",tier=\"free\"} 3\n"));
         assert!(out.contains("lwid_users_total{provider=\"google\",tier=\"pro\"} 1\n"));
+    }
+
+    #[test]
+    fn day_index_splits_daily_and_overflow() {
+        // A slightly future timestamp is today, not an error.
+        assert_eq!(day_index(-1.0), Some(0));
+        assert_eq!(day_index(0.0), Some(0));
+        assert_eq!(day_index(0.99), Some(0));
+        assert_eq!(day_index(1.0), Some(1));
+        assert_eq!(day_index(29.99), Some(29));
+        assert_eq!(day_index(30.0), None);
+        assert_eq!(day_index(10_000.0), None);
+    }
+
+    #[test]
+    fn bucket_labels_cover_the_month_and_the_tail() {
+        assert_eq!(bucket_label(0), "00-01d");
+        assert_eq!(bucket_label(9), "09-10d");
+        assert_eq!(bucket_label(29), "29-30d");
+        assert_eq!(bucket_label(30), "30+d");
     }
 
     #[test]
