@@ -312,7 +312,7 @@ pub struct MetricsConfig {
     /// and discovering that should not require shipping a new binary.
     pub project_detail_limit: usize,
 
-    /// How long a rendered snapshot is served before it is recomputed.
+    /// How often the background task recomputes the snapshot.
     ///
     /// A refresh costs one `list()` plus one read per project and one
     /// paginated blob LIST, so this is the knob that trades freshness for S3

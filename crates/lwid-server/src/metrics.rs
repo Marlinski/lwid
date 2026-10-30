@@ -78,7 +78,7 @@ fn bucket_label(i: usize) -> String {
     if i < DAY_BUCKETS {
         format!("{i:02}-{:02}d", i + 1)
     } else {
-        format!("{DAY_BUCKETS}+d")
+        format!("{}+d", DAY_BUCKETS)
     }
 }
 
