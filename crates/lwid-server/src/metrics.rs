@@ -9,9 +9,10 @@
 //!
 //! # What it costs
 //!
-//! A scrape is answered from a [`CACHE_TTL`]-second memoised snapshot, so a
-//! tight scrape interval cannot amplify into a storm of S3 calls. Behind that
-//! cache, one refresh costs:
+//! A scrape is answered from a memoised snapshot, never from a live scan. A
+//! background task refreshes it every [`MetricsConfig::cache_ttl_seconds`],
+//! so the scrape interval cannot amplify into a storm of S3 calls. One
+//! refresh costs:
 //!
 //! - four grouped `COUNT` queries against SQLite (free; skipped when auth is
 //!   off and there is no database at all);
@@ -53,9 +54,6 @@ use tokio::sync::Mutex;
 use tracing::warn;
 
 use crate::api::AppState;
-
-/// How long a rendered snapshot is served before it is recomputed.
-pub const CACHE_TTL: Duration = Duration::from_secs(60);
 
 /// Number of one-day buckets in the age / expiry distributions. Everything
 /// at or past this many days falls into the overflow bucket.
@@ -192,7 +190,7 @@ async fn collect(state: &AppState) -> String {
 
     e.gauge(
         "lwid_metrics_scrape_duration_seconds",
-        "Time the last uncached metrics refresh took.",
+        "Time the last background metrics refresh took.",
         started.elapsed().as_secs_f64(),
     );
 
@@ -443,45 +441,58 @@ async fn collect_storage(state: &AppState, e: &mut Exposition) {
 // Cache + router
 // ---------------------------------------------------------------------------
 
-/// The memoised snapshot shared by every scrape.
+/// The last rendered snapshot. The refresher writes it; scrapes only read it.
 #[derive(Default)]
 struct Cache {
-    rendered: Option<(Instant, String)>,
+    rendered: Option<String>,
 }
 
 #[derive(Clone)]
 pub struct MetricsState {
-    app: AppState,
     cache: Arc<Mutex<Cache>>,
 }
 
 /// Build the metrics router. Mounted on its own listener, never on the
 /// public one.
 pub fn router(app: AppState) -> Router {
+    let cache = Arc::new(Mutex::new(Cache::default()));
+    let ttl = Duration::from_secs(app.config.metrics.cache_ttl_seconds.max(1));
+    tokio::spawn(refresh_loop(app, cache.clone(), ttl));
+
     Router::new()
         .route("/metrics", get(handler))
         .route("/health", get(|| async { "ok\n" }))
-        .with_state(MetricsState {
-            app,
-            cache: Arc::new(Mutex::new(Cache::default())),
-        })
+        .with_state(MetricsState { cache })
+}
+
+/// Recompute the snapshot on a fixed cadence, independent of scrapes.
+///
+/// The first tick fires immediately, so a freshly started pod has numbers
+/// without waiting a full TTL. If a refresh overruns the interval, the next
+/// one is delayed rather than queued.
+async fn refresh_loop(app: AppState, cache: Arc<Mutex<Cache>>, ttl: Duration) {
+    let mut ticker = tokio::time::interval(ttl);
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    loop {
+        ticker.tick().await;
+        let body = collect(&app).await;
+        *cache.lock().await = Cache {
+            rendered: Some(body),
+        };
+    }
 }
 
 async fn handler(State(state): State<MetricsState>) -> Response {
-    // The lock is held across the refresh on purpose: concurrent scrapes wait
-    // for the one in flight and then share its result, rather than each
-    // starting its own fan-out.
-    let mut cache = state.cache.lock().await;
-
-    if let Some((at, body)) = cache.rendered.as_ref()
-        && at.elapsed() < CACHE_TTL
-    {
-        return text(body.clone());
+    // Never do the expensive scan here: serve whatever the refresher last
+    // published. Before the first refresh finishes there is simply no data yet.
+    let body = state.cache.lock().await.rendered.clone();
+    match body {
+        Some(body) => text(body),
+        None => text(
+            "# lwid metrics are still being collected; retry in a few seconds\n".to_owned(),
+        ),
     }
-
-    let body = collect(&state.app).await;
-    cache.rendered = Some((Instant::now(), body.clone()));
-    text(body)
 }
 
 fn text(body: String) -> Response {

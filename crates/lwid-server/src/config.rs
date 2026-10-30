@@ -311,6 +311,14 @@ pub struct MetricsConfig {
     /// at a few hundred projects and is not worth it at a hundred thousand,
     /// and discovering that should not require shipping a new binary.
     pub project_detail_limit: usize,
+
+    /// How long a rendered snapshot is served before it is recomputed.
+    ///
+    /// A refresh costs one `list()` plus one read per project and one
+    /// paginated blob LIST, so this is the knob that trades freshness for S3
+    /// traffic. Hourly-ish values (3300) are reasonable: the numbers are
+    /// deployment totals, not request metrics.
+    pub cache_ttl_seconds: u64,
 }
 
 impl Default for MetricsConfig {
@@ -320,6 +328,7 @@ impl Default for MetricsConfig {
             listen: "127.0.0.1:9100".to_owned(),
             project_detail: true,
             project_detail_limit: 5_000,
+            cache_ttl_seconds: 60,
         }
     }
 }
@@ -624,6 +633,13 @@ impl Config {
             self.metrics.project_detail_limit =
                 val.parse::<usize>().map_err(|e| ConfigError::EnvVar {
                     key: "LWID_METRICS__PROJECT_DETAIL_LIMIT",
+                    reason: e.to_string(),
+                })?;
+        }
+        if let Ok(val) = std::env::var("LWID_METRICS__CACHE_TTL_SECONDS") {
+            self.metrics.cache_ttl_seconds =
+                val.parse::<u64>().map_err(|e| ConfigError::EnvVar {
+                    key: "LWID_METRICS__CACHE_TTL_SECONDS",
                     reason: e.to_string(),
                 })?;
         }
