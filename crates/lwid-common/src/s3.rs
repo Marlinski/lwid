@@ -136,6 +136,45 @@ struct Listed {
     size: u64,
 }
 
+/// Count objects and bytes under `prefix` while paginating.
+///
+/// The listing already carries each object's size, so this needs no per-object
+/// HEAD or GET — and unlike [`list_all`] it never retains the keys, which keeps
+/// a metrics refresh from allocating one string per blob.
+async fn list_usage(client: &Client, bucket: &str, prefix: &str) -> Result<StoreUsage, String> {
+    let mut usage = StoreUsage::default();
+    let mut continuation: Option<String> = None;
+
+    loop {
+        let mut req = client.list_objects_v2().bucket(bucket).prefix(prefix);
+        if let Some(token) = continuation.take() {
+            req = req.continuation_token(token);
+        }
+
+        let resp = req.send().await.map_err(|e| e.to_string())?;
+
+        for obj in resp.contents() {
+            let Some(key) = obj.key() else { continue };
+            if key.ends_with('/') {
+                continue;
+            }
+            usage.objects += 1;
+            usage.bytes += obj.size().unwrap_or(0).max(0) as u64;
+        }
+
+        if resp.is_truncated().unwrap_or(false) {
+            continuation = resp.next_continuation_token().map(str::to_owned);
+            if continuation.is_none() {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    Ok(usage)
+}
+
 /// List every object under `prefix`, following continuation tokens.
 ///
 /// Returns keys *relative* to `prefix`. Objects whose key ends in `/`
@@ -326,14 +365,9 @@ impl BlobStore for S3BlobStore {
         // One paginated LIST over the blob prefix — object sizes come back in
         // the listing itself, so no per-object HEAD or GET is needed.
         let prefix = format!("{}blobs/", self.prefix);
-        let listed = list_all(&self.client, &self.bucket, &prefix)
+        list_usage(&self.client, &self.bucket, &prefix)
             .await
-            .map_err(|e| io_err(&format!("list_objects {prefix}"), e))?;
-
-        Ok(StoreUsage {
-            objects: listed.len() as u64,
-            bytes: listed.iter().map(|o| o.size).sum(),
-        })
+            .map_err(|e| io_err(&format!("list_objects {prefix}"), e))
     }
 }
 

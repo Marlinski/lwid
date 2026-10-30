@@ -216,8 +216,8 @@ magic_link_ttl_minutes = 15
 # untrusted project content. Keep this port off your Ingress — bind it to
 # loopback, or to the pod IP so only an in-cluster scraper can reach it.
 #
-# A scrape is answered from a 60-second memoised snapshot, so a tight scrape
-# interval cannot amplify into a storm of storage calls.
+# A background task refreshes the snapshot every cache_ttl_seconds; a scrape
+# only reads the last one, so it never scans storage or blocks.
 
 [metrics]
 # Env: LWID_METRICS__ENABLED
@@ -225,9 +225,16 @@ enabled = false
 # Env: LWID_METRICS__LISTEN
 listen = "127.0.0.1:9100"
 
+# How often the background task recomputes the snapshot. A refresh costs one
+# list plus one read per project and one paginated blob LIST; hourly-ish values
+# (3300) are fine when minute freshness is not needed.
+# Env: LWID_METRICS__CACHE_TTL_SECONDS
+cache_ttl_seconds = 60
+
 # Per-project breakdown (lwid_projects_with_content / _expiring / _expired /
-# _blob_refs / _by_version). This is the only group that costs one store read
-# per project; everything else is a handful of queries regardless of size.
+# _no_expiry / _blob_refs / _by_version / _by_age_days / _by_expiry_days).
+# This is the only group that costs one store read per project; everything else
+# is a handful of queries regardless of size.
 # Env: LWID_METRICS__PROJECT_DETAIL
 project_detail = true
 

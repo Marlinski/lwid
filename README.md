@@ -218,13 +218,15 @@ to the pod IP, and keep it out of your Ingress.
 | `lwid_project_owners_total` | — | Projects claimed by a user |
 | `lwid_projects_total` | — | All projects, live and expired |
 | `lwid_projects_with_content` | — | Projects with a published version |
-| `lwid_projects_expiring` / `_expired` | — | Future deadline / past it, awaiting the reaper |
+| `lwid_projects_expiring` / `_expired` / `_no_expiry` | — | Future deadline / past it / never expires |
 | `lwid_project_blob_refs` | — | Blob references across all projects |
 | `lwid_projects_by_version` | `created_with` | Projects by creating client version |
+| `lwid_projects_by_age_days` | `bucket`, `day` | Projects per one-day age bucket; `day` is negative days from now |
+| `lwid_projects_by_expiry_days` | `bucket`, `day` | Projects per one-day time-to-expiry bucket; `day` is days from now |
 | `lwid_blobs_total` | — | Blobs in the content-addressed store |
 | `lwid_storage_bytes` | — | Bytes those blobs occupy |
 | `lwid_project_detail_enabled` | — | 1 when the per-project breakdown is being collected |
-| `lwid_metrics_scrape_duration_seconds` | — | Cost of the last uncached refresh |
+| `lwid_metrics_scrape_duration_seconds` | — | Cost of the last background refresh |
 
 Anonymous (unclaimed) projects are `lwid_projects_total -
 lwid_project_owners_total`; there is no separate metric for it.
@@ -232,13 +234,18 @@ lwid_project_owners_total`; there is no separate metric for it.
 The auth metrics are absent entirely when no auth provider is configured —
 there is no database then, and exporting zeros would assert something false.
 
-**Cost.** Every scrape is answered from a 60-second memoised snapshot, so a
-tight scrape interval cannot amplify into a storm of storage calls. Behind that
-cache one refresh is four grouped `COUNT`s, one `ProjectStore::list()`, and one
-`BlobStore::usage()` (a single paginated `ListObjectsV2` on S3). The
-per-project breakdown is the one group that costs a read *per project*, which
-is why it has its own switch and a `project_detail_limit` ceiling that disables
-it rather than letting it grow without bound.
+**Cost.** Scrapes never scan storage: a background task refreshes a memoised
+snapshot every `cache_ttl_seconds` (default 60), and `GET /metrics` only reads
+the last one. One refresh is four grouped `COUNT`s, one `ProjectStore::list()`,
+one `BlobStore::usage()` (a single paginated `ListObjectsV2` on S3, counting
+sizes without fetching blobs), and — when `project_detail` is on — one read per
+project. The per-project breakdown is the one group that costs a read *per
+project*, which is why it has its own switch and a `project_detail_limit`
+ceiling that disables it rather than letting it grow without bound.
+
+For a large, slow-changing deployment, raise the TTL rather than the scrape
+interval; hourly (`3300`) is a reasonable choice, and keeps `up`/scrape health
+at whatever cadence Prometheus uses.
 
 HTTP request rate, latency and status are intentionally **not** exported — the
 ingress already produces those per host, and a second in-process source would
