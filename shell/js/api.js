@@ -151,7 +151,7 @@ export class ApiClient {
    * Extend (or set) the TTL of a project.
    *
    * @param {string} id - Project identifier.
-   * @param {string} ttl - TTL string (e.g. "1h", "1d", "7d", "30d", "never").
+   * @param {string} ttl - TTL string (e.g. "1h", "1d", "7d", "30d", "180d", "365d", "never").
    * @param {string} signatureBase64 - Base-64-encoded signature over the TTL
    *   string, produced with the project's write key.
    * @returns {Promise<{ id: string, expires_at: string|null }>}

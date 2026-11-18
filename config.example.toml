@@ -106,7 +106,7 @@ shell_dir = "./shell"
 
 # ── Per-tier quota policies ───────────────────────────────────────────────────
 #
-# max_ttl must be one of: "1h", "1d", "7d", "30d", "never"
+# max_ttl must be one of: "1h", "1d", "7d", "30d", "180d", "365d", "never"
 # max_projects: 0 = unlimited
 # All byte limits are in bytes.
 #
