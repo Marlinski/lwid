@@ -37,7 +37,7 @@ enum Commands {
         #[arg(short = 'f', long = "force")]
         force: bool,
 
-        /// Time-to-live for new projects: 1h, 1d, 7d, 30d, never (default: 7d)
+        /// Time-to-live for new projects: 1h, 1d, 7d, 30d, 180d, 365d, never (default: 7d)
         #[arg(long, default_value = "7d")]
         ttl: String,
 

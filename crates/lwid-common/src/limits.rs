@@ -28,11 +28,11 @@ pub const DEFAULT_SERVER: &str = env!("LWID_DEFAULT_SERVER");
 pub const DEFAULT_TTL: &str = "7d";
 
 /// Valid TTL choices for display.
-pub const TTL_CHOICES: &[&str] = &["1h", "1d", "7d", "30d", "never"];
+pub const TTL_CHOICES: &[&str] = &["1h", "1d", "7d", "30d", "180d", "365d", "never"];
 
 /// Parse a TTL string into an optional expiry timestamp relative to `now`.
 ///
-/// Accepted values: `"1h"`, `"1d"`, `"7d"`, `"30d"`, `"never"`.
+/// Accepted values: `"1h"`, `"1d"`, `"7d"`, `"30d"`, `"180d"`, `"365d"`, `"never"`.
 /// Returns `None` for `"never"` (no expiry), `Some(expiry)` otherwise.
 /// Returns `Err` for unrecognized strings.
 pub fn parse_ttl(ttl: &str, now: DateTime<Utc>) -> Result<Option<DateTime<Utc>>, String> {
@@ -41,6 +41,8 @@ pub fn parse_ttl(ttl: &str, now: DateTime<Utc>) -> Result<Option<DateTime<Utc>>,
         "1d" => TimeDelta::days(1),
         "7d" => TimeDelta::days(7),
         "30d" => TimeDelta::days(30),
+        "180d" => TimeDelta::days(180),
+        "365d" => TimeDelta::days(365),
         "never" => return Ok(None),
         _ => {
             return Err(format!(
@@ -87,6 +89,8 @@ mod tests {
         assert!(parse_ttl("1d", now).unwrap().is_some());
         assert!(parse_ttl("7d", now).unwrap().is_some());
         assert!(parse_ttl("30d", now).unwrap().is_some());
+        assert!(parse_ttl("180d", now).unwrap().is_some());
+        assert!(parse_ttl("365d", now).unwrap().is_some());
         assert!(parse_ttl("never", now).unwrap().is_none());
     }
 

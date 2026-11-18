@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateProjectRequest {
     pub write_pubkey: String,
-    /// Optional TTL string: `"1h"`, `"1d"`, `"7d"`, `"30d"`, or `"never"`.
+    /// Optional TTL string: `"1h"`, `"1d"`, `"7d"`, `"30d"`, `"180d"`, `"365d"`, or `"never"`.
     /// Defaults to `"7d"` if omitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ttl: Option<String>,
