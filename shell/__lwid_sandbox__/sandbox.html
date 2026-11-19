@@ -68,6 +68,55 @@
     return ENTRY_PREFIX + String(path).split('/').map(encodeURIComponent).join('/');
   }
 
+  // The `?query#anchor` the shell wants the page opened with (from a link
+  // to a page — see shell/js/page-link.js). Appended raw after the encoded
+  // path, but only when it really is a query or an anchor, so it can never
+  // change which origin or which file gets loaded.
+  function querySuffix(query) {
+    return typeof query === 'string' && /^[?#]/.test(query) ? query : '';
+  }
+
+  function decodeSegment(seg) {
+    try { return decodeURIComponent(seg); } catch (_) { return seg; }
+  }
+
+  // Tell the shell which page the app is on, so it can offer to share it
+  // and keep its own address bar in step. `path` is the file path inside the
+  // project (decoded, no ENTRY_PREFIX); `query` is the page's own search +
+  // hash. `path: null` means "not a page of this project" (the app followed
+  // a link to another site, or the frame is still blank) — the shell treats
+  // that as the first page. Only sent when something changed.
+  var lastLocation = null;
+  function reportLocation() {
+    var path = null;
+    var query = '';
+    try {
+      var l = $content.contentWindow.location;
+      if (l.origin === loc.origin && l.pathname.indexOf(ENTRY_PREFIX + '/') === 0) {
+        path = l.pathname.slice(ENTRY_PREFIX.length + 1).split('/').map(decodeSegment).join('/');
+        query = l.search + l.hash;
+      }
+    } catch (_) { /* navigated to another origin */ }
+    var key = path === null ? '' : path + '\n' + query;
+    if (key === lastLocation) return;
+    lastLocation = key;
+    window.parent.postMessage({ type: 'LWID_SANDBOX_LOCATION', path: path, query: query }, SHELL_ORIGIN);
+  }
+
+  // Each load brings a new document (and window), so listeners are attached
+  // again every time. hashchange and popstate cover anchors and Back/Forward;
+  // the Navigation API, where the browser has it, also covers an app's own
+  // history.pushState()/replaceState(), which fire no event of their own.
+  function watchLocation() {
+    reportLocation();
+    try {
+      var w = $content.contentWindow;
+      w.addEventListener('hashchange', reportLocation);
+      w.addEventListener('popstate', reportLocation);
+      if (w.navigation) w.navigation.addEventListener('currententrychange', reportLocation);
+    } catch (_) { /* another origin — nothing to watch */ }
+  }
+
   var $content = null;
   function ensureContentFrame() {
     if ($content) return $content;
@@ -75,6 +124,7 @@
     $content.id = 'content';
     $content.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals');
     $content.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;background:#fff;';
+    $content.addEventListener('load', watchLocation);
     document.body.appendChild($content);
     return $content;
   }
@@ -154,7 +204,7 @@
           await postFilesToSW(msg.files, msg.viewer, msg.canEdit);
           // navigateTo is omitted on a re-hydration resend (files refreshed,
           // nothing should navigate) — only point/re-point content when given.
-          if (msg.navigateTo) ensureContentFrame().src = entryUrl(msg.navigateTo);
+          if (msg.navigateTo) ensureContentFrame().src = entryUrl(msg.navigateTo) + querySuffix(msg.query);
           window.parent.postMessage({ type: 'LWID_SANDBOX_FILES_READY' }, SHELL_ORIGIN);
         } catch (err) {
           window.parent.postMessage(
@@ -165,7 +215,7 @@
         return;
       }
       if (msg.type === 'LWID_SANDBOX_NAVIGATE') {
-        ensureContentFrame().src = entryUrl(msg.path);
+        ensureContentFrame().src = entryUrl(msg.path) + querySuffix(msg.query);
         return;
       }
       // Anything else addressed to the real content — same-origin hop, so
