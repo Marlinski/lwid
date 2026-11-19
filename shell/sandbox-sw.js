@@ -94,6 +94,7 @@ function guessMimeType(path) {
     case '.yaml':
     case '.yml':    return 'text/plain';
     case '.xml':    return 'application/xml';
+    case '.pdf':    return 'application/pdf';
     case '.svg':    return 'image/svg+xml';
     case '.png':    return 'image/png';
     case '.jpg':
