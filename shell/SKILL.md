@@ -65,6 +65,7 @@ lwid clone "<share-url>" [dir]                 # clone from URL when no .lwid.js
 
 - **Edit URL:** `{{SERVER_URL}}/p/{id}#{read-key}:{write-key}`
 - **View URL:** `{{SERVER_URL}}/p/{id}#{read-key}`
+- **Link to a page:** append `/{path}[?query][#anchor]` to either, e.g. `{{SERVER_URL}}/p/{id}#{read-key}/docs/page2.html?id=3` opens that page instead of the entry page.
 
 The fragment (`#...`) is never sent to the server — zero-knowledge by design.
 

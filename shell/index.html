@@ -404,6 +404,45 @@
     </div>
   </div>
 
+  <!-- Share modal — only shown once the preview has left the project's
+       first page, so a share always says which page it opens. Reuses the
+       secrets modal's box and buttons. See chooseShareTarget(). -->
+  <div id="share-modal" class="secrets-modal share-modal hidden" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
+    <div class="secrets-modal__backdrop" data-share-cancel></div>
+    <div class="secrets-modal__box">
+      <h2 class="secrets-modal__title" id="share-modal-title">Share view-only link</h2>
+      <p class="secrets-modal__subtitle">You're no longer on the project's first page. Which page should the link open?</p>
+      <div class="share-modal__options" role="radiogroup" aria-label="Page the link opens">
+        <label class="share-modal__option">
+          <input type="radio" name="share-target" value="home" id="share-target-home">
+          <span class="share-modal__option-text">
+            <span class="share-modal__option-label">Project home</span>
+            <code class="share-modal__option-detail" id="share-modal-home"></code>
+          </span>
+        </label>
+        <label class="share-modal__option">
+          <input type="radio" name="share-target" value="page" id="share-target-page">
+          <span class="share-modal__option-text">
+            <span class="share-modal__option-label">This page</span>
+            <code class="share-modal__option-detail" id="share-modal-page"></code>
+          </span>
+        </label>
+        <label class="share-modal__params" id="share-modal-params-row">
+          <input type="checkbox" id="share-modal-params">
+          <span class="share-modal__option-text">
+            <span>Include parameters</span>
+            <code class="share-modal__option-detail" id="share-modal-query"></code>
+          </span>
+        </label>
+      </div>
+      <p class="share-modal__preview">The link opens <code id="share-modal-preview"></code></p>
+      <div class="secrets-modal__actions">
+        <button type="button" class="secrets-modal__btn secrets-modal__btn--cancel" data-share-cancel>Cancel</button>
+        <button type="button" id="btn-share-copy" class="secrets-modal__btn secrets-modal__btn--confirm">Copy link</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Secret detection warning modal -->
   <div id="secrets-modal" class="secrets-modal hidden" role="dialog" aria-modal="true" aria-labelledby="secrets-modal-title">
     <div class="secrets-modal__backdrop"></div>
@@ -460,6 +499,7 @@
     import { scanFiles } from '/js/detect-secrets.js';
     import { GONE, selectVisibleProjects } from '/js/projects.js';
     import { detectViewer } from '/js/viewers.js';
+    import { describePage, isHomePage, pageSuffix, splitFragment } from '/js/page-link.js';
 
     // -----------------------------------------------------------------------
     // DOM references
@@ -606,6 +646,14 @@
     let currentFiles     = null;
     /** Active viewer shim id (see js/viewers.js), or null for a plain site. */
     let currentViewer    = null;
+    /** The file the preview opens first (resolveEntryPoint()), or null for a viewer project. */
+    let currentEntryPoint = null;
+    /**
+     * The page the preview is on, when it isn't the first page:
+     * `{ path, query }` (see js/page-link.js), else null. Kept current by
+     * the bridge's LWID_SANDBOX_LOCATION; seeded from the link on load.
+     */
+    let currentPage      = null;
     /** @type {File[]} */
     let stagedFiles      = [];
     /** @type {File[]} */
@@ -879,6 +927,103 @@
         $btnSecretsConfirm.addEventListener('click', onConfirm);
         $btnSecretsCancel.addEventListener('click', onCancel);
       });
+    }
+
+    /**
+     * Ask which page a share link should open, once the preview has left the
+     * project's first page. Defaults to the project home with no parameters,
+     * so confirming without reading gives the same link as before deep links
+     * existed; parameters (which can hold search terms, ids, even keys) are
+     * only included when the box is ticked.
+     *
+     * The link is copied here, inside the Copy click, so the clipboard write
+     * runs in a user gesture.
+     *
+     * @param {{ editable: boolean, linkFor: (page: object|null) => string }} opts
+     * @returns {Promise<{ page: object|null } | null>} the page shared (null = home), or null if cancelled
+     */
+    function chooseShareTarget({ editable, linkFor }) {
+      const $modal = document.getElementById('share-modal');
+      const $home = document.getElementById('share-target-home');
+      const $page = document.getElementById('share-target-page');
+      const $params = document.getElementById('share-modal-params');
+      const $paramsRow = document.getElementById('share-modal-params-row');
+      const $preview = document.getElementById('share-modal-preview');
+      const $copy = document.getElementById('btn-share-copy');
+      const page = currentPage;
+
+      // Everything the app controls goes in as text, never as markup.
+      document.getElementById('share-modal-title').textContent =
+        editable ? 'Share editable link' : 'Share view-only link';
+      document.getElementById('share-modal-home').textContent = currentEntryPoint || 'first page';
+      document.getElementById('share-modal-page').textContent = page.path || currentEntryPoint || 'first page';
+      document.getElementById('share-modal-query').textContent = page.query;
+      $paramsRow.hidden = !page.query;
+      $home.checked = true;
+      $params.checked = false;
+
+      const chosen = () => ($page.checked ? { path: page.path, query: $params.checked ? page.query : '' } : null);
+      const refresh = () => {
+        $params.disabled = !$page.checked;
+        $paramsRow.classList.toggle('share-modal__params--off', !$page.checked);
+        const c = chosen();
+        $preview.textContent = c ? describePage({ path: c.path || currentEntryPoint || '', query: c.query }) : 'project home';
+      };
+      refresh();
+
+      show($modal);
+      $copy.focus();
+
+      return new Promise((resolve) => {
+        const cancelEls = $modal.querySelectorAll('[data-share-cancel]');
+        function finish(result) {
+          hide($modal);
+          $home.removeEventListener('change', refresh);
+          $page.removeEventListener('change', refresh);
+          $params.removeEventListener('change', refresh);
+          $copy.removeEventListener('click', onCopy);
+          document.removeEventListener('keydown', onKey, true);
+          for (const el of cancelEls) el.removeEventListener('click', onCancel);
+          resolve(result);
+        }
+        function onCopy() {
+          const c = chosen();
+          navigator.clipboard.writeText(linkFor(c)).then(
+            () => showToast(`Link to ${c ? describePage(c) || 'this page' : 'project home'} copied`),
+            () => showToast('Failed to copy link'),
+          );
+          finish({ page: c });
+        }
+        function onCancel() { finish(null); }
+        function onKey(e) {
+          if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+          else if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') { e.preventDefault(); onCopy(); }
+        }
+        $home.addEventListener('change', refresh);
+        $page.addEventListener('change', refresh);
+        $params.addEventListener('change', refresh);
+        $copy.addEventListener('click', onCopy);
+        document.addEventListener('keydown', onKey, true);
+        for (const el of cancelEls) el.addEventListener('click', onCancel);
+      });
+    }
+
+    /**
+     * Copy a share link. On the first page it's copied straight away, as it
+     * always was; anywhere else the user picks the page first.
+     */
+    function shareLink({ editable }) {
+      const linkFor = (page) => buildProjectUrl(
+        window.location.origin, currentProjectId, currentReadKey, editable ? currentWriteKey : null, page,
+      );
+      if (!currentPage) {
+        navigator.clipboard.writeText(linkFor(null)).then(
+          () => showToast(editable ? 'Editable link copied!' : 'View-only link copied!'),
+          () => showToast('Failed to copy link'),
+        );
+        return;
+      }
+      chooseShareTarget({ editable, linkFor });
     }
 
     function setStatus(msg) {
@@ -1189,11 +1334,11 @@
 
     /**
      * Send decrypted files to the sandbox bridge and point its content
-     * iframe at `navigateTo`. Shared by the initial load and by
-     * re-hydration (when the sandbox SW was terminated while idle and lost
-     * its in-memory cache).
+     * iframe at `navigateTo` (plus `query`, a `?…`/`#…` to open it with).
+     * Shared by the initial load and by re-hydration (when the sandbox SW
+     * was terminated while idle and lost its in-memory cache).
      */
-    async function postFilesToSW(files, viewer = currentViewer, navigateTo = '/') {
+    async function postFilesToSW(files, viewer = currentViewer, navigateTo = '/', query = '') {
       await ensureSandboxBridge();
 
       const payload = [];
@@ -1224,6 +1369,7 @@
             viewer: viewer || null,
             canEdit: !!currentWriteKey,
             navigateTo,
+            query,
           },
           sandboxOrigin(),
         );
@@ -1232,10 +1378,32 @@
       });
     }
 
-    /** Send decrypted files to the sandbox bridge and load its content iframe. */
-    async function sendFilesToSW(files, entryPoint, viewer = null) {
+    /**
+     * Send decrypted files to the sandbox bridge and load its content iframe
+     * — at `page` when the link named one, else at the entry point.
+     */
+    async function sendFilesToSW(files, entryPoint, viewer = null, page = null) {
       // With a viewer active, the root serves the viewer's own index.html.
-      await postFilesToSW(files, viewer, viewer ? '/' : '/' + entryPoint);
+      const home = viewer ? '/' : '/' + entryPoint;
+      await postFilesToSW(files, viewer, page ? '/' + page.path : home, page ? page.query : '');
+    }
+
+    /**
+     * The page a link asked for, if the preview can open it: a file of this
+     * project (or, for a viewer project, any path — the viewer decides).
+     * Anything else falls back to the first page rather than a 404.
+     */
+    function pageToOpen(page, files, viewer) {
+      if (!page) return null;
+      if (viewer || page.path === '' || files.has(page.path)) return page;
+      return null;
+    }
+
+    /** Address bar: the project link, read key only, plus the current page. */
+    function syncAddressBar() {
+      if (!currentReadKey) return;
+      const url = window.location.pathname + '#' + currentReadKey + pageSuffix(currentPage);
+      if (url !== window.location.pathname + window.location.hash) history.replaceState(null, '', url);
     }
 
     // Re-hydration: the sandbox SW's cache is in-memory and is wiped when the
@@ -1476,6 +1644,19 @@
 
       const msg = event.data;
       if (!msg || typeof msg.type !== 'string' || !msg.type.startsWith('LWID_')) return;
+
+      // Where the app is now (from the bridge — see reportLocation() in
+      // __lwid_sandbox__/sandbox.html). The app could send this too, through
+      // the bridge's relay; that's harmless, since it can navigate itself
+      // anyway — but the values go into the address bar, so check them.
+      if (msg.type === 'LWID_SANDBOX_LOCATION') {
+        const path = typeof msg.path === 'string' ? msg.path : null;
+        const query = typeof msg.query === 'string' && /^([?#]|$)/.test(msg.query) ? msg.query : '';
+        const page = path === null ? null : { path, query };
+        currentPage = isHomePage(page, currentEntryPoint) ? null : page;
+        syncAddressBar();
+        return;
+      }
 
       // Toolbar declarations need no project context and no reply.
       if (msg.type === 'LWID_TOOLBAR_SET') {
@@ -1963,8 +2144,9 @@
       hide($errorView);
       hide($siteFooter);
 
-      // Parse keys from hash fragment
-      const fragment = window.location.hash.replace(/^#/, '');
+      // Parse keys (and the optional page — see js/page-link.js) from the
+      // hash fragment
+      const { keys: fragment, page: linkedPage } = splitFragment(window.location.hash);
       if (!fragment) {
         showError('Invalid link or key', 'The link is missing the decryption key fragment.');
         return;
@@ -1993,17 +2175,17 @@
       currentProjectId = projectId;
       currentReadKey = readKey;
       currentWriteKey = writeKey;
+      currentPage = linkedPage;
       currentStoreToken = await deriveStoreToken(readKey);
       _hmacKey = null; // reset HMAC key cache for new project
 
       // Save to My Projects
       saveProject(projectId, readKey, writeKey);
 
-      // Strip the write key from the address bar so copying the URL is safe.
-      // The write key is already persisted in localStorage above.
-      if (writeKey) {
-        history.replaceState(null, '', window.location.pathname + '#' + readKey);
-      }
+      // Strip the write key from the address bar so copying the URL is safe
+      // (keeping the page, if the link named one). The write key is already
+      // persisted in localStorage above.
+      if (writeKey) syncAddressBar();
 
       // Fetch project metadata to get expiry info
       try {
@@ -2036,13 +2218,7 @@
 
       // --- Share split-button ---
       // Main button: copy view-only link
-      $btnShare.addEventListener('click', () => {
-        const url = buildProjectUrl(window.location.origin, currentProjectId, currentReadKey);
-        navigator.clipboard.writeText(url).then(
-          () => showToast('View-only link copied!'),
-          () => showToast('Failed to copy link'),
-        );
-      });
+      $btnShare.addEventListener('click', () => shareLink({ editable: false }));
 
       // Chevron: toggle dropdown
       $btnShareChevron.addEventListener('click', (e) => {
@@ -2057,23 +2233,13 @@
 
       // Dropdown items
       $menuShareRead.addEventListener('click', () => {
-        const url = buildProjectUrl(window.location.origin, currentProjectId, currentReadKey);
-        navigator.clipboard.writeText(url).then(
-          () => showToast('View-only link copied!'),
-          () => showToast('Failed to copy link'),
-        );
         closeAllMenus();
+        shareLink({ editable: false });
       });
 
       $menuShareEdit.addEventListener('click', () => {
-        const url = buildProjectUrl(
-          window.location.origin, currentProjectId, currentReadKey, currentWriteKey,
-        );
-        navigator.clipboard.writeText(url).then(
-          () => showToast('Editable link copied!'),
-          () => showToast('Failed to copy link'),
-        );
         closeAllMenus();
+        shareLink({ editable: true });
       });
 
       $menuDownload.addEventListener('click', () => {
@@ -2212,6 +2378,7 @@
           // Navigate the sandbox's content to the new entry point — the
           // bridge (already loaded, already holding the files) relays this
           // to its own nested content iframe, same-origin.
+          currentEntryPoint = path;
           $sandboxFrame.contentWindow.postMessage({ type: 'LWID_SANDBOX_NAVIGATE', path: '/' + path }, sandboxOrigin());
           closeSourceViewer();
           showToast('Entry point updated.');
@@ -2593,11 +2760,13 @@
         currentViewer = detectViewer(result.files.keys());
 
         if (currentViewer) {
-          await sendFilesToSW(result.files, null, currentViewer);
+          currentEntryPoint = null;
+          await sendFilesToSW(result.files, null, currentViewer, pageToOpen(currentPage, result.files, currentViewer));
         } else {
           // Resolve entry point and send files to Service Worker
           const entryPoint = await resolveEntryPoint(result.files, currentManifestCid);
-          await sendFilesToSW(result.files, entryPoint, null);
+          currentEntryPoint = entryPoint;
+          await sendFilesToSW(result.files, entryPoint, null, pageToOpen(currentPage, result.files, null));
 
           // If entry point is not an HTML file, open source panel and show its contents
           if (!entryPoint.endsWith('.html')) {
