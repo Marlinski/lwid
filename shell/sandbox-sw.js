@@ -17,9 +17,16 @@
  *
  * Communication protocol (sandbox.html -> SW via postMessage):
  *
- *   { type: 'SET_FILES', files: Array<{ path, content, mimeType }>,
+ *   { type: 'SET_FILES', files: Array<{ path, size, mimeType }>,
  *     viewer?: string | null, canEdit?: boolean }
- *     Replace the entire file cache. `content` is an ArrayBuffer.
+ *     Replace the entire file list. Contents are not included: the first
+ *     request for a file sends REQUEST_FILE { path, generation } up to
+ *     sandbox.html, which has the shell decrypt it and answer with SET_FILE
+ *     below — so a project full of large media opens without waiting on all
+ *     of it.
+ *
+ *   { type: 'SET_FILE', path, generation, content?: ArrayBuffer, error?: string }
+ *     One file's content, answering the REQUEST_FILE with that generation.
  *
  *   { type: 'CLEAR_FILES' }
  *     Wipe the cache and forget the active viewer.
@@ -42,9 +49,17 @@
  */
 
 // ---------------------------------------------------------------------------
-// In-memory file cache: path -> { content: Uint8Array, mimeType: string }
+// In-memory file cache: path -> { size, mimeType, content: Uint8Array | null }
+// (content stays null until the file is first requested — see loadContent)
 // ---------------------------------------------------------------------------
 const fileCache = new Map();
+
+// Bumped on every SET_FILES and echoed back by the shell on SET_FILE, so a
+// reply to a request made for an earlier file list (e.g. one still in flight
+// when a save replaced notes.md) is never cached under the new list's entry.
+// Seeded from the clock rather than 0 so a restarted SW can't reuse a
+// generation that a reply addressed to its predecessor still carries.
+let filesGeneration = Date.now();
 
 let activeViewer = null;
 let viewerCanEdit = false;
@@ -117,14 +132,13 @@ self.addEventListener('message', (event) => {
   const { type, files } = event.data || {};
 
   if (type === 'SET_FILES') {
+    filesGeneration++;
     fileCache.clear();
     for (const file of files) {
-      const bytes = file.content instanceof ArrayBuffer
-        ? new Uint8Array(file.content)
-        : file.content;
       fileCache.set(file.path, {
-        content: bytes,
+        size: file.size || 0,
         mimeType: file.mimeType || guessMimeType(file.path),
+        content: null,
       });
     }
     activeViewer = event.data.viewer || null;
@@ -134,6 +148,17 @@ self.addEventListener('message', (event) => {
       event.ports[0].postMessage({ type: 'FILES_READY' });
     }
     finishHydration();
+  } else if (type === 'SET_FILE') {
+    const { path, generation, content } = event.data;
+    const bytes = content instanceof ArrayBuffer ? new Uint8Array(content) : content || null;
+    // A stale reply still answers the fetches that asked for it, but must not
+    // fill the current list's entry with the previous version's bytes.
+    if (generation === filesGeneration) {
+      const entry = fileCache.get(path);
+      if (entry && bytes) entry.content = bytes;
+    }
+    const pending = pendingFiles.get(pendingKey(generation, path));
+    if (pending) pending.resolve(bytes);
   } else if (type === 'CLEAR_FILES') {
     fileCache.clear();
     activeViewer = null;
@@ -182,6 +207,53 @@ function requestHydration() {
     .catch(() => finishHydration());
   setTimeout(finishHydration, 5000);
   return hydratePromise;
+}
+
+// pendingKey(generation, path) -> { promise, resolve } for contents asked of
+// the shell and not yet answered, so concurrent requests for one file share a
+// single round-trip. Keyed by generation too: once SET_FILES replaces the
+// list, a new request for the same path must ask again rather than join one
+// that will be answered with the previous version.
+const pendingFiles = new Map();
+
+function pendingKey(generation, path) {
+  return generation + ':' + path;
+}
+
+// Generous: the shell has to download and decrypt the whole file first.
+const FILE_TIMEOUT_MS = 120000;
+
+/** Ask the shell (via sandbox.html) for one file's decrypted content. */
+function requestFile(path) {
+  const generation = filesGeneration;
+  const key = pendingKey(generation, path);
+  const existing = pendingFiles.get(key);
+  if (existing) return existing.promise;
+
+  let resolveFn;
+  const pending = { promise: new Promise((r) => { resolveFn = r; }) };
+  pending.resolve = (bytes) => {
+    if (pendingFiles.get(key) === pending) pendingFiles.delete(key);
+    clearTimeout(timer);
+    resolveFn(bytes);
+  };
+  const timer = setTimeout(() => pending.resolve(null), FILE_TIMEOUT_MS);
+  pendingFiles.set(key, pending);
+
+  self.clients
+    .matchAll({ type: 'window', includeUncontrolled: true })
+    .then((clients) => {
+      if (clients.length === 0) { pending.resolve(null); return; }
+      for (const c of clients) c.postMessage({ type: 'REQUEST_FILE', path, generation });
+    })
+    .catch(() => pending.resolve(null));
+  return pending.promise;
+}
+
+/** An entry's content, fetched from the shell on first use. */
+async function loadContent(path, entry) {
+  if (entry.content) return entry.content;
+  return requestFile(path);
 }
 
 function notFound() {
@@ -266,7 +338,7 @@ async function serveShellAsset(path) {
 async function synthesizeFilesJson() {
   const files = [];
   for (const [path, entry] of fileCache) {
-    files.push({ path, size: entry.content.byteLength, mimeType: entry.mimeType });
+    files.push({ path, size: entry.size, mimeType: entry.mimeType });
   }
   files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 
@@ -321,17 +393,25 @@ async function handleRequest(url) {
     rawPath += 'index.html';
   }
 
-  const entry = fileCache.get(path) || (rawPath !== path ? fileCache.get(rawPath) : undefined);
+  const key = fileCache.has(path) ? path : rawPath;
+  const entry = fileCache.get(key);
 
   if (!entry && activeViewer && path === 'index.html') {
     return serveShellAsset(`/viewers/${activeViewer}/index.html`);
   }
 
   if (entry) {
-    if (entry.mimeType === 'text/html') {
-      return htmlResponse(entry.content);
+    const content = await loadContent(key, entry);
+    if (!content) {
+      return new Response('Could not load file', {
+        status: 502,
+        headers: { 'Content-Type': 'text/plain' },
+      });
     }
-    return new Response(entry.content, {
+    if (entry.mimeType === 'text/html') {
+      return htmlResponse(content);
+    }
+    return new Response(content, {
       status: 200,
       headers: { 'Content-Type': entry.mimeType },
     });
