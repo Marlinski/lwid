@@ -73,6 +73,25 @@ The fragment (`#...`) is never sent to the server — zero-knowledge by design.
 - All files in the directory are uploaded except hidden files, `node_modules`, and `.lwid.json`.
 - The server never sees plaintext content.
 
+## Links and popups
+
+A project runs in a sandboxed iframe, so links behave like this:
+
+- **External links need `target="_blank"`.** They open in a real new tab,
+  on the real remote origin, with working cookies, storage and navigation.
+  `window.open(url, '_blank')` works the same way, on a user gesture (a
+  click or a key press) — the browser's own popup blocker applies, lwid adds
+  no restriction of its own.
+- **A plain external link takes over the preview area** instead of opening a
+  tab: the remote site replaces the project inside the lwid chrome, which is
+  almost never what you want. Always set `target="_blank"` on links that
+  leave the project.
+- **`target="_top"` and `target="_parent"` do nothing, by design.** A project
+  can never navigate the lwid page that hosts it.
+
+The Markdown and notebook viewers already add `target="_blank" rel="noopener
+noreferrer"` to external links for you.
+
 ## Viewers (non-website projects)
 
 If a project has **no `index.html`**, the shell picks a viewer from the file types:

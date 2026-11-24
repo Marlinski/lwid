@@ -73,6 +73,10 @@
     if ($content) return $content;
     $content = document.createElement('iframe');
     $content.id = 'content';
+    // Only ever as much as #sandbox-frame in the shell's index.html already
+    // grants: flags intersect down the frame tree, so anything asked for here
+    // and missing there is dropped without a warning. Keep the two in step —
+    // tests/sandbox-flags.test.mjs fails if they drift.
     $content.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals');
     $content.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;background:#fff;';
     document.body.appendChild($content);

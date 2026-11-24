@@ -345,10 +345,16 @@
         <div id="loading-overlay" class="project-view__loading">
           <span class="spinner"></span> Loading project&hellip;
         </div>
+        <!-- Sandbox flags intersect down the frame tree: a nested frame can
+             never hold more than its parent, and the surplus is dropped with
+             no warning. These must therefore stay a superset of what the
+             content frame requests in __lwid_sandbox__/sandbox.html, or that
+             request is silently ineffective. tests/sandbox-flags.test.mjs
+             fails if the two drift apart again. -->
         <iframe
           id="sandbox-frame"
           class="project-view__iframe"
-          sandbox="allow-scripts allow-same-origin"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals"
           title="Project preview"
         ></iframe>
         <!-- Source file viewer (replaces iframe when viewing a file) -->
