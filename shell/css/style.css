@@ -2220,6 +2220,70 @@ button:disabled {
   color: #fff;
 }
 
+/* Share modal (reuses .secrets-modal's box and buttons) ------------------- */
+.share-modal__options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0 0 1rem;
+}
+.share-modal__option,
+.share-modal__params {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+.share-modal__option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.share-modal__option input,
+.share-modal__params input {
+  margin-top: 0.2rem;
+  accent-color: var(--accent);
+}
+.share-modal__params {
+  margin-left: 1.6rem;
+  border-style: dashed;
+}
+.share-modal__params[hidden] {
+  display: none;
+}
+.share-modal__params--off {
+  opacity: 0.5;
+  cursor: default;
+}
+.share-modal__option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.share-modal__option-label {
+  font-weight: 600;
+}
+.share-modal__option-detail,
+.share-modal__preview code {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.share-modal__preview {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0 0 1.25rem;
+}
+.share-modal__preview code {
+  color: var(--accent);
+}
+
 /* Project name in the toolbar + dropdown ---------------------------------- */
 
 /* An unnamed project still needs a label for the pen to point at. */

@@ -92,9 +92,16 @@ browser, click the project name in the toolbar to rename it (edit links only).
 ```
 View:  /p/{project-id}#{read-key}
 Edit:  /p/{project-id}#{read-key}:{write-key}
+Page:  /p/{project-id}#{read-key}[:{write-key}]/{path}[?query][#anchor]
 ```
 
-Keys are base64url-encoded. The fragment is never sent to the server.
+Keys are base64url-encoded. The fragment is never sent to the server, so
+neither the keys nor the page a link opens are visible to it. The optional
+page part opens the preview on that file instead of the entry page; each path
+segment is percent-encoded, and the query and anchor are passed to the page
+as-is. In the browser, sharing from anywhere but the first page asks whether
+the link should open the project home or the current page, and whether to
+include that page's parameters (off by default).
 
 ## Pushing without the CLI
 

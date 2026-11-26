@@ -21,6 +21,7 @@ import {
   decodeKeys,
 } from "./crypto.js";
 import { computeCid } from "./cid.js";
+import { splitFragment, pageSuffix } from "./page-link.js";
 import {
   createManifest,
   serializeManifest,
@@ -278,28 +279,31 @@ export async function getVersionHistory(api, projectId, readKey) {
 /**
  * Build a full project URL with keys encoded in the fragment.
  *
- * The fragment never leaves the browser, so the server cannot see the keys.
+ * The fragment never leaves the browser, so the server cannot see the keys
+ * — or the page, when the link points to one (see page-link.js).
  *
  * @param {string} baseUrl — origin (e.g. "https://lookwhatidid.xyz")
  * @param {string} projectId — project identifier
  * @param {string} readKey — base64url-encoded AES-256 key
  * @param {string} [writeKey] — base64url-encoded PKCS8 private key (omit for view-only)
- * @returns {string} full URL with keys in the fragment
+ * @param {{ path: string, query?: string } | null} [page] — a page inside the project to open (omit for the first page)
+ * @returns {string} full URL with keys (and page) in the fragment
  */
-export function buildProjectUrl(baseUrl, projectId, readKey, writeKey) {
+export function buildProjectUrl(baseUrl, projectId, readKey, writeKey, page = null) {
   const base = baseUrl.replace(/\/+$/, "");
-  const fragment = encodeKeys(readKey, writeKey);
+  const fragment = encodeKeys(readKey, writeKey) + pageSuffix(page);
   return `${base}/p/${projectId}#${fragment}`;
 }
 
 /**
  * Parse a project URL to extract the project ID and keys.
  *
- * Expected pattern: `{origin}/p/{projectId}#{readKey}:{writeKey}`
- * The write key portion (`:writeKey`) is optional for view-only links.
+ * Expected pattern: `{origin}/p/{projectId}#{readKey}:{writeKey}[/{page}]`
+ * The write key portion (`:writeKey`) is optional for view-only links, and
+ * the page portion is optional for links to the project's first page.
  *
  * @param {string} url — full project URL
- * @returns {{ projectId: string, readKey: string, writeKey: string | null }}
+ * @returns {{ projectId: string, readKey: string, writeKey: string | null, page: { path: string, query: string } | null }}
  * @throws {Error} if the URL does not match the expected pattern
  */
 export function parseProjectUrl(url) {
@@ -315,6 +319,7 @@ export function parseProjectUrl(url) {
     throw new Error("Invalid project URL: missing fragment with keys");
   }
 
-  const { readKey, writeKey } = decodeKeys(fragment);
-  return { projectId, readKey, writeKey };
+  const { keys, page } = splitFragment(fragment);
+  const { readKey, writeKey } = decodeKeys(keys);
+  return { projectId, readKey, writeKey, page };
 }
