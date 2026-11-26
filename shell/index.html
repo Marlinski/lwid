@@ -461,6 +461,7 @@
     import {
       pushVersion,
       pullVersion,
+      ProjectFiles,
       getVersionHistory,
       buildProjectUrl,
     } from '/js/project.js';
@@ -1207,22 +1208,21 @@
     }
 
     /**
-     * Send decrypted files to the sandbox bridge and point its content
-     * iframe at `navigateTo`. Shared by the initial load and by
+     * Send the file list to the sandbox bridge and point its content
+     * iframe at `navigateTo`. Only paths and sizes go over — each file's
+     * content follows when the sandbox first asks for it
+     * (LWID_SANDBOX_REQUEST_FILE below). Shared by the initial load and by
      * re-hydration (when the sandbox SW was terminated while idle and lost
      * its in-memory cache).
      */
     async function postFilesToSW(files, viewer = currentViewer, navigateTo = '/') {
       await ensureSandboxBridge();
 
-      const payload = [];
-      for (const [path, content] of files) {
-        payload.push({
-          path,
-          content: content.buffer,
-          mimeType: guessMimeType(path),
-        });
-      }
+      const payload = files.entries().map(({ path, size }) => ({
+        path,
+        size,
+        mimeType: guessMimeType(path),
+      }));
 
       await new Promise((resolve, reject) => {
         const onMessage = (event) => {
@@ -1251,7 +1251,7 @@
       });
     }
 
-    /** Send decrypted files to the sandbox bridge and load its content iframe. */
+    /** Send the file list to the sandbox bridge and load its content iframe. */
     async function sendFilesToSW(files, entryPoint, viewer = null) {
       // With a viewer active, the root serves the viewer's own index.html.
       await postFilesToSW(files, viewer, viewer ? '/' : '/' + entryPoint);
@@ -1259,10 +1259,12 @@
 
     // Re-hydration: the sandbox SW's cache is in-memory and is wiped when the
     // browser terminates it while idle. When that happens, the bridge relays
-    // a request (LWID_SANDBOX_REQUEST_FILES) asking us to re-send the files
-    // we still hold decrypted in `currentFiles`. We re-post them without
-    // touching the content iframe, so intra-app navigation keeps working
-    // across SW restarts.
+    // a request (LWID_SANDBOX_REQUEST_FILES) asking us to re-send the file
+    // list in `currentFiles`. We re-post it without touching the content
+    // iframe, so intra-app navigation keeps working across SW restarts.
+    //
+    // LWID_SANDBOX_REQUEST_FILE is the lazy half: the sandbox asking for one
+    // file's content the first time something there requests it.
     {
       window.addEventListener('message', async (event) => {
         if (!currentProjectId || event.source !== $sandboxFrame.contentWindow || event.origin !== sandboxOrigin()) return;
@@ -1272,6 +1274,17 @@
           } catch (_) {
             /* the sandbox SW will fall back to a 404; the user can reload to recover */
           }
+        } else if (event.data?.type === 'LWID_SANDBOX_REQUEST_FILE' && currentFiles) {
+          // generation is echoed back untouched: the sandbox SW uses it to
+          // tell a reply to an earlier file list apart from a current one.
+          const { path, generation } = event.data;
+          let reply;
+          try {
+            reply = { type: 'LWID_SANDBOX_FILE', path, generation, content: await currentFiles.get(path) };
+          } catch (err) {
+            reply = { type: 'LWID_SANDBOX_FILE', path, generation, error: String(err?.message || err) };
+          }
+          $sandboxFrame.contentWindow.postMessage(reply, sandboxOrigin());
         }
       });
     }
@@ -1617,17 +1630,18 @@
                 path: f.path,
                 content: new Uint8Array(f.content),
               }));
-              const merged = [];
-              if (currentFiles) for (const [p, c] of currentFiles) merged.push({ path: p, content: c });
+              // Unchanged files go by CID — their blobs are reused as-is.
+              const merged = currentFiles ? currentFiles.entries() : [];
               for (const nf of changed) {
                 const i = merged.findIndex((f) => f.path === nf.path);
                 if (i >= 0) merged[i] = nf; else merged.push(nf);
               }
-              const { manifestCid } = await pushVersion(
+              const { manifestCid, files: pushed } = await pushVersion(
                 api, currentProjectId, currentReadKey, currentWriteKey, merged,
               );
               currentManifestCid = manifestCid;
-              currentFiles = new Map(merged.map((f) => [f.path, f.content]));
+              currentFiles = new ProjectFiles(api, currentReadKey, pushed, currentFiles?.cache);
+              for (const nf of changed) currentFiles.seed(currentFiles.entry(nf.path).cid, nf.content);
               buildSourceTree(currentFiles);
               // Refresh the SW cache so the viewer's next /sandbox/ read sees
               // the version it just published.
@@ -2143,7 +2157,7 @@
       });
 
       $menuDownload.addEventListener('click', () => {
-        downloadAllFiles();
+        downloadAllFiles().catch((err) => showToast(`Download failed: ${err.message}`));
         closeAllMenus();
       });
 
@@ -2169,7 +2183,11 @@
             pubkeyBase64, selectedTtl, storeToken, await encryptName(forkName, readKey),
           );
 
-          const fileData = Array.from(currentFiles, ([path, content]) => ({ path, content }));
+          // The fork has its own read key, so every file is re-encrypted —
+          // which means decrypting all of them first.
+          const fileData = await Promise.all(
+            Array.from(currentFiles.keys(), async (path) => ({ path, content: await currentFiles.get(path) })),
+          );
           await pushVersion(api, projectId, readKey, writeKey, fileData);
 
           saveProject(projectId, readKey, writeKey);
@@ -2376,7 +2394,7 @@
       for (const path of paths) {
         const li = document.createElement('li');
         li.className = 'source-panel__file';
-        const size = files.get(path).byteLength;
+        const size = files.sizeOf(path);
         li.innerHTML = `
           ${fileIconSvg(path)}
           <span class="source-panel__file-name" title="${path}">${path}</span>
@@ -2529,11 +2547,15 @@
       }
     }
 
+    // Bumped on every openSourceViewer() so a slow file that finishes
+    // decrypting after the user has moved on doesn't overwrite the newer one.
+    let sourceViewerSeq = 0;
+
     /** Open the source viewer for a given file path. */
-    function openSourceViewer(path) {
+    async function openSourceViewer(path) {
       if (!currentFiles || !currentFiles.has(path)) return;
 
-      const content = currentFiles.get(path);
+      const seq = ++sourceViewerSeq;
       $sourceViewerPath.textContent = path;
 
       // Mark active file in tree
@@ -2549,6 +2571,25 @@
                      mime === 'application/json' || mime === 'application/xml' ||
                      mime === 'image/svg+xml';
       const isImage = !isText && mime.startsWith('image/');
+
+      // Only what's actually rendered gets downloaded — a binary file is
+      // described from its manifest size alone.
+      let content = null;
+      if (isText || isImage) {
+        $sourceViewerCode.textContent = 'Loading…';
+        show($sourceViewerCode);
+        hide($sourceViewerImg);
+        show($sourceViewer);
+        hide($sandboxFrame);
+        try {
+          content = await currentFiles.get(path);
+        } catch (err) {
+          if (seq !== sourceViewerSeq) return;
+          $sourceViewerCode.textContent = `[Could not load file: ${err.message}]`;
+          return;
+        }
+        if (seq !== sourceViewerSeq) return;
+      }
 
       if (isText) {
         const decoder = new TextDecoder('utf-8', { fatal: false });
@@ -2579,7 +2620,7 @@
         hide($sourceViewerCode);
         show($sourceViewerImg);
       } else {
-        $sourceViewerCode.textContent = `[Binary file: ${formatBytes(content.byteLength)}]`;
+        $sourceViewerCode.textContent = `[Binary file: ${formatBytes(currentFiles.sizeOf(path))}]`;
         show($sourceViewerCode);
         hide($sourceViewerImg);
       }
@@ -2598,6 +2639,7 @@
 
     /** Close the source viewer and return to iframe preview. */
     function closeSourceViewer() {
+      sourceViewerSeq++; // drop any file still loading for the viewer
       hide($sourceViewer);
       show($sandboxFrame);
       // Clean up object URL
@@ -2682,10 +2724,10 @@
     }
 
     /** Download all project files individually. */
-    function downloadAllFiles() {
+    async function downloadAllFiles() {
       if (!currentFiles) return;
-      for (const [path, content] of currentFiles) {
-        downloadFile(path, content);
+      for (const path of currentFiles.keys()) {
+        downloadFile(path, await currentFiles.get(path));
       }
     }
 
@@ -2765,15 +2807,10 @@
 
       try {
         showToast('Restoring version...');
+        // Same read key, so the old version's blobs are reused by CID —
+        // nothing needs downloading.
         const { files } = await pullVersion(api, currentReadKey, manifestCid);
-
-        // Convert Map to array of { path, content }
-        const fileData = [];
-        for (const [path, content] of files) {
-          fileData.push({ path, content });
-        }
-
-        await pushVersion(api, currentProjectId, currentReadKey, currentWriteKey, fileData);
+        await pushVersion(api, currentProjectId, currentReadKey, currentWriteKey, files.entries());
         showToast('Version restored!');
 
         // Reload latest
@@ -2837,12 +2874,8 @@
         // Merge: start with current files, override with new uploads
         const fileData = [];
 
-        // Keep existing files
-        if (currentFiles) {
-          for (const [path, content] of currentFiles) {
-            fileData.push({ path, content });
-          }
-        }
+        // Keep existing files (by CID — their blobs are reused as-is)
+        if (currentFiles) fileData.push(...currentFiles.entries());
 
         // Read and add/override with uploaded files
         const newFiles = await Promise.all(uploadStagedFiles.map(readFile));

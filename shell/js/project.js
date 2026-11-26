@@ -92,8 +92,12 @@ export async function createNewProject(api) {
  * @param {string} projectId — project identifier
  * @param {string} readKey — base64url-encoded AES-256 key
  * @param {string} writeKey — base64url-encoded PKCS8 Ed25519 private key
- * @param {Array<{ path: string, content: Uint8Array }>} files — files to include in this version
- * @returns {Promise<{ manifestCid: string, version: number }>}
+ * A file given as `{ path, cid, size }` (no `content`) is referenced as-is:
+ * its blob is already encrypted under this same read key, so carrying an
+ * unchanged file over to the next version never needs it downloaded.
+ *
+ * @param {Array<{ path: string, content: Uint8Array } | { path: string, cid: string, size: number }>} files — files to include in this version
+ * @returns {Promise<{ manifestCid: string, version: number, files: Array<{ path: string, cid: string, size: number }> }>}
  */
 export async function pushVersion(api, projectId, readKey, writeKey, files) {
   // 1. Encrypt each file, compute CID, upload if needed
@@ -101,6 +105,10 @@ export async function pushVersion(api, projectId, readKey, writeKey, files) {
   const fileEntries = [];
 
   for (const file of files) {
+    if (!file.content && file.cid) {
+      fileEntries.push({ path: file.path, cid: file.cid, size: file.size });
+      continue;
+    }
     const encryptedBytes = await encrypt(readKey, file.content);
     const cid = await computeCid(encryptedBytes);
     const exists = await api.blobExists(cid);
@@ -133,7 +141,7 @@ export async function pushVersion(api, projectId, readKey, writeKey, files) {
   const signatureBase64 = toStandardBase64(signature);
   await api.updateRoot(projectId, manifestCid, signatureBase64);
 
-  return { manifestCid, version: manifest.version };
+  return { manifestCid, version: manifest.version, files: fileEntries };
 }
 
 // ---------------------------------------------------------------------------
@@ -141,33 +149,81 @@ export async function pushVersion(api, projectId, readKey, writeKey, files) {
 // ---------------------------------------------------------------------------
 
 /**
+ * The files of one manifest, decrypted lazily: listing them needs nothing
+ * but the manifest itself, and each file's blob is only fetched and
+ * decrypted the first time {@link ProjectFiles#get} asks for it — so opening
+ * a project full of large media doesn't wait on every byte of it first.
+ *
+ * Decrypted contents are cached by CID; pass a previous instance's `cache`
+ * to carry what's already been decrypted over to a newer version.
+ */
+export class ProjectFiles {
+  /**
+   * @param {import('./api.js').ApiClient} api
+   * @param {string} readKey — base64url-encoded AES-256 key
+   * @param {Array<{ path: string, cid: string, size: number }>} entries
+   * @param {Map<string, Promise<Uint8Array>>} [cache] — CID -> decrypted content
+   */
+  constructor(api, readKey, entries, cache = new Map()) {
+    this.api = api;
+    this.readKey = readKey;
+    this.cache = cache;
+    /** @type {Map<string, { path: string, cid: string, size: number }>} */
+    this.byPath = new Map(entries.map((e) => [e.path, { path: e.path, cid: e.cid, size: e.size }]));
+  }
+
+  get size() { return this.byPath.size; }
+  has(path) { return this.byPath.has(path); }
+  keys() { return this.byPath.keys(); }
+  /** Manifest entries `{ path, cid, size }`, in manifest order. */
+  entries() { return Array.from(this.byPath.values()); }
+  entry(path) { return this.byPath.get(path); }
+  /** Plaintext size in bytes, straight from the manifest. */
+  sizeOf(path) { return this.byPath.get(path)?.size ?? 0; }
+
+  /**
+   * Decrypted content of `path`, fetched on first use. Concurrent callers
+   * share one fetch; a failed one is forgotten so the next call retries.
+   *
+   * @param {string} path
+   * @returns {Promise<Uint8Array>}
+   */
+  get(path) {
+    const entry = this.byPath.get(path);
+    if (!entry) return Promise.reject(new Error(`no such file: ${path}`));
+    let pending = this.cache.get(entry.cid);
+    if (!pending) {
+      pending = this.api.getBlob(entry.cid)
+        .then((blob) => decrypt(this.readKey, new Uint8Array(blob)));
+      pending.catch(() => {
+        if (this.cache.get(entry.cid) === pending) this.cache.delete(entry.cid);
+      });
+      this.cache.set(entry.cid, pending);
+    }
+    return pending;
+  }
+
+  /** Record content already known for `cid` (e.g. just pushed). */
+  seed(cid, content) {
+    this.cache.set(cid, Promise.resolve(content));
+  }
+}
+
+/**
  * Pull a specific version by its manifest CID.
  *
- * Fetches the manifest (decrypting paths with the read key), then fetches
- * and decrypts every file referenced by it.
+ * Fetches the manifest (decrypting paths with the read key). File contents
+ * are not fetched here — see {@link ProjectFiles}.
  *
  * @param {import('./api.js').ApiClient} api — API client instance
  * @param {string} readKey — base64url-encoded AES-256 key
  * @param {string} manifestCid — CID of the manifest to pull
- * @returns {Promise<{ manifest: object, files: Map<string, Uint8Array> }>}
- *   - `manifest` — the deserialized manifest object
- *   - `files` — map from file path to decrypted content
+ * @returns {Promise<{ manifest: object, files: ProjectFiles }>}
  */
 export async function pullVersion(api, readKey, manifestCid) {
-  // Fetch the manifest and decrypt paths
   const manifestBlob = await api.getBlob(manifestCid);
   const manifest = await deserializeManifest(new Uint8Array(manifestBlob), readKey);
-
-  // Fetch and decrypt each file
-  /** @type {Map<string, Uint8Array>} */
-  const files = new Map();
-  for (const entry of manifest.files) {
-    const encryptedBlob = await api.getBlob(entry.cid);
-    const plaintext = await decrypt(readKey, new Uint8Array(encryptedBlob));
-    files.set(entry.path, plaintext);
-  }
-
-  return { manifest, files };
+  return { manifest, files: new ProjectFiles(api, readKey, manifest.files) };
 }
 
 /**
@@ -179,7 +235,7 @@ export async function pullVersion(api, readKey, manifestCid) {
  * @param {import('./api.js').ApiClient} api — API client instance
  * @param {string} projectId — project identifier
  * @param {string} readKey — base64url-encoded AES-256 key
- * @returns {Promise<{ manifest: object, files: Map<string, Uint8Array> } | null>}
+ * @returns {Promise<{ manifest: object, files: ProjectFiles } | null>}
  *   `null` if the project has no published versions yet.
  */
 export async function pullLatest(api, projectId, readKey) {

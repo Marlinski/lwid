@@ -169,6 +169,12 @@
     navigator.serviceWorker.addEventListener('message', (event) => {
       if (event.data && event.data.type === 'REQUEST_FILES') {
         window.parent.postMessage({ type: 'LWID_SANDBOX_REQUEST_FILES' }, SHELL_ORIGIN);
+      } else if (event.data && event.data.type === 'REQUEST_FILE') {
+        // One file's content, fetched lazily the first time it's requested.
+        window.parent.postMessage(
+          { type: 'LWID_SANDBOX_REQUEST_FILE', path: event.data.path, generation: event.data.generation },
+          SHELL_ORIGIN,
+        );
       }
     });
   }
@@ -195,6 +201,13 @@
             SHELL_ORIGIN,
           );
         }
+        return;
+      }
+      if (msg.type === 'LWID_SANDBOX_FILE') {
+        var sw = navigator.serviceWorker && navigator.serviceWorker.controller;
+        if (sw) sw.postMessage({
+          type: 'SET_FILE', path: msg.path, generation: msg.generation, content: msg.content, error: msg.error,
+        });
         return;
       }
       if (msg.type === 'LWID_SANDBOX_NAVIGATE') {
