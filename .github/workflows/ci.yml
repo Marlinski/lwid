@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # The S3 integration tests are #[ignore]d and need a real bucket.
+      - run: cargo test --workspace --locked
+
+  shell:
+    name: Shell tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Plain node:test, no dependencies. The glob is explicit: a bare
+      # `node --test tests/` stopped finding .mjs files in newer Node.
+      - run: node --test tests/*.test.mjs
