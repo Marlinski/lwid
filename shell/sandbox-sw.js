@@ -61,6 +61,12 @@ const fileCache = new Map();
 // generation that a reply addressed to its predecessor still carries.
 let filesGeneration = Date.now();
 
+// The bridge (sandbox.html) that sent the current file list, as a Client id.
+// File contents are asked of it alone: other bridges on this origin belong to
+// other tabs — in fallback mode, other projects — and would answer a path they
+// don't hold with an error, which could win the race against the real answer.
+let filesOwner = null;
+
 let activeViewer = null;
 let viewerCanEdit = false;
 
@@ -133,6 +139,7 @@ self.addEventListener('message', (event) => {
 
   if (type === 'SET_FILES') {
     filesGeneration++;
+    filesOwner = (event.source && event.source.id) || null;
     fileCache.clear();
     for (const file of files) {
       fileCache.set(file.path, {
@@ -240,11 +247,18 @@ function requestFile(path) {
   const timer = setTimeout(() => pending.resolve(null), FILE_TIMEOUT_MS);
   pendingFiles.set(key, pending);
 
-  self.clients
-    .matchAll({ type: 'window', includeUncontrolled: true })
-    .then((clients) => {
-      if (clients.length === 0) { pending.resolve(null); return; }
-      for (const c of clients) c.postMessage({ type: 'REQUEST_FILE', path, generation });
+  const ask = { type: 'REQUEST_FILE', path, generation };
+  (filesOwner ? self.clients.get(filesOwner) : Promise.resolve(null))
+    .then((owner) => {
+      if (owner) { owner.postMessage(ask); return; }
+      // The owner is gone (its tab reloaded or closed): ask every bridge, as
+      // re-hydration does, and let the one holding this list answer.
+      return self.clients
+        .matchAll({ type: 'window', includeUncontrolled: true })
+        .then((clients) => {
+          if (clients.length === 0) { pending.resolve(null); return; }
+          for (const c of clients) c.postMessage(ask);
+        });
     })
     .catch(() => pending.resolve(null));
   return pending.promise;
