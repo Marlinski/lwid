@@ -89,7 +89,7 @@ pub fn tier_policy<'a>(cfg: &'a Config, user: &OptionalUser) -> &'a TierPolicy {
 }
 
 /// Clamp `requested_ttl` to `max_ttl` using the TTL ordering defined in
-/// [`TTL_CHOICES`] (`["1h","1d","7d","30d","never"]`).
+/// [`TTL_CHOICES`] (`["1h","1d","7d","30d","180d","365d","never"]`).
 ///
 /// If the requested TTL index is higher (longer) than the max_ttl index,
 /// returns `max_ttl`.  Otherwise returns `requested_ttl` unchanged.
@@ -193,4 +193,18 @@ async fn get_manifest(State(state): State<AppState>) -> Json<ManifestResponse> {
         },
         sandbox_base_domain: cfg.server.sandbox_base_domain.clone(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clamp_ttl;
+
+    #[test]
+    fn clamp_ttl_orders_long_ttls_between_30d_and_never() {
+        assert_eq!(clamp_ttl("180d", "30d"), "30d");
+        assert_eq!(clamp_ttl("365d", "180d"), "180d");
+        assert_eq!(clamp_ttl("never", "365d"), "365d");
+        assert_eq!(clamp_ttl("365d", "never"), "365d");
+        assert_eq!(clamp_ttl("30d", "180d"), "30d");
+    }
 }

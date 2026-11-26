@@ -1617,6 +1617,36 @@ button:disabled {
   background: var(--bg-hover);
 }
 
+/* TTL choices the user's tier doesn't allow (see applyTtlLocks). */
+.ttl-selector__btn:disabled,
+.extend-menu__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ttl-selector__btn:disabled:hover {
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+.extend-menu__btn:disabled:hover {
+  background: transparent;
+}
+.ttl-badge {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+.ttl-badge--pro {
+  background: rgba(163, 110, 255, 0.15);
+  color: #a36eff;
+}
+.ttl-badge--signin {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+
 /* ---------------------------------------------------------------------------
  * Scrollbar styling (thin, subtle)
  * --------------------------------------------------------------------------- */
