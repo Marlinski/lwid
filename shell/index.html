@@ -349,10 +349,14 @@
         <div id="loading-overlay" class="project-view__loading">
           <span class="spinner"></span> Loading project&hellip;
         </div>
+        <!-- Sandbox flags cap what the project's own content frame (created
+             in __lwid_sandbox__/sandbox.html) can do: a nested frame only
+             gets the flags all of its ancestors grant. Keep the two lists in
+             step. -->
         <iframe
           id="sandbox-frame"
           class="project-view__iframe"
-          sandbox="allow-scripts allow-same-origin"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads"
           title="Project preview"
         ></iframe>
         <!-- Source file viewer (replaces iframe when viewing a file) -->
@@ -946,6 +950,7 @@
         '.markdown': 'text/markdown',
         '.xml': 'application/xml',
         '.csv': 'text/csv',
+        '.pdf': 'application/pdf',
         '.py': 'text/x-python',
       };
       return map[ext] || 'application/octet-stream';
