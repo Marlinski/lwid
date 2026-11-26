@@ -43,7 +43,16 @@ export function splitFragment(fragment) {
   const cut = rest.search(/[?#]/);
   const rawPath = cut === -1 ? rest : rest.slice(0, cut);
   const query = cut === -1 ? '' : rest.slice(cut);
-  return { keys: f.slice(0, slash), page: { path: decodePath(rawPath), query } };
+  const path = decodePath(rawPath);
+  // A `.` or `..` segment survives encodeURIComponent unchanged, so the
+  // browser would resolve it when the sandbox loads the page and climb out
+  // of the project's files. No project file can be named that way, so such
+  // a link opens the first page, like any other link to a missing file.
+  // Checked after decoding, so `%2e%2e` is caught too.
+  if (path.split('/').some((seg) => seg === '.' || seg === '..')) {
+    return { keys: f.slice(0, slash), page: null };
+  }
+  return { keys: f.slice(0, slash), page: { path, query } };
 }
 
 /**

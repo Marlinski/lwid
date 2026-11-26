@@ -59,6 +59,14 @@ test('a malformed escape in a hand-edited link is kept, not thrown', () => {
   assert.deepEqual(splitFragment(`${READ}/100%.html`).page, { path: '100%.html', query: '' });
 });
 
+test('a page path with . or .. segments is dropped, encoded or not', () => {
+  for (const suffix of ['/../../api/x', '/docs/../index.html', '/./a.html', '/%2e%2e/x', '/%2E%2E', '/..?q=1']) {
+    assert.deepEqual(splitFragment(READ + suffix), { keys: READ, page: null }, suffix);
+  }
+  // Dots inside a name are fine.
+  assert.deepEqual(splitFragment(`${READ}/..hidden/a..b.html`).page, { path: '..hidden/a..b.html', query: '' });
+});
+
 test('isHomePage: the entry point (or bare index) with no query is home', () => {
   assert.equal(isHomePage(null, 'index.html'), true);
   assert.equal(isHomePage({ path: 'index.html', query: '' }, 'index.html'), true);
