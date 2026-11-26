@@ -154,6 +154,8 @@
         <button type="button" class="ttl-selector__btn" data-ttl="1d">1 day</button>
         <button type="button" class="ttl-selector__btn ttl-selector__btn--active" data-ttl="7d">7 days</button>
         <button type="button" class="ttl-selector__btn" data-ttl="30d">30 days</button>
+        <button type="button" class="ttl-selector__btn" data-ttl="180d">180 days</button>
+        <button type="button" class="ttl-selector__btn" data-ttl="365d">1 year</button>
         <button type="button" class="ttl-selector__btn" data-ttl="never">Never</button>
       </div>
     </div>
@@ -217,6 +219,8 @@
           <button type="button" class="extend-menu__btn" data-ttl="1d">1 day</button>
           <button type="button" class="extend-menu__btn" data-ttl="7d">7 days</button>
           <button type="button" class="extend-menu__btn" data-ttl="30d">30 days</button>
+          <button type="button" class="extend-menu__btn" data-ttl="180d">180 days</button>
+          <button type="button" class="extend-menu__btn" data-ttl="365d">1 year</button>
           <button type="button" class="extend-menu__btn" data-ttl="never">Never</button>
         </div>
       </div>
@@ -460,6 +464,7 @@
     import { scanFiles } from '/js/detect-secrets.js';
     import { GONE, selectVisibleProjects } from '/js/projects.js';
     import { detectViewer } from '/js/viewers.js';
+    import { tierOf, ttlLock } from '/js/ttl.js';
 
     // -----------------------------------------------------------------------
     // DOM references
@@ -591,9 +596,18 @@
     // or malformed just means "no subdomain configured" (same-origin
     // fallback), never a broken load.
     let sandboxBaseDomain = null;
+    // The same fetch also feeds applyTtlLocks(): per-tier limits, and
+    // whether sign-in exists at all. Left null/false on failure, which locks
+    // nothing — the server still clamps every TTL it receives.
+    let tierPolicy = null;
+    let authEnabled = false;
     const sandboxConfigReady = fetch('/api/manifest')
       .then((r) => r.json())
-      .then((m) => { sandboxBaseDomain = m.sandbox_base_domain || null; })
+      .then((m) => {
+        sandboxBaseDomain = m.sandbox_base_domain || null;
+        tierPolicy = m.policy || null;
+        authEnabled = !!(m.auth && m.auth.enabled);
+      })
       .catch(() => { sandboxBaseDomain = null; });
 
     let currentProjectId = null;
@@ -1717,6 +1731,53 @@
       $btnQuickstartWebsite.addEventListener('click', () => handleQuickStart('website'));
       $btnQuickstartNotebook.addEventListener('click', () => handleQuickStart('notebook'));
       $btnQuickstartDocs.addEventListener('click', () => handleQuickStart('docs'));
+    }
+
+    /**
+     * Grey out the TTL choices this user's tier doesn't allow, in both the
+     * create selector and the extend menu, with a badge naming what unlocks
+     * each one ("Sign in" or "Pro"). The server would clamp them anyway;
+     * this just stops the shell from offering a choice it won't honour.
+     * Runs once per page load — signing in or out reloads the page.
+     */
+    async function applyTtlLocks() {
+      await sandboxConfigReady;
+      if (!tierPolicy) return;
+      let me = null;
+      if (authEnabled) {
+        try {
+          const resp = await fetch('/auth/me');
+          if (resp.ok) me = await resp.json();
+        } catch { /* treat as signed out */ }
+      }
+      const tier = tierOf(me);
+      const buttons = [
+        ...$ttlSelector.querySelectorAll('.ttl-selector__btn'),
+        ...$extendMenu.querySelectorAll('.extend-menu__btn'),
+      ];
+      for (const btn of buttons) {
+        const lock = ttlLock(btn.dataset.ttl, tier, tierPolicy, authEnabled);
+        if (!lock) continue;
+        btn.disabled = true;
+        if (lock === 'hidden') { btn.hidden = true; continue; }
+        const badge = document.createElement('span');
+        badge.className = `ttl-badge ttl-badge--${lock}`;
+        badge.textContent = lock === 'pro' ? 'Pro' : 'Sign in';
+        btn.append(badge);
+        btn.title = lock === 'pro' ? 'Available with a Pro account' : 'Sign in to use this lifetime';
+      }
+      // If the default choice just got locked (a server whose anonymous cap
+      // is below 7d), fall back to the longest choice still allowed.
+      const pills = [...$ttlSelector.querySelectorAll('.ttl-selector__btn')];
+      const active = pills.find((b) => b.dataset.ttl === selectedTtl);
+      if (active && active.disabled) {
+        const fallback = pills.slice(0, pills.indexOf(active)).reverse().find((b) => !b.disabled);
+        if (fallback) {
+          active.classList.remove('ttl-selector__btn--active');
+          fallback.classList.add('ttl-selector__btn--active');
+          selectedTtl = fallback.dataset.ttl;
+        }
+      }
     }
 
     // ── Quick start: scaffold a blank notebook or docs page ────────────────
@@ -2845,6 +2906,8 @@
           }
         }).catch(() => {});
       }
+
+      applyTtlLocks().catch((err) => console.error('TTL locks:', err));
 
       const route = getRoute();
 

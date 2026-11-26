@@ -63,7 +63,7 @@ Encrypt FILEs and publish them as an lwid project, using only curl and
 openssl. Prints the share URL, with the read and write keys in the fragment.
 
   -s SERVER   server base URL (default \$LWID_SERVER, else $SERVER)
-  -t TTL      1h | 1d | 7d | 30d | never  (default $TTL)
+  -t TTL      1h | 1d | 7d | 30d | 180d | 365d | never  (default $TTL)
 EOF
 }
 
