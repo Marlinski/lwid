@@ -164,6 +164,45 @@
     return $content;
   }
 
+  // Must equal SANDBOX_PROTOCOL in /sandbox-sw.js (see there).
+  var SANDBOX_PROTOCOL = 2;
+
+  // The protocol the controlling worker speaks, or null if it doesn't answer.
+  // A worker from before protocol versions existed ignores PING, so silence
+  // means "older than this page".
+  function pingSW(ms) {
+    return new Promise(function (resolve) {
+      var sw = navigator.serviceWorker.controller;
+      if (!sw) { resolve(null); return; }
+      var channel = new MessageChannel();
+      var timer = setTimeout(function () { resolve(null); }, ms);
+      channel.port1.onmessage = function (e) {
+        clearTimeout(timer);
+        resolve(e.data && e.data.type === 'PONG' ? e.data.protocol : null);
+      };
+      sw.postMessage({ type: 'PING' }, [channel.port2]);
+    });
+  }
+
+  // After an lwid upgrade, register() and .ready resolve at once with the
+  // worker that was already running, the previous version. Files sent to it
+  // in the new message format are misread (every file served empty). So
+  // check what's in control, and if it's outdated, ask for the update and
+  // wait for the new worker to take over (it calls skipWaiting() and
+  // clients.claim(), which fires controllerchange here).
+  async function ensureCurrentSW(registration) {
+    var takeover = new Promise(function (resolve) {
+      navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+      setTimeout(resolve, 10000);
+    });
+    if (await pingSW(1000) === SANDBOX_PROTOCOL) return;
+    try { await registration.update(); } catch (_) { /* offline, or already updating */ }
+    if (await pingSW(1000) !== SANDBOX_PROTOCOL) await takeover;
+    if (await pingSW(2000) !== SANDBOX_PROTOCOL) {
+      throw new Error('lwid was just updated and an older version is still running in this tab. Reload the page.');
+    }
+  }
+
   var swReadyPromise = null;
   function ensureSW() {
     if (swReadyPromise) return swReadyPromise;
@@ -175,7 +214,7 @@
   function ensureSWOnce() {
     return (async () => {
       if (!('serviceWorker' in navigator)) throw new Error('Service Workers not supported');
-      await navigator.serviceWorker.register('/sandbox-sw.js', { scope: '/__lwid_sandbox__/' });
+      var registration = await navigator.serviceWorker.register('/sandbox-sw.js', { scope: '/__lwid_sandbox__/' });
       await navigator.serviceWorker.ready;
       if (!navigator.serviceWorker.controller) {
         await new Promise((resolve) => {
@@ -183,6 +222,7 @@
           setTimeout(resolve, 2000); // don't hang the whole load on this forever
         });
       }
+      await ensureCurrentSW(registration);
       // The SW can't read this page's own URL (its own script URL has no
       // query string), so it needs telling explicitly — it's what makes
       // the shared-fallback __shared__/__viewer__ proxy and the injected

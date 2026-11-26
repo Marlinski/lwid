@@ -488,3 +488,76 @@ async fn delete_project_with_wrong_key_is_rejected() {
     let resp = server.get(&format!("/api/projects/{project_id}")).await;
     resp.assert_status_ok();
 }
+
+// ---------------------------------------------------------------------------
+// Shell file caching (static_cache)
+// ---------------------------------------------------------------------------
+
+fn header_str(resp: &axum_test::TestResponse, name: &str) -> Option<String> {
+    resp.headers().get(name).map(|v| v.to_str().unwrap().to_owned())
+}
+
+#[tokio::test]
+async fn shell_files_are_no_cache_with_a_content_etag() {
+    let (server, tmp) = test_server().await;
+    let js = tmp.path().join("shell/js");
+    std::fs::create_dir_all(&js).unwrap();
+    std::fs::write(js.join("project.js"), "export const v = 1;").unwrap();
+
+    let resp = server.get("/js/project.js").await;
+    resp.assert_status_ok();
+    assert_eq!(header_str(&resp, "cache-control").as_deref(), Some("no-cache"));
+    assert!(header_str(&resp, "last-modified").is_none(), "timestamps must not validate");
+    let etag = header_str(&resp, "etag").expect("etag");
+    assert_eq!(resp.text(), "export const v = 1;");
+
+    // Unchanged: 304, no body.
+    let resp = server.get("/js/project.js").add_header("if-none-match", &etag).await;
+    resp.assert_status(axum::http::StatusCode::NOT_MODIFIED);
+    assert_eq!(header_str(&resp, "etag").as_deref(), Some(etag.as_str()));
+    assert!(resp.as_bytes().is_empty());
+
+    // A date validator alone is ignored: a future If-Modified-Since would
+    // make ServeDir answer 304 from the file's mtime.
+    let resp = server
+        .get("/js/project.js")
+        .add_header("if-modified-since", "Fri, 01 Jan 2100 00:00:00 GMT")
+        .await;
+    resp.assert_status_ok();
+
+    // Changed content: the old ETag no longer matches, the new bytes come back.
+    std::fs::write(js.join("project.js"), "export const v = 2; export class ProjectFiles {}").unwrap();
+    let resp = server.get("/js/project.js").add_header("if-none-match", &etag).await;
+    resp.assert_status_ok();
+    assert_ne!(header_str(&resp, "etag").as_deref(), Some(etag.as_str()));
+    assert!(resp.text().contains("ProjectFiles"));
+}
+
+#[tokio::test]
+async fn spa_routes_are_no_cache_too() {
+    let (server, _tmp) = test_server().await;
+    for path in ["/", "/p/abc123"] {
+        let resp = server.get(path).await;
+        resp.assert_status_ok();
+        assert_eq!(header_str(&resp, "cache-control").as_deref(), Some("no-cache"), "{path}");
+        assert!(header_str(&resp, "etag").is_some(), "{path}");
+    }
+}
+
+#[tokio::test]
+async fn blobs_and_api_keep_their_own_caching() {
+    let (server, _tmp) = test_server().await;
+    let resp = server.post("/api/blobs").bytes(b"blob bytes".to_vec().into()).await;
+    let cid = resp.json::<Value>()["cid"].as_str().unwrap().to_owned();
+
+    let resp = server.get(&format!("/api/blobs/{cid}")).await;
+    assert_eq!(
+        header_str(&resp, "cache-control").as_deref(),
+        Some("public, max-age=31536000, immutable"),
+    );
+    assert!(header_str(&resp, "etag").is_none());
+
+    let resp = server.get("/api/version").await;
+    assert!(header_str(&resp, "cache-control").is_none());
+    assert!(header_str(&resp, "etag").is_none());
+}

@@ -9,3 +9,4 @@ pub mod metrics;
 pub mod reaper;
 pub mod redirect;
 pub mod sandbox;
+pub mod static_cache;

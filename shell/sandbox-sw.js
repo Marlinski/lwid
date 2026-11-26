@@ -61,6 +61,14 @@ const fileCache = new Map();
 // generation that a reply addressed to its predecessor still carries.
 let filesGeneration = Date.now();
 
+// The message protocol this worker speaks with sandbox.html. Bump it, here
+// and in sandbox.html, whenever a message changes shape, e.g. SET_FILES
+// stopped carrying contents when files became lazy (2). The bridge pings
+// for it before sending files, so a page still controlled by a worker from
+// before an upgrade gets the new one instead of a list it misreads.
+// tests/sandbox-protocol.test.mjs keeps the two in step.
+const SANDBOX_PROTOCOL = 2;
+
 // The bridge (sandbox.html) that sent the current file list, as a Client id.
 // File contents are asked of it alone: other bridges on this origin belong to
 // other tabs — in fallback mode, other projects — and would answer a path they
@@ -138,7 +146,11 @@ function guessMimeType(path) {
 self.addEventListener('message', (event) => {
   const { type, files } = event.data || {};
 
-  if (type === 'SET_FILES') {
+  if (type === 'PING') {
+    if (event.ports && event.ports[0]) {
+      event.ports[0].postMessage({ type: 'PONG', protocol: SANDBOX_PROTOCOL });
+    }
+  } else if (type === 'SET_FILES') {
     filesGeneration++;
     filesOwner = (event.source && event.source.id) || null;
     fileCache.clear();

@@ -154,6 +154,11 @@ pub fn router(state: AppState) -> Router {
         .nest_service("/p", spa_fallback)
         // ── Static files: /js/*, /css/*, /sw.js, etc. ─────────────────
         .fallback_service(static_files)
+        // ── Shell files: no-cache + content ETag (see static_cache) ────
+        // Added last so it wraps the routes, /p and the fallback alike;
+        // it skips /api/*, /auth/* and responses with their own
+        // Cache-Control.
+        .layer(axum::middleware::from_fn(crate::static_cache::revalidate))
 }
 
 // ---------------------------------------------------------------------------
